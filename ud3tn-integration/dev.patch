@@ -51,7 +51,7 @@ index 2adaa41..dbebb1d 100644
  LDFLAGS += -lpthread
  
 +# libcsp for CSP CLA
-+LDFLAGS += -L/home/mathias/libcsp-src/build -lcsp -lzmq
++LDFLAGS += -L/home/mathias/libcsp-src/build -lcsp -lzmq -lsocketcan
 +
  ifndef DISABLE_SQLITE_STORAGE
    LDFLAGS += -lsqlite3

@@ -75,7 +75,7 @@ static const char *CLA_NAME = "csp";
 #define CSP_ZMQHUB_ADDR "localhost"
 
 /** Default CAN interface name */
-#define CSP_CAN_IFACE "can0"
+#define CSP_CAN_IFACE "vcan0"
 
 /** CSP interface types */
 enum csp_iface_type {
@@ -878,7 +878,7 @@ static enum ud3tn_result csp_cla_init(
             break;
 
         case CSP_IFACE_CAN:
-#ifdef CSP_USE_CAN
+#ifdef CSP_HAVE_LIBSOCKETCAN
             /* Initialize CAN interface via SocketCAN */
             ret = csp_can_socketcan_open_and_add_interface(
                 CSP_CAN_IFACE,  /* CAN device name (can0, vcan0, etc.) */

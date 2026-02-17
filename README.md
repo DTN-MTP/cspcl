@@ -32,25 +32,9 @@ BP7 Bundle → CSPCL → CSP UDP → Physical Layer (CAN/ZMQHUB/SocketCAN)
 
 The primary use case for CSPCL is integration with [uD3TN](https://gitlab.com/d3tn/ud3tn). See [ud3tn-integration/README.md](ud3tn-integration/README.md) for complete instructions.
 
-### Quick Test (5 terminals)
+### Quick Test
 
-```bash
-# Terminal 1: Start ZMQ broker
-python3 tools/zmqhub_broker.py -v
-
-# Terminal 2: Start Node A
-./ud3tn --node-id dtn://a.dtn/ --aap-port 4242 --aap2-socket /tmp/1.aap2.socket --cla "csp:1,10"
-
-# Terminal 3: Start Node B
-./ud3tn --node-id dtn://b.dtn/ --aap-port 4243 --aap2-socket /tmp/2.aap2.socket --cla "csp:2,10"
-
-# Terminal 4: Configure route + Receive
-aap2-config --socket /tmp/1.aap2.socket --schedule 1 3600 100000 dtn://b.dtn/ csp:2
-aap2-receive --socket /tmp/2.aap2.socket --agentid bundlesink
-
-# Terminal 5: Send message
-aap2-send --socket /tmp/1.aap2.socket dtn://b.dtn/bundlesink 'Hello via CSPCL!'
-```
+see [ud3tn-integration/README.md](ud3tn-integration/README.md)
 
 ## Building
 
@@ -244,8 +228,8 @@ To use with actual libcsp instead of stubs:
 1. Install libcsp v1.6 with ZMQHUB support:
    ```bash
    cd /path/to/libcsp
-   python3 waf configure --enable-zmqhub
-   python3 waf build
+   python3 waf configure --enable-can-socketcan --enable-if-zmqhub
+   python3 waf build install
    ```
 
 2. Set `CSP_PATH` environment variable or update CMake paths

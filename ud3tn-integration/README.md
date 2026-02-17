@@ -118,74 +118,10 @@ make
 
 ## Testing Bundle Transfer
 
-### Step 1: Start ZMQ Hub Broker
-
-The ZMQHUB interface requires a central broker to route CSP packets between nodes.
+### Refer to the script at `tools/simple_bundle_transfer.sh`
 
 ```bash
-cd /path/to/cspcl
-python3 tools/zmqhub_broker.py -v
-```
-
-Expected output:
-```
-ZMQ Hub Broker started (libcsp zmqproxy compatible)
-  XSUB (receive from nodes): tcp://*:6000
-  XPUB (send to nodes):      tcp://*:7000
-```
-
-### Step 2: Start Node A (CSP Address 1)
-
-```bash
-cd /path/to/ud3tn-src
-./build/posix/ud3tn \
-    --node-id dtn://a.dtn/ \
-    --aap-port 4242 \
-    --aap2-socket /tmp/1.aap2.socket \
-    --cla "csp:1,10"
-```
-
-### Step 3: Start Node B (CSP Address 2)
-
-```bash
-cd /path/to/ud3tn-src
-./build/posix/ud3tn \
-    --node-id dtn://b.dtn/ \
-    --aap-port 4243 \
-    --aap2-socket /tmp/2.aap2.socket \
-    --cla "csp:2,10"
-```
-
-### Step 4: Configure Route from A to B
-
-```bash
-aap2-config --socket /tmp/1.aap2.socket \
-    --schedule 1 3600 100000 dtn://b.dtn/ csp:2
-```
-
-### Step 5: Start Receiver on Node B
-
-```bash
-aap2-receive --socket /tmp/2.aap2.socket --agentid bundlesink
-```
-
-### Step 6: Send Bundle from Node A to Node B
-
-```bash
-aap2-send --socket /tmp/1.aap2.socket \
-    dtn://b.dtn/bundlesink 'Hello via CSPCL!'
-```
-
-### Verification
-
-In the **ZMQ broker terminal**, you should see packet traffic:
-```
-[XSUB->XPUB] 1 parts, 45 bytes: 02000a01...
-```
-
-In the **receiver terminal**, the message should appear:
-```
-Received bundle: Hello via CSPCL!
+./tools/simple_bundle_transfer.sh -h
 ```
 
 ## CLA Configuration
