@@ -250,4 +250,4 @@ To use with actual libcsp instead of stubs:
 
 ## License
 
-None for now
+- University of Montpellier Space Center
