@@ -2,6 +2,12 @@
 name = "cspcl"
 version = "0.1.0"
 edition = "2024"
+description = "Rust bindings for the cspcl library"
+authors = ["cspcl contributors"]
+license = "MIT"
+repository = "https://github.com/d3tn/cspcl"
+readme = "README.md"
+keywords = ["cspcl"]
 
 [dependencies]
-cspcl-sys = { path = "../cspcl-sys" }
+cspcl-sys = "0.1"
