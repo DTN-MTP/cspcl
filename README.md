@@ -248,6 +248,71 @@ To use with actual libcsp instead of stubs:
 - [Bundle Protocol 7 (RFC 9171)](https://www.rfc-editor.org/rfc/rfc9171)
 - [CubeSat Space Protocol](https://github.com/libcsp/libcsp/wiki)
 
+## Rust Bindings
+
+CSPCL provides safe Rust bindings through the `cspcl` and `cspcl-sys` crates.
+
+### Installation
+
+Add to your `Cargo.toml`:
+```toml
+[dependencies]
+cspcl = "0.1"
+```
+
+### Quick Start
+
+```rust
+use cspcl::Cspcl;
+
+// Initialize with local CSP address
+let mut cspcl = Cspcl::init(1)?;
+
+// Open RX socket
+cspcl.open_rx_socket()?;
+
+// Send a bundle
+let bundle = vec![/* BP7 bundle bytes */];
+cspcl.send_bundle(&bundle, 2)?;  // Send to CSP address 2
+
+// Receive a bundle
+let (data, src_addr) = cspcl.recv_bundle(5000)?;  // 5 second timeout
+println!("Received {} bytes from CSP addr {}", data.len(), src_addr);
+
+// Cleanup is automatic on drop
+```
+
+### Key Features
+
+- **Type-safe wrappers** over C FFI
+- **Error handling** via Rust Result/Error types
+- **Automatic cleanup** via RAII (Drop trait)
+- **Address translation** utilities (IPN↔CSP)
+- **Platform support** for POSIX and FreeRTOS
+
+### Error Handling
+
+```rust
+use cspcl::{Cspcl, CspclerError};
+
+match cspcl.send_bundle(&data, addr) {
+    Ok(_) => println!("Bundle sent"),
+    Err(CspclerError::BundleTooLarge) => eprintln!("Bundle too large"),
+    Err(e) => eprintln!("Error: {}", e),
+}
+```
+
+### Building with libcsp
+
+For production use with actual libcsp instead of stubs:
+
+```bash
+export CSP_PATH=/path/to/libcsp
+cargo build --release
+```
+
+See [rust-bindings/README.md](rust-bindings/README.md) for detailed Rust API documentation.
+
 ## License
 
 - University of Montpellier Space Center
