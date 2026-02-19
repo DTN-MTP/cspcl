@@ -42,7 +42,7 @@ aap2-send / aap2-receive
 | Requirement | Notes |
 | --- | --- |
 | uD3TN source | `git clone https://gitlab.com/d3tn/ud3tn.git` |
-| libcsp v1.6 | Built with the appropriate interface(s) enabled — see below |
+| libcsp v1.6 | Built with the appropriate interface(s) enabled -- see below |
 | Build tools | gcc, make, cmake |
 
 ### ZMQHUB transport
@@ -50,7 +50,7 @@ aap2-send / aap2-receive
 | Requirement | Notes |
 | --- | --- |
 | libcsp v1.6 | Built with `--enable-if-zmqhub` |
-| Python 3 + pyzmq | `pip3 install pyzmq` — needed to run the broker |
+| Python 3 + pyzmq | `pip3 install pyzmq` -- needed to run the broker |
 
 ### CAN transport
 
@@ -88,11 +88,8 @@ python3 waf build
 
 ```bash
 cd /path/to/ud3tn
-
-# Replace the hardcoded libcsp path inside the patch
 sed -i 's|/home/mathias/libcsp-src|/path/to/libcsp-src|g' \
     /path/to/cspcl/ud3tn-integration/ud3tn-cla-csp.patch
-
 git apply /path/to/cspcl/ud3tn-integration/ud3tn-cla-csp.patch
 make
 ```
@@ -100,15 +97,11 @@ make
 ## Manual File Copy (Alternative)
 
 ```bash
-export CSPCL=/path/to/cspcl
-export UD3TN=/path/to/ud3tn
-
-cp $CSPCL/src/cspcl.c   $UD3TN/external/cspcl/
-cp $CSPCL/src/cspcl.h   $UD3TN/external/cspcl/
-
+export CSPCL=/path/to/cspcl  UD3TN=/path/to/ud3tn
+cp $CSPCL/src/cspcl.c  $UD3TN/external/cspcl/
+cp $CSPCL/src/cspcl.h  $UD3TN/external/cspcl/
 cp $CSPCL/ud3tn-integration/src/cla_csp.c  $UD3TN/components/cla/posix/
 cp $CSPCL/ud3tn-integration/src/cla_csp.h  $UD3TN/include/cla/
-
 cd $UD3TN && make
 ```
 
@@ -116,18 +109,40 @@ cd $UD3TN && make
 
 ## CLA Configuration
 
-The transport is selected via the `--cla` argument passed to uD3TN:
+The transport and its parameters are selected via the `--cla` argument passed to uD3TN.
 
 ```
---cla "csp:<local_addr>,<port>"          # ZMQHUB (default)
---cla "csp:<local_addr>,<port>,can"      # SocketCAN
+--cla "csp:<local_addr>,<port>[,<iface>]"
 ```
 
-| Parameter | Description | Default |
+| `<iface>` value | Transport | Parameter used |
 | --- | --- | --- |
-| `local_addr` | CSP node address of this uD3TN instance (0-255) | — |
-| `port` | CSP port for Bundle Protocol traffic | `10` |
-| `can` *(optional)* | Use SocketCAN instead of ZMQHUB | ZMQHUB |
+| *(omitted)* | ZMQHUB | broker at `localhost` (default) |
+| `zmqhub` | ZMQHUB | broker at `localhost` (default) |
+| `zmqhub:<host>` | ZMQHUB | broker at `<host>` (hostname or IP) |
+| `can` | SocketCAN | device `vcan0` (default) |
+| `can:<iface>` | SocketCAN | device `<iface>` (e.g. `can0`, `vcan1`) |
+| `loopback` | Loopback | built-in CSP loopback (no external process needed) |
+
+### Examples
+
+```bash
+# ZMQHUB on localhost (default)
+--cla "csp:1,10"
+
+# ZMQHUB on a remote machine
+--cla "csp:1,10,zmqhub:192.168.1.10"
+
+# Virtual CAN on the default vcan0 interface
+--cla "csp:1,10,can"
+
+# Physical CAN adapter
+--cla "csp:1,10,can:can0"
+
+# Local loopback (single-machine testing without a broker)
+--cla "csp:1,10,loopback"
+```
+
 
 ---
 
@@ -222,19 +237,19 @@ aap2-send --socket 1.aap2.socket dtn://b.dtn/bundlesink 'hello,world!'
 
 ## Troubleshooting
 
-**`Port 10 is already in use`** — a previous uD3TN process left the CSP port bound.
+**Port 10 already in use** -- a previous uD3TN process left the CSP port bound.
 
 ```bash
 pkill -f ud3tn && rm -f /tmp/*.aap2.socket
 ```
 
-**No packets at the ZMQ broker** — verify both nodes connect to the same host/ports
+**No packets at the ZMQ broker** -- verify both nodes connect to the same host/ports
 and that libcsp was built with `--enable-if-zmqhub`.
 
-**CAN frames not appearing** — verify `vcan0` is up (`ip link show vcan0`) and that
+**CAN frames not appearing** -- verify `vcan0` is up (`ip link show vcan0`) and that
 libcsp was built with `--enable-can-socketcan`. Use `candump vcan0` to inspect raw frames.
 
-**Bundle not delivered** — confirm the route was scheduled with `aap2-config` and that
+**Bundle not delivered** -- confirm the route was scheduled with `aap2-config` and that
 the agent ID in the receiver matches the service portion of the destination EID.
 
 **Enable debug logging**
@@ -246,6 +261,8 @@ export UD3TN_LOG_LEVEL=debug
 Look for these log lines in uD3TN output:
 
 - `CSP: Initialized with local address X, port Y`
+- `CSP: Connecting to ZMQHUB broker at '<host>'`
+- `CSP: Opening CAN interface '<iface>'`
 - `CSP: Starting scheduled contact to csp:X`
 - `CSP: Sending N bytes to csp:X`
 - `CSP: RX task started`
