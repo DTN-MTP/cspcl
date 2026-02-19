@@ -14,6 +14,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <string.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -230,6 +231,75 @@ uint8_t csp_conn_sport(csp_conn_t *conn);
  * @return Destination port
  */
 uint8_t csp_conn_dport(csp_conn_t *conn);
+
+/*===========================================================================*/
+/* CSP SFP (Simple Fragmentation Protocol) API                                */
+/*===========================================================================*/
+
+/** Memory copy function type for SFP */
+typedef void *csp_memptr_t;
+typedef void *(*csp_memcpy_fnc_t)(csp_memptr_t dst, csp_memptr_t src, size_t len);
+
+/**
+ * Send data using SFP (handles fragmentation automatically)
+ * @param conn Connection handle
+ * @param data Data to send
+ * @param datasize Size of data
+ * @param mtu Maximum transfer unit per packet
+ * @param timeout Timeout in ms (unused in CSP 1.6)
+ * @param memcpyfcn Memory copy function
+ * @return CSP_ERR_NONE on success
+ */
+int csp_sfp_send_own_memcpy(csp_conn_t *conn, const void *data,
+                            unsigned int datasize, unsigned int mtu,
+                            uint32_t timeout, csp_memcpy_fnc_t memcpyfcn);
+
+/**
+ * Send data using SFP with standard memcpy
+ * @param conn Connection handle
+ * @param data Data to send
+ * @param datasize Size of data
+ * @param mtu Maximum transfer unit per packet
+ * @param timeout Timeout in ms (unused in CSP 1.6)
+ * @return CSP_ERR_NONE on success
+ */
+static inline int csp_sfp_send(csp_conn_t *conn, const void *data,
+                               unsigned int datasize, unsigned int mtu,
+                               uint32_t timeout) {
+    return csp_sfp_send_own_memcpy(conn, data, datasize, mtu, timeout,
+                                   (csp_memcpy_fnc_t)&memcpy);
+}
+
+/**
+ * Receive data using SFP (handles reassembly automatically)
+ * @param conn Connection handle
+ * @param dataout Output pointer to received data (allocated by SFP, free with csp_free)
+ * @param datasize Output size of received data
+ * @param timeout Timeout in ms
+ * @param first_packet First packet if already received, or NULL
+ * @return CSP_ERR_NONE on success
+ */
+int csp_sfp_recv_fp(csp_conn_t *conn, void **dataout, int *datasize,
+                    uint32_t timeout, csp_packet_t *first_packet);
+
+/**
+ * Receive data using SFP (convenience wrapper)
+ * @param conn Connection handle
+ * @param dataout Output pointer to received data (allocated by SFP, free with csp_free)
+ * @param datasize Output size of received data
+ * @param timeout Timeout in ms
+ * @return CSP_ERR_NONE on success
+ */
+static inline int csp_sfp_recv(csp_conn_t *conn, void **dataout,
+                               int *datasize, uint32_t timeout) {
+    return csp_sfp_recv_fp(conn, dataout, datasize, timeout, NULL);
+}
+
+/**
+ * Free memory allocated by CSP (e.g., from csp_sfp_recv)
+ * @param ptr Pointer to free
+ */
+void csp_free(void *ptr);
 
 #ifdef __cplusplus
 }

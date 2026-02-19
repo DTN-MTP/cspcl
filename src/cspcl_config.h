@@ -58,18 +58,14 @@
 #define CSPCL_MAX_BUNDLE_SIZE       65535
 #endif
 
-/*===========================================================================*/
-/* Reassembly Configuration                                                   */
-/*===========================================================================*/
-
-/** Maximum number of concurrent bundle reassembly contexts */
-#ifndef CSPCL_MAX_REASSEMBLY_CTX
-#define CSPCL_MAX_REASSEMBLY_CTX    8
+/** SFP header size (offset + totalsize = 8 bytes) */
+#ifndef CSPCL_SFP_HEADER_SIZE
+#define CSPCL_SFP_HEADER_SIZE       8
 #endif
 
-/** Reassembly timeout in milliseconds (default: 30 seconds) */
-#ifndef CSPCL_REASSEMBLY_TIMEOUT_MS
-#define CSPCL_REASSEMBLY_TIMEOUT_MS 30000
+/** CSP SFP receive timeout in milliseconds */
+#ifndef CSPCL_SFP_TIMEOUT_MS
+#define CSPCL_SFP_TIMEOUT_MS        5000
 #endif
 
 /*===========================================================================*/

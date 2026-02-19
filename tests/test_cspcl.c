@@ -67,19 +67,6 @@ static int test_init_null_param(void)
     return 0;
 }
 
-/*===========================================================================*/
-/* Test: Header Serialization                                                 */
-/*===========================================================================*/
-
-static int test_header_format(void)
-{
-    /* Verify header size is as expected */
-    ASSERT_EQ(sizeof(cspcl_header_t), CSPCL_HEADER_SIZE);
-    ASSERT_EQ(CSPCL_HEADER_SIZE, 10);
-
-    TEST_PASS();
-    return 0;
-}
 
 /*===========================================================================*/
 /* Test: Address Translation                                                  */
@@ -324,20 +311,13 @@ static int test_send_large_bundle(void)
 static int test_constants(void)
 {
     /* Verify critical constants are reasonable */
-    ASSERT_TRUE(CSPCL_VERSION == 1);
     ASSERT_TRUE(CSPCL_PORT_BP == 10);
     ASSERT_TRUE(CSPCL_CSP_MTU >= 64);
     ASSERT_TRUE(CSPCL_CSP_MTU <= 4096);
-    ASSERT_TRUE(CSPCL_HEADER_SIZE < CSPCL_CSP_MTU);
+    ASSERT_TRUE(CSPCL_SFP_HEADER_SIZE == 8);
     ASSERT_TRUE(CSPCL_MAX_PAYLOAD > 0);
     ASSERT_TRUE(CSPCL_MAX_PAYLOAD < CSPCL_CSP_MTU);
     ASSERT_TRUE(CSPCL_MAX_BUNDLE_SIZE >= 1024);
-    ASSERT_TRUE(CSPCL_MAX_REASSEMBLY_CTX >= 1);
-
-    /* Verify flags are distinct */
-    ASSERT_NE(CSPCL_FLAG_FIRST, CSPCL_FLAG_LAST);
-    ASSERT_NE(CSPCL_FLAG_FIRST, CSPCL_FLAG_MORE);
-    ASSERT_NE(CSPCL_FLAG_LAST, CSPCL_FLAG_MORE);
 
     TEST_PASS();
     return 0;
@@ -359,8 +339,6 @@ static test_case_t tests[] = {
     {"test_init_cleanup", test_init_cleanup},
     {"test_init_null_param", test_init_null_param},
 
-    /* Header tests */
-    {"test_header_format", test_header_format},
 
     /* Address translation tests */
     {"test_endpoint_to_addr_ipn", test_endpoint_to_addr_ipn},
