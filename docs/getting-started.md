@@ -1,0 +1,130 @@
+---
+layout: default
+title: Getting Started
+nav_order: 2
+permalink: /getting-started/
+---
+
+# Getting Started
+
+## Prerequisites
+
+- CMake 3.10+
+- C11-compatible compiler (gcc / clang)
+- libcsp v1.6
+- *(Optional)* Python 3 + `pyzmq` for ZMQHUB-based testing
+- *(Optional)* Rust toolchain for Rust bindings
+
+## Building
+
+```bash
+git clone https://github.com/dtn-mtp/cspcl.git
+cd cspcl
+mkdir build && cd build
+cmake ..
+make
+ctest --verbose
+```
+
+### CMake Options
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `CSPCL_BUILD_TESTS` | `ON` | Build unit tests |
+| `CSPCL_BUILD_EXAMPLES` | `ON` | Build example applications |
+| `CSPCL_USE_FREERTOS` | `OFF` | Target FreeRTOS instead of POSIX |
+| `CSPCL_DEBUG` | `OFF` | Enable verbose debug output |
+
+### Using a custom libcsp location
+
+```bash
+cmake -DCSP_PATH=/path/to/libcsp ..
+```
+
+---
+
+## C — First Bundle Transfer
+
+### 1. Initialize
+
+```c
+#include "cspcl.h"
+
+cspcl_t cspcl;
+
+// Initialize with local CSP node address
+cspcl_error_t err = cspcl_init(&cspcl, 1);
+
+// Open receive socket (bind to BP port once)
+err = cspcl_open_rx_socket(&cspcl);
+```
+
+### 2. Send a bundle
+
+```c
+uint8_t bundle[] = { /* serialized BP7 bundle */ };
+
+err = cspcl_send_bundle(&cspcl, bundle, sizeof(bundle), 2 /* dest CSP addr */);
+if (err != CSPCL_OK) {
+    fprintf(stderr, "send error: %s\n", cspcl_strerror(err));
+}
+```
+
+Large bundles are automatically fragmented using CSP's SFP — no extra work required.
+
+### 3. Receive a bundle
+
+```c
+uint8_t buf[CSPCL_MAX_BUNDLE_SIZE];
+size_t  buf_len = sizeof(buf);
+uint8_t src_addr;
+
+err = cspcl_recv_bundle(&cspcl, buf, &buf_len, &src_addr, 5000 /* ms */);
+if (err == CSPCL_OK) {
+    printf("Received %zu bytes from CSP addr %u\n", buf_len, src_addr);
+}
+```
+
+### 4. Cleanup
+
+```c
+cspcl_cleanup(&cspcl);
+```
+
+---
+
+## Rust — First Bundle Transfer
+
+Add the dependency:
+
+```toml
+[dependencies]
+cspcl = "0.1"
+```
+
+```rust
+use cspcl::Cspcl;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut node = Cspcl::init(1)?;
+    node.open_rx_socket()?;
+
+    // Send
+    let bundle: Vec<u8> = vec![/* BP7 bundle bytes */];
+    node.send_bundle(&bundle, 2)?;
+
+    // Receive (5 s timeout)
+    let (data, src_addr) = node.recv_bundle(5000)?;
+    println!("Received {} bytes from CSP addr {}", data.len(), src_addr);
+
+    Ok(())
+}
+```
+
+---
+
+## Next Steps
+
+- [C API Reference]({% link api/c.md %}) — complete function documentation
+- [uD3TN Integration]({% link integration/ud3tn.md %}) — use CSPCL with uD3TN
+- [Architecture]({% link architecture.md %}) — understand how SFP fragmentation works

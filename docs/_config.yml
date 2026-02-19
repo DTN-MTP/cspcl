@@ -1,0 +1,20 @@
+title: CSPCL
+description: CubeSat Space Protocol Convergence Layer for Bundle Protocol 7
+baseurl: "/cspcl"
+url: "https://dtn-mtp.github.io"
+remote_theme: just-the-docs/just-the-docs@v0.10.0
+# Navigation order is controlled by nav_order in each page's front matter
+# Just the Docs settings
+color_scheme: light
+search_enabled: true
+heading_anchors: true
+aux_links:
+  "GitHub":
+    - "https://github.com/dtn-mtp/cspcl"
+aux_links_new_tab: true
+footer_content: "University of Montpellier Space Center"
+markdown: kramdown
+highlighter: rouge
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge

@@ -107,7 +107,7 @@ If libcsp is not already configured with ZMQHUB:
 cd /path/to/libcsp
 
 # Using waf (libcsp 1.x) - version 1.6 recommended, others untested, requires python 3.11
-python3 waf configure --enable-zmqhub
+python3 waf configure --enable-can-socketcan --enable-if-zmqhub
 python3 waf build
 
 # Or using CMake (libcsp 2.x) - not working yet
