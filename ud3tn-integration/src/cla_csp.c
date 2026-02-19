@@ -38,7 +38,7 @@
 #include <csp/interfaces/csp_if_zmqhub.h>
 
 /* CAN interface support - requires libcsp built with CAN driver */
-#ifdef CSP_USE_CAN
+#ifdef CSP_HAVE_LIBSOCKETCAN
 #include <csp/interfaces/csp_if_can.h>
 #include <csp/drivers/can_socketcan.h>
 #endif
@@ -71,11 +71,14 @@ static const char *CLA_NAME = "csp";
 /** TX buffer size */
 #define CSP_TX_BUFFER_SIZE 65536
 
-/** ZMQHUB server address for inter-process CSP communication */
-#define CSP_ZMQHUB_ADDR "localhost"
+/** Default ZMQHUB server address */
+#define CSP_ZMQHUB_ADDR_DEFAULT "localhost"
 
 /** Default CAN interface name */
-#define CSP_CAN_IFACE "vcan0"
+#define CSP_CAN_IFACE_DEFAULT "vcan0"
+
+/** Maximum length for ZMQHUB address or CAN interface name */
+#define CSP_IFACE_PARAM_MAX 64
 
 /** CSP interface types */
 enum csp_iface_type {
@@ -90,8 +93,6 @@ static bool csp_initialized = false;
 /** Active CSP interface */
 static csp_iface_t *csp_active_iface = NULL;
 
-/** Current interface type */
-static enum csp_iface_type csp_iface_type = CSP_IFACE_ZMQHUB;
 
 /*===========================================================================*/
 /* Data Structures                                                            */
@@ -111,6 +112,15 @@ struct csp_cla_config {
 
     /* CSP port for BP traffic */
     uint8_t csp_port;
+
+    /* Interface selection */
+    enum csp_iface_type iface_type;
+
+    /* ZMQHUB: broker host (e.g. "localhost" or "192.168.1.10") */
+    char zmqhub_addr[CSP_IFACE_PARAM_MAX];
+
+    /* CAN: SocketCAN interface name (e.g. "vcan0" or "can0") */
+    char can_iface[CSP_IFACE_PARAM_MAX];
 
     /* Link management */
     struct htab_entrylist *param_htab_elem[CSP_PARAM_HTAB_SLOT_COUNT];
@@ -866,33 +876,38 @@ static enum ud3tn_result csp_cla_init(
         }
 
         /* Initialize the selected interface */
-        switch (csp_iface_type) {
+        switch (config->iface_type) {
         case CSP_IFACE_ZMQHUB:
-            /* Initialize ZMQHUB interface for inter-process communication */
-            ret = csp_zmqhub_init(local_addr, CSP_ZMQHUB_ADDR, 0, &csp_active_iface);
+            LOGF_INFO("CSP: Connecting to ZMQHUB broker at '%s'",
+                      config->zmqhub_addr);
+            ret = csp_zmqhub_init(local_addr, config->zmqhub_addr, 0,
+                                  &csp_active_iface);
             if (ret != CSP_ERR_NONE) {
-                LOGF_ERROR("CSP: Failed to initialize ZMQHUB interface: %d", ret);
+                LOGF_ERROR("CSP: Failed to initialize ZMQHUB interface: %d",
+                           ret);
                 return UD3TN_FAIL;
             }
-            LOG_INFO("CSP: ZMQHUB interface initialized");
+            LOGF_INFO("CSP: ZMQHUB interface initialized (broker: %s)",
+                      config->zmqhub_addr);
             break;
 
         case CSP_IFACE_CAN:
 #ifdef CSP_HAVE_LIBSOCKETCAN
-            /* Initialize CAN interface via SocketCAN */
+            LOGF_INFO("CSP: Opening CAN interface '%s'", config->can_iface);
             ret = csp_can_socketcan_open_and_add_interface(
-                CSP_CAN_IFACE,  /* CAN device name (can0, vcan0, etc.) */
-                CSP_CAN_IFACE,  /* CSP interface name */
-                0,              /* Bitrate (0 = don't change) */
-                true,           /* Promisc mode */
+                config->can_iface,  /* CAN device name (can0, vcan0, etc.) */
+                config->can_iface,  /* CSP interface name */
+                0,                  /* Bitrate (0 = don't change) */
+                true,               /* Promisc mode */
                 &csp_active_iface
             );
             if (ret != CSP_ERR_NONE) {
                 LOGF_ERROR("CSP: Failed to initialize CAN interface '%s': %d",
-                           CSP_CAN_IFACE, ret);
+                           config->can_iface, ret);
                 return UD3TN_FAIL;
             }
-            LOGF_INFO("CSP: CAN interface '%s' initialized", CSP_CAN_IFACE);
+            LOGF_INFO("CSP: CAN interface '%s' initialized",
+                      config->can_iface);
 #else
             LOG_ERROR("CSP: CAN interface not supported (libcsp not built with CAN driver)");
             LOG_ERROR("CSP: Rebuild libcsp with --enable-can-socketcan to enable CAN support");
@@ -901,7 +916,6 @@ static enum ud3tn_result csp_cla_init(
             break;
 
         case CSP_IFACE_LOOPBACK:
-            /* Use built-in loopback interface */
             csp_active_iface = NULL;  /* Will use default loopback */
             LOG_INFO("CSP: Using loopback interface");
             break;
@@ -972,37 +986,72 @@ struct cla_config *csp_cla_create(
     const struct bundle_agent_interface *bundle_agent_interface)
 {
     if (option_count < 2 || option_count > 3) {
-        LOG_ERROR("CSP: Options format: <local_addr>,<csp_port>[,<iface_type>]");
-        LOG_ERROR("CSP: Example: csp:1,10 or csp:1,10,zmqhub or csp:1,10,can");
-        LOG_ERROR("CSP: Interface types: zmqhub (default), can, loopback");
+        LOG_ERROR("CSP: Options format: <local_addr>,<csp_port>[,<iface>]");
+        LOG_ERROR("CSP: Where <iface> is one of:");
+        LOG_ERROR("CSP:   zmqhub           - ZMQHUB broker at localhost (default)");
+        LOG_ERROR("CSP:   zmqhub:<host>    - ZMQHUB broker at <host>");
+        LOG_ERROR("CSP:   can              - SocketCAN on vcan0 (default)");
+        LOG_ERROR("CSP:   can:<iface>      - SocketCAN on <iface> (e.g. can0)");
+        LOG_ERROR("CSP:   loopback         - local loopback");
+        LOG_ERROR("CSP: Examples:");
+        LOG_ERROR("CSP:   csp:1,10");
+        LOG_ERROR("CSP:   csp:1,10,zmqhub");
+        LOG_ERROR("CSP:   csp:1,10,zmqhub:192.168.1.10");
+        LOG_ERROR("CSP:   csp:1,10,can");
+        LOG_ERROR("CSP:   csp:1,10,can:can0");
         return NULL;
     }
 
     uint8_t local_addr = (uint8_t)atoi(options[0]);
-    uint8_t csp_port = (uint8_t)atoi(options[1]);
-
-    /* Parse optional interface type */
-    if (option_count >= 3) {
-        if (strcmp(options[2], "zmqhub") == 0) {
-            csp_iface_type = CSP_IFACE_ZMQHUB;
-        } else if (strcmp(options[2], "can") == 0) {
-            csp_iface_type = CSP_IFACE_CAN;
-        } else if (strcmp(options[2], "loopback") == 0) {
-            csp_iface_type = CSP_IFACE_LOOPBACK;
-        } else {
-            LOGF_ERROR("CSP: Unknown interface type '%s'", options[2]);
-            LOG_ERROR("CSP: Valid types: zmqhub, can, loopback");
-            return NULL;
-        }
-    }
+    uint8_t csp_port   = (uint8_t)atoi(options[1]);
 
     struct csp_cla_config *config = malloc(sizeof(struct csp_cla_config));
     if (!config) {
         LOG_ERROR("CSP: Memory allocation failed");
         return NULL;
     }
-
     memset(config, 0, sizeof(*config));
+
+    config->iface_type = CSP_IFACE_ZMQHUB;
+    strncpy(config->zmqhub_addr, CSP_ZMQHUB_ADDR_DEFAULT,
+            CSP_IFACE_PARAM_MAX - 1);
+    strncpy(config->can_iface, CSP_CAN_IFACE_DEFAULT,
+            CSP_IFACE_PARAM_MAX - 1);
+
+    if (option_count >= 3) {
+        const char *iface_spec = options[2];
+
+        if (strncmp(iface_spec, "zmqhub:", 7) == 0) {
+            config->iface_type = CSP_IFACE_ZMQHUB;
+            strncpy(config->zmqhub_addr, iface_spec + 7,
+                    CSP_IFACE_PARAM_MAX - 1);
+            if (config->zmqhub_addr[0] == '\0') {
+                LOG_ERROR("CSP: zmqhub:<host> — host must not be empty");
+                free(config);
+                return NULL;
+            }
+        } else if (strcmp(iface_spec, "zmqhub") == 0) {
+            config->iface_type = CSP_IFACE_ZMQHUB;
+        } else if (strncmp(iface_spec, "can:", 4) == 0) {
+            config->iface_type = CSP_IFACE_CAN;
+            strncpy(config->can_iface, iface_spec + 4,
+                    CSP_IFACE_PARAM_MAX - 1);
+            if (config->can_iface[0] == '\0') {
+                LOG_ERROR("CSP: can:<iface> — interface name must not be empty");
+                free(config);
+                return NULL;
+            }
+        } else if (strcmp(iface_spec, "can") == 0) {
+            config->iface_type = CSP_IFACE_CAN;
+        } else if (strcmp(iface_spec, "loopback") == 0) {
+            config->iface_type = CSP_IFACE_LOOPBACK;
+        } else {
+            LOGF_ERROR("CSP: Unknown interface specifier '%s'", iface_spec);
+            LOG_ERROR("CSP: Valid: zmqhub, zmqhub:<host>, can, can:<iface>, loopback");
+            free(config);
+            return NULL;
+        }
+    }
 
     if (csp_cla_init(config, local_addr, csp_port,
                      bundle_agent_interface) != UD3TN_OK) {
