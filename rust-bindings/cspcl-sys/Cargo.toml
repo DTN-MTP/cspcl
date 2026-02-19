@@ -1,6 +1,6 @@
 [package]
 name = "cspcl-sys"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Raw FFI bindings for the cspcl library"
 authors = ["cspcl contributors"]
@@ -8,11 +8,11 @@ license = "MIT"
 repository = "https://github.com/d3tn/cspcl"
 build = "build.rs"
 include = [
-    "build.rs",
-    "src/**/*",
-    "c_src/cspcl.h",
-    "c_src/cspcl.c",
-    "c_src/cspcl_config.h",
+  "build.rs",
+  "src/**/*",
+  "c_src/cspcl.h",
+  "c_src/cspcl.c",
+  "c_src/cspcl_config.h",
 ]
 
 [dependencies]
