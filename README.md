@@ -7,24 +7,24 @@ A convergence layer adapter that enables Bundle Protocol 7 (BP7) bundles to be t
 CSPCL provides a bridge between BP7 (Delay/Disruption Tolerant Networking) and CSP (commonly used in CubeSat missions). It follows the architecture:
 
 ```
-BP7 Bundle → CSPCL → CSP UDP → Physical Layer (CAN/ZMQHUB/SocketCAN)
+BP7 Bundle → CSPCL → CSP SFP → Physical Layer (CAN/ZMQHUB/SocketCAN)
 ```
 
 ## Features
 
 - **CSP v1.6 Compatible** - Works with libcsp v1.6 (not v2)
-- **UDP Mode** - Uses connectionless CSP for minimal overhead
-- **Fragmentation** - Automatic bundle fragmentation/reassembly
+- **SFP Fragmentation** - Uses CSP's built-in Simple Fragmentation Protocol
+- **Connection-Based** - Uses CSP connections for reliable bundle transfer
 - **Address Translation** - IPN/DTN endpoint ID to CSP address mapping
 - **Cross-Platform** - Supports POSIX (Linux) and FreeRTOS
-- **Minimal Footprint** - ~800 lines of C code
+- **Minimal Footprint** - ~300 lines of C code
 
 ## Requirements
 
 | Requirement | Description |
 |-------------|-------------|
 | CSP Version | v1.6 (not v2 - different packet format) |
-| CSP Mode | UDP (connectionless, no RDP) |
+| CSP Mode | Connection-based with SFP |
 | Platform | POSIX (Linux) or FreeRTOS |
 | Interfaces | ZMQHUB, SocketCAN (ground), CAN (space) |
 

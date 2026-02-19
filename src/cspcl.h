@@ -30,60 +30,23 @@ extern "C" {
 /** Dedicated CSP port for Bundle Protocol traffic */
 #define CSPCL_PORT_BP               10
 
-/** CSPCL protocol version */
-#define CSPCL_VERSION               1
-
 /** Maximum CSP MTU (typical CAN-based CSP MTU) */
 #define CSPCL_CSP_MTU               256
 
-/** CSPCL header size */
-#define CSPCL_HEADER_SIZE           10
+/** SFP header size (offset + totalsize = 8 bytes) */
+#define CSPCL_SFP_HEADER_SIZE       8
 
-/** Maximum payload per CSP packet */
-#define CSPCL_MAX_PAYLOAD           (CSPCL_CSP_MTU - CSPCL_HEADER_SIZE)
+/** Maximum payload per CSP packet when using SFP */
+#define CSPCL_MAX_PAYLOAD           (CSPCL_CSP_MTU - CSPCL_SFP_HEADER_SIZE)
 
 /** Maximum bundle size supported */
 #define CSPCL_MAX_BUNDLE_SIZE       65535
 
-/** Maximum number of concurrent reassembly contexts */
-#define CSPCL_MAX_REASSEMBLY_CTX    8
-
-/** Reassembly timeout in milliseconds */
-#define CSPCL_REASSEMBLY_TIMEOUT_MS 30000
-
 /** CSP connection timeout in milliseconds */
 #define CSPCL_CSP_TIMEOUT_MS        1000
 
-/*===========================================================================*/
-/* CSPCL Header Flags                                                         */
-/*===========================================================================*/
-
-/** First fragment of a bundle */
-#define CSPCL_FLAG_FIRST            0x01
-
-/** Last fragment of a bundle */
-#define CSPCL_FLAG_LAST             0x02
-
-/** More fragments follow */
-#define CSPCL_FLAG_MORE             0x04
-
-/*===========================================================================*/
-/* CSPCL Header Structure                                                     */
-/*===========================================================================*/
-
-/**
- * @brief CSPCL packet header
- *
- * This header is prepended to each CSP packet containing bundle data.
- * It enables fragmentation and reassembly of bundles larger than CSP MTU.
- */
-typedef struct __attribute__((packed)) {
-    uint8_t  version;           /**< Protocol version (CSPCL_VERSION) */
-    uint8_t  flags;             /**< Fragment flags (FIRST/LAST/MORE) */
-    uint16_t fragment_id;       /**< Unique identifier for this bundle transfer */
-    uint16_t fragment_offset;   /**< Offset of this fragment in original bundle */
-    uint32_t bundle_size;       /**< Total size of the complete bundle */
-} cspcl_header_t;
+/** CSP SFP receive timeout in milliseconds */
+#define CSPCL_SFP_TIMEOUT_MS        5000
 
 /*===========================================================================*/
 /* Error Codes                                                                */
@@ -97,29 +60,10 @@ typedef enum {
     CSPCL_ERR_CSP_SEND,         /**< CSP send failed */
     CSPCL_ERR_CSP_RECV,         /**< CSP receive failed */
     CSPCL_ERR_TIMEOUT,          /**< Operation timed out */
-    CSPCL_ERR_REASSEMBLY,       /**< Reassembly failed */
-    CSPCL_ERR_VERSION_MISMATCH, /**< Protocol version mismatch */
+    CSPCL_ERR_SFP,              /**< SFP fragmentation/reassembly error */
     CSPCL_ERR_NOT_INITIALIZED,  /**< CSPCL not initialized */
-    CSPCL_ERR_INVALID_HEADER,   /**< Invalid CSPCL header */
+    CSPCL_ERR_CONNECTION,       /**< CSP connection error */
 } cspcl_error_t;
-
-/*===========================================================================*/
-/* Reassembly Context                                                         */
-/*===========================================================================*/
-
-/**
- * @brief Context for reassembling fragmented bundles
- */
-typedef struct {
-    bool        in_use;             /**< Context slot is active */
-    uint8_t     src_addr;           /**< Source CSP address */
-    uint16_t    fragment_id;        /**< Fragment ID being reassembled */
-    uint32_t    bundle_size;        /**< Expected total bundle size */
-    uint8_t    *buffer;             /**< Reassembly buffer */
-    uint32_t    received_bytes;     /**< Bytes received so far */
-    uint32_t    received_mask[256]; /**< Bitmask of received fragments (8KB coverage) */
-    uint64_t    timestamp_ms;       /**< Creation timestamp for timeout */
-} cspcl_reassembly_ctx_t;
 
 /*===========================================================================*/
 /* CSPCL Instance                                                             */
@@ -127,13 +71,14 @@ typedef struct {
 
 /**
  * @brief CSPCL instance configuration and state
+ *
+ * Uses CSP's SFP (Simple Fragmentation Protocol) for automatic
+ * fragmentation and reassembly of bundles.
  */
 typedef struct {
     bool        initialized;        /**< Instance is initialized */
     uint8_t     local_addr;         /**< Local CSP address */
-    uint16_t    next_fragment_id;   /**< Next fragment ID to use */
-    void       *rx_socket;          /**< Persistent RX socket (csp_socket_t*) */
-    cspcl_reassembly_ctx_t reassembly[CSPCL_MAX_REASSEMBLY_CTX];
+    void       *rx_socket;          /**< Server socket for accepting connections (csp_socket_t*) */
 } cspcl_t;
 
 /*===========================================================================*/
@@ -163,8 +108,9 @@ void cspcl_cleanup(cspcl_t *cspcl);
 /**
  * @brief Send a BP7 bundle over CSP
  *
- * This function fragments the bundle if necessary and transmits it
- * over CSP UDP to the specified destination.
+ * This function uses CSP's SFP (Simple Fragmentation Protocol) to
+ * automatically fragment large bundles if necessary and transmit
+ * them over a reliable CSP connection to the specified destination.
  *
  * @param cspcl     Pointer to CSPCL instance
  * @param bundle    Serialized bundle data
@@ -180,8 +126,9 @@ cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl,
 /**
  * @brief Receive a BP7 bundle from CSP
  *
- * This function receives CSP packets and reassembles them into
- * a complete bundle. It blocks until a complete bundle is received
+ * This function accepts incoming CSP connections and uses SFP
+ * (Simple Fragmentation Protocol) to automatically reassemble
+ * fragmented bundles. It blocks until a complete bundle is received
  * or timeout occurs.
  *
  * @param cspcl     Pointer to CSPCL instance
@@ -198,11 +145,10 @@ cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl,
                                  uint32_t timeout_ms);
 
 /**
- * @brief Open and bind persistent receive socket
+ * @brief Open and bind server socket for incoming connections
  *
  * Call this once during initialization to create a socket bound
- * to the BP port for receiving bundles. The socket is automatically
- * opened on first recv if not already open.
+ * to the BP port for receiving bundle connections.
  *
  * @param cspcl     Pointer to CSPCL instance
  * @return CSPCL_OK on success, error code otherwise
@@ -210,7 +156,7 @@ cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl,
 cspcl_error_t cspcl_open_rx_socket(cspcl_t *cspcl);
 
 /**
- * @brief Close the receive socket
+ * @brief Close the server socket
  *
  * @param cspcl     Pointer to CSPCL instance
  */
@@ -246,19 +192,6 @@ cspcl_error_t cspcl_addr_to_endpoint(uint8_t addr,
 /* Utility Functions                                                          */
 /*===========================================================================*/
 
-/**
- * @brief Get current timestamp in milliseconds
- *
- * @return Current time in milliseconds
- */
-uint64_t cspcl_get_time_ms(void);
-
-/**
- * @brief Clean up expired reassembly contexts
- *
- * @param cspcl Pointer to CSPCL instance
- */
-void cspcl_cleanup_expired(cspcl_t *cspcl);
 
 /**
  * @brief Get error string for error code

@@ -9,6 +9,7 @@
 #include "csp/csp.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 /*===========================================================================*/
 /* Internal Structures                                                        */
@@ -223,3 +224,78 @@ uint8_t csp_conn_dport(csp_conn_t *conn)
     return conn != NULL ? conn->dport : 0;
 }
 
+/*===========================================================================*/
+/* SFP (Simple Fragmentation Protocol) API                                    */
+/*===========================================================================*/
+
+/* SFP loopback buffer for testing */
+static struct {
+    void *data;
+    unsigned int size;
+    uint8_t src_addr;
+    int pending;
+} sfp_loopback = {0};
+
+int csp_sfp_send_own_memcpy(csp_conn_t *conn, const void *data,
+                            unsigned int datasize, unsigned int mtu,
+                            uint32_t timeout, csp_memcpy_fnc_t memcpyfcn)
+{
+    (void)mtu;
+    (void)timeout;
+
+    if (conn == NULL || data == NULL || datasize == 0 || memcpyfcn == NULL) {
+        return CSP_ERR_INVAL;
+    }
+
+    /* For testing: store data in loopback buffer */
+    if (sfp_loopback.data != NULL) {
+        free(sfp_loopback.data);
+    }
+
+    sfp_loopback.data = malloc(datasize);
+    if (sfp_loopback.data == NULL) {
+        return CSP_ERR_NOMEM;
+    }
+
+    memcpyfcn((csp_memptr_t)sfp_loopback.data,
+              (csp_memptr_t)(uintptr_t)data,
+              datasize);
+    sfp_loopback.size = datasize;
+    sfp_loopback.src_addr = conn->dst;  /* For loopback testing */
+    sfp_loopback.pending = 1;
+
+    return CSP_ERR_NONE;
+}
+
+int csp_sfp_recv_fp(csp_conn_t *conn, void **dataout, int *datasize,
+                    uint32_t timeout, csp_packet_t *first_packet)
+{
+    (void)conn;
+    (void)timeout;
+    (void)first_packet;
+
+    *dataout = NULL;
+    *datasize = 0;
+
+    if (!sfp_loopback.pending || sfp_loopback.data == NULL) {
+        return CSP_ERR_TIMEDOUT;
+    }
+
+    /* Return the loopback data */
+    *dataout = sfp_loopback.data;
+    *datasize = (int)sfp_loopback.size;
+
+    /* Clear loopback state (data ownership transferred to caller) */
+    sfp_loopback.data = NULL;
+    sfp_loopback.size = 0;
+    sfp_loopback.pending = 0;
+
+    return CSP_ERR_NONE;
+}
+
+void csp_free(void *ptr)
+{
+    if (ptr != NULL) {
+        free(ptr);
+    }
+}
