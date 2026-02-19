@@ -68,3 +68,6 @@ impl Drop for Cspcl {
         }
     }
 }
+
+unsafe impl Send for Cspcl {}
+unsafe impl Sync for Cspcl {}
