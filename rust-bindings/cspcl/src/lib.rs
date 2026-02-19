@@ -6,14 +6,12 @@
 pub use cspcl_sys;
 
 // Module declarations
+mod address;
+mod bundle;
 mod error;
 mod instance;
-mod bundle;
-mod address;
-mod utils;
 
 // Public exports
+pub use address::{addr_to_endpoint, endpoint_to_addr};
 pub use error::{Error, Result};
 pub use instance::Cspcl;
-pub use address::{endpoint_to_addr, addr_to_endpoint};
-pub use utils::get_time_ms;

@@ -12,9 +12,7 @@ impl Cspcl {
         let mut cspcl = cspcl_sys::cspcl_t {
             initialized: false,
             local_addr: 0,
-            next_fragment_id: 0,
             rx_socket: std::ptr::null_mut(),
-            reassembly: unsafe { std::mem::zeroed() },
         };
 
         unsafe {
@@ -47,13 +45,6 @@ impl Cspcl {
     /// Check if initialized
     pub fn is_initialized(&self) -> bool {
         self.inner.initialized
-    }
-
-    /// Clean up expired reassembly contexts
-    pub fn cleanup_expired(&mut self) {
-        unsafe {
-            cspcl_sys::cspcl_cleanup_expired(&mut self.inner);
-        }
     }
 
     // TODO: Add a method to get reassembly stats/status if needed
