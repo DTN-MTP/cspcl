@@ -48,10 +48,10 @@ This guide explains how to integrate CSPCL (CubeSat Space Protocol Convergence L
 
 ## Prerequisites
 
-- **Unibo-BP source code**: Clone from [Unibo-BP repository](https://github.com/unibo-dtn/unibo-bp.git)
+- **Unibo-BP source code**: Clone from [Unibo-BP repository](https://gitlab.com/unibo-dtn/unibo-bp.git)
 - **Unibo-BP build requirements**: CMake 3.16+ (tested with 3.31.x), C compiler, standard libraries
 - **libcsp 1.6**: Built with ZMQHUB support [libcsp v1.6 repository](https://github.com/libcsp/libcsp/tree/v1.6)
-- **CSPCL source code**: See [CSPCL repository](https://github.com/unibo-dtn/cspcl)
+- **CSPCL source code**: See [CSPCL repository](https://github.com/DTN-MTP/cspcl)
 - **Python 3** with pyzmq: `pip3 install pyzmq`
 - **Build tools**: gcc, make, CMake 3.16+
 
@@ -59,28 +59,7 @@ This guide explains how to integrate CSPCL (CubeSat Space Protocol Convergence L
 
 ### Step 1: Build Unibo-BP
 
-Follow the [Unibo-BP README](https://github.com/unibo-dtn/unibo-bp/blob/main/README.md) for build instructions using CMake.
-
-**Quick reference** (ensure CMake 3.16+ is available):
-
-```bash
-git clone https://github.com/unibo-dtn/unibo-bp.git
-cd unibo-bp
-
-mkdir build
-cd build
-
-# Verify CMake version >= 3.16
-cmake --version
-
-# Configure and build
-cmake ..
-make
-
-# Verify build output
-ls -la Unibo-BP/bin/
-# Expected: unibo-bp, unibo-bp-admin, unibo-bp-send, unibo-bp-sink, unibo-bp-utility, etc.
-```
+Follow the [Unibo-BP README](https://gitlab.com/unibo-dtn/unibo-bp/-/blob/main/README.md) for build instructions using CMake.
 
 ### Step 2: Build libcsp with ZMQHUB Support
 
@@ -288,8 +267,8 @@ cspcl/
 
 ## References
 
-- [Unibo-BP on GitHub](https://github.com/unibo-dtn/unibo-bp)
-- [CSPCL on GitHub](https://github.com/unibo-dtn/cspcl)
+- [Unibo-BP on GitHub](https://gitlab.com/unibo-dtn/unibo-bp)
+- [CSPCL on GitHub](hhttps://github.com/DTN-MTP/cspcl)
 - [libcsp v1.6 on GitHub](https://github.com/libcsp/libcsp/tree/v1.6)
 - [Bundle Protocol 7 (RFC 9171)](https://www.rfc-editor.org/rfc/rfc9171)
 - [CubeSat Space Protocol Documentation](https://github.com/libcsp/libcsp/wiki)

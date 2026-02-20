@@ -7,7 +7,7 @@ This is the minimal, known-good sequence for end-to-end transfer over CSPCL.
 ```bash
 # one-time
 cat >> ~/.bashrc <<'EOF'
-export DTN_ROOT=/home/light/Documents/DO5/DTN
+export DTN_ROOT=/home/path/to/your/dir
 export CSPCL_DIR=$DTN_ROOT/cspcl
 export INTEG_DIR=$CSPCL_DIR/unibo-integration
 export UNIBO_BP_BIN=$DTN_ROOT/unibo-dtn/unibo-bp/build/Unibo-BP/bin
