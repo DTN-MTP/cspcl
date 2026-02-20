@@ -546,6 +546,13 @@ static void on_stop(void *user_arg)
         cfg->rx_running = false;
 }
 
+static void on_update_config_flags(uint64_t enabled_flags, uint64_t disabled_flags, void *user_arg)
+{
+    (void)user_arg;
+    log_info("update_config_flags callback: enable=0x%" PRIx64 " disable=0x%" PRIx64,
+             enabled_flags, disabled_flags);
+}
+
 static void on_add_contact(
     ConstUniboBPEID neighbor,
     bool uplink,
@@ -572,7 +579,19 @@ static void on_add_contact(
     log_info("add_contact callback: uplink=%d csp_addr=%u", (int)uplink, csp_addr);
 
     pthread_mutex_lock(&cfg->lock);
-    (void)ensure_link_for_addr(cfg, csp_addr);
+    if (ensure_link_for_addr(cfg, csp_addr) == 0)
+    {
+        struct csp_peer *peer = find_peer_by_addr(cfg, csp_addr);
+        if (peer)
+        {
+            UniboBPError err = unibo_bp_cla_open_link(cfg->handle, peer->link_id);
+            if (err != UniboBP_NoError)
+                log_bp_error("unibo_bp_cla_open_link", err);
+            else
+                log_info("add_contact callback: opened link_id=%" PRIu64 " for csp_addr=%u",
+                         peer->link_id, csp_addr);
+        }
+    }
     pthread_mutex_unlock(&cfg->lock);
 }
 
@@ -582,10 +601,27 @@ static void on_remove_contact(
     struct timeval *start_time,
     void *user_arg)
 {
+    struct csp_cla_config *cfg = user_arg;
     const uint8_t csp_addr = csp_addr_from_eid(neighbor);
     log_info("remove_contact callback: uplink=%d csp_addr=%u", (int)uplink, csp_addr);
+
+    if (cfg)
+    {
+        pthread_mutex_lock(&cfg->lock);
+        struct csp_peer *peer = find_peer_by_addr(cfg, csp_addr);
+        if (peer)
+        {
+            UniboBPError err = unibo_bp_cla_close_link(cfg->handle, peer->link_id);
+            if (err != UniboBP_NoError)
+                log_bp_error("unibo_bp_cla_close_link", err);
+            else
+                log_info("remove_contact callback: closed link_id=%" PRIu64 " for csp_addr=%u",
+                         peer->link_id, csp_addr);
+        }
+        pthread_mutex_unlock(&cfg->lock);
+    }
+
     (void)start_time;
-    (void)user_arg;
 }
 
 static void on_add_range(
@@ -852,6 +888,7 @@ static int csp_cla_init(
     }
 
     unibo_bp_cla_set_user_arg(cfg->handle, cfg);
+    unibo_bp_cla_register_callback_update_config_flags(cfg->handle, on_update_config_flags);
     unibo_bp_cla_register_callback_outbound_pdu(cfg->handle, on_outbound_pdu);
     unibo_bp_cla_register_callback_stop(cfg->handle, on_stop);
     unibo_bp_cla_register_callback_add_contact(cfg->handle, on_add_contact);
