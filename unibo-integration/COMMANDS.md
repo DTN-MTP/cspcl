@@ -84,25 +84,7 @@ $UNIBO_BP_BIN/unibo-bp start \
   --daemon
 ```
 
-### Terminal 4: CSPCLA node1
-```bash
-cd "$INTEG_DIR"
-stdbuf -oL -eL ./build/unibo-bp-cspcl 1 10 zmqhub 2001 /tmp/unibo-node1 2>&1 | tee /tmp/cspcl-node1.log
-```
-
-### Terminal 5: CSPCLA node2
-```bash
-cd "$INTEG_DIR"
-stdbuf -oL -eL ./build/unibo-bp-cspcl 2 10 zmqhub 2002 /tmp/unibo-node2 2>&1 | tee /tmp/cspcl-node2.log
-```
-
-Sanity (any terminal):
-```bash
-pgrep -fa 'unibo-bp-cspcl'
-# expected: exactly 2 lines
-```
-
-## 4) Configure nodes + start sink
+## 4) Configure nodes
 
 ### Terminal 6
 ```bash
@@ -136,12 +118,60 @@ $UNIBO_BP_BIN/unibo-bp-admin contact add --start-time +0 --end-time +3600 --send
 
 $UNIBO_BP_BIN/unibo-bp-admin routing static add --destination ipn:1.55 --gateway ipn:1.0 || true
 $UNIBO_BP_BIN/unibo-bp-admin routing static add --destination ipn:1.0 --gateway ipn:1.0 || true
+```
 
-# keep running
+## 5) Start CSPCLA daemons + sink
+
+### Terminal 4: CSPCLA node1
+```bash
+cd "$INTEG_DIR"
+stdbuf -oL -eL ./build/unibo-bp-cspcl 1 10 zmqhub 2001 /tmp/unibo-node1 2>&1 | tee /tmp/cspcl-node1.log
+```
+
+### Terminal 5: CSPCLA node2
+```bash
+cd "$INTEG_DIR"
+stdbuf -oL -eL ./build/unibo-bp-cspcl 2 10 zmqhub 2002 /tmp/unibo-node2 2>&1 | tee /tmp/cspcl-node2.log
+```
+
+Sanity (any terminal):
+```bash
+pgrep -fa 'unibo-bp-cspcl'
+# expected: exactly 2 lines
+```
+
+### Terminal 6: sink
+```bash
+cd /tmp/unibo-node2
 $UNIBO_BP_BIN/unibo-bp-sink ipn:2.55
 ```
 
-## 5) Send
+## 5.5) Pre-send CLA path preflight (recommended)
+
+Run these checks before step 5 to confirm the CSPCLA link path is ready.
+
+```bash
+# required processes (expect broker + 2 unibo-bp cores + 2 cspcla + sink)
+pgrep -fa 'zmqhub_broker.py|unibo-bp-cspcl|/unibo-bp( |$)|unibo-bp-sink'
+
+# routing table visible from node1/node2 runtime dirs
+cd /tmp/unibo-node1
+$UNIBO_BP_BIN/unibo-bp-admin routing static get --destination-table | grep -E 'ipn:2\.55|ipn:2\.0'
+
+# routing table visible from node1/node2 runtime dirs
+cd /tmp/unibo-node2
+$UNIBO_BP_BIN/unibo-bp-admin routing static get --destination-table | grep -E 'ipn:1\.55|ipn:1\.0'
+
+# CLA link-open evidence (must show "opened link_id" for peer)
+grep -E 'rx thread started|add_contact callback|opened link_id' /tmp/cspcl-node1.log | tail -n 30
+grep -E 'rx thread started|add_contact callback|opened link_id' /tmp/cspcl-node2.log | tail -n 30
+```
+
+If `opened link_id` is missing on either node, restart only CSPCLA daemons with step 7 and then resend.
+
+Note: `contact get` / `range get` in this Unibo-BP build require an exact key (including exact start time), so they can report "not found" even when the path is operational.
+
+## 6) Send
 
 ### Terminal 7
 ```bash
@@ -153,7 +183,7 @@ Expected:
 - sink prints `Received ... bytes from ipn:1.xxxxx`
 - payload is visible
 
-## 6) Quick verify
+## 7) Quick verify
 
 ```bash
 pgrep -fa 'zmqhub_broker.py|unibo-bp-cspcl|/unibo-bp( |$)|unibo-bp-sink'
@@ -171,7 +201,7 @@ grep -E 'tx failure|cspcl_recv_bundle error|unibo_bp_cla_inbound_pdu failed|read
 grep -E 'tx failure|cspcl_recv_bundle error|unibo_bp_cla_inbound_pdu failed|read failed|write failed' /tmp/cspcl-node2.log | tail -n 80
 ```
 
-## 7) If bundles buffer but do not send
+## 8) If bundles buffer but do not send
 
 ```bash
 # fallback: restart only CSPCLA daemons (keep broker + unibo-bp cores alive)
@@ -189,7 +219,7 @@ Then resend from node1.
 
 Note: with the current `cspcl_daemon.c` (auto link maintenance enabled), this fallback should be rarely needed.
 
-## 8) Cleanup
+## 9) Cleanup
 
 ```bash
 pkill -9 -f 'unibo-bp-cspcl|unibo-bp-sink|zmqhub_broker.py' || true
