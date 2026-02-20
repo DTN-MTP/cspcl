@@ -16,6 +16,10 @@ export LIBCSP_BUILD=$DTN_ROOT/libcsp/build
 EOF
 
 source ~/.bashrc
+
+# optional tracing (recommended while debugging convergence-layer failures)
+export CSPCLA_TRACE_PAYLOAD=1
+export CSPCLA_TRACE_BYTES=64
 ```
 
 ## 1) Clean reset
@@ -161,10 +165,16 @@ Look for:
 - node1: `outbound_pdu callback ...` and `tx success ...`
 - node2: `rx: bundle received ...` and `rx: delivered inbound pdu ...`
 
+Focused failure triage:
+```bash
+grep -E 'tx failure|cspcl_recv_bundle error|unibo_bp_cla_inbound_pdu failed|read failed|write failed' /tmp/cspcl-node1.log | tail -n 80
+grep -E 'tx failure|cspcl_recv_bundle error|unibo_bp_cla_inbound_pdu failed|read failed|write failed' /tmp/cspcl-node2.log | tail -n 80
+```
+
 ## 7) If bundles buffer but do not send
 
 ```bash
-# restart only CSPCLA daemons (keep broker + unibo-bp cores alive)
+# fallback: restart only CSPCLA daemons (keep broker + unibo-bp cores alive)
 pkill -9 -f 'unibo-bp-cspcl' || true
 
 cd "$INTEG_DIR"
@@ -176,6 +186,8 @@ pgrep -fa 'unibo-bp-cspcl'
 ```
 
 Then resend from node1.
+
+Note: with the current `cspcl_daemon.c` (auto link maintenance enabled), this fallback should be rarely needed.
 
 ## 8) Cleanup
 

@@ -27,6 +27,7 @@
 #include <limits.h>
 #include <inttypes.h>
 #include <stdarg.h>
+#include <time.h>
 
 /* ------------------------------------------------------------------------- */
 /* CSP/CSPCL side                                                            */
@@ -130,13 +131,92 @@ static void log_bp_error(const char *what, UniboBPError err)
 
 static void log_info(const char *fmt, ...)
 {
+    time_t now = time(NULL);
+    struct tm tm_now;
+    localtime_r(&now, &tm_now);
+
     va_list args;
     va_start(args, fmt);
-    fprintf(stderr, "[cspcla] ");
+    fprintf(stderr,
+            "[cspcla %02d:%02d:%02d pid=%ld tid=%lu] ",
+            tm_now.tm_hour,
+            tm_now.tm_min,
+            tm_now.tm_sec,
+            (long)getpid(),
+            (unsigned long)pthread_self());
     vfprintf(stderr, fmt, args);
     fprintf(stderr, "\n");
     fflush(stderr);
     va_end(args);
+}
+
+static bool trace_payload_enabled(void)
+{
+    static int initialized = 0;
+    static bool enabled = false;
+
+    if (!initialized)
+    {
+        const char *env = getenv("CSPCLA_TRACE_PAYLOAD");
+        enabled = (env != NULL && env[0] != '\0' && env[0] != '0');
+        initialized = 1;
+    }
+
+    return enabled;
+}
+
+static size_t trace_payload_max_bytes(void)
+{
+    static int initialized = 0;
+    static size_t max_bytes = 64;
+
+    if (!initialized)
+    {
+        const char *env = getenv("CSPCLA_TRACE_BYTES");
+        if (env && env[0] != '\0')
+        {
+            char *end = NULL;
+            unsigned long parsed = strtoul(env, &end, 10);
+            if (end != env && *end == '\0' && parsed > 0)
+                max_bytes = (parsed > 4096UL) ? 4096UL : (size_t)parsed;
+        }
+        initialized = 1;
+    }
+
+    return max_bytes;
+}
+
+static void log_payload_preview(const char *tag, const uint8_t *buffer, size_t len)
+{
+    if (!trace_payload_enabled() || !buffer || len == 0)
+        return;
+
+    const size_t max_bytes = trace_payload_max_bytes();
+    const size_t preview_len = (len < max_bytes) ? len : max_bytes;
+    const size_t rendered_len = (preview_len < 64U) ? preview_len : 64U;
+    char hexbuf[(3 * 64) + 1];
+
+    size_t pos = 0;
+    for (size_t i = 0; i < rendered_len; ++i)
+    {
+        pos += (size_t)snprintf(&hexbuf[pos], sizeof(hexbuf) - pos, "%02x", buffer[i]);
+        if (i + 1 < rendered_len)
+            pos += (size_t)snprintf(&hexbuf[pos], sizeof(hexbuf) - pos, " ");
+    }
+
+    log_info("%s payload preview (%zu/%zu bytes, rendered=%zu): %s%s",
+             tag,
+             preview_len,
+             len,
+             rendered_len,
+             hexbuf,
+             (rendered_len < len) ? " ..." : "");
+}
+
+static void log_bp_call_error(const char *what, UniboBPError err)
+{
+    if (err != UniboBP_NoError)
+        log_bp_error(what, err);
 }
 
 static uint8_t parse_csp_addr(const char *cla_addr)
@@ -512,9 +592,10 @@ static bool on_outbound_pdu(uint64_t link_id, ConstUniboBPCLAOutboundPDU pdu, vo
         const ssize_t n = read(fd, cursor, chunk);
         if (n <= 0)
         {
-            log_info("outbound_pdu: read failed fd=%d", fd);
+            log_info("outbound_pdu: read failed fd=%d errno=%d (%s)", fd, errno, strerror(errno));
             free(buffer);
-            (void)unibo_bp_cla_transmission_failure(cfg->handle, link_id, tx_id);
+            log_bp_call_error("unibo_bp_cla_transmission_failure",
+                              unibo_bp_cla_transmission_failure(cfg->handle, link_id, tx_id));
             return false;
         }
         remaining -= (uint64_t)n;
@@ -523,18 +604,22 @@ static bool on_outbound_pdu(uint64_t link_id, ConstUniboBPCLAOutboundPDU pdu, vo
 
     (void)pdu_prefers_reliable_ltp(pdu);
 
+    log_payload_preview("tx", buffer, (size_t)len);
+
     cspcl_error_t cerr = cspcl_send_bundle(&cfg->cspcl, buffer, (size_t)len, peer->csp_addr);
     free(buffer);
 
     if (cerr == CSPCL_OK)
     {
         log_info("tx success tx_id=%" PRIu64 " dst_csp=%u bytes=%" PRIu64, tx_id, peer->csp_addr, len);
-        (void)unibo_bp_cla_transmission_success(cfg->handle, link_id, tx_id);
+        log_bp_call_error("unibo_bp_cla_transmission_success",
+                          unibo_bp_cla_transmission_success(cfg->handle, link_id, tx_id));
         return true;
     }
 
     log_info("tx failure tx_id=%" PRIu64 " dst_csp=%u cspcl_err=%d", tx_id, peer->csp_addr, (int)cerr);
-    (void)unibo_bp_cla_transmission_failure(cfg->handle, link_id, tx_id);
+    log_bp_call_error("unibo_bp_cla_transmission_failure",
+                      unibo_bp_cla_transmission_failure(cfg->handle, link_id, tx_id));
     return false;
 }
 
@@ -683,6 +768,7 @@ static void *csp_rx_task(void *arg)
         }
 
         log_info("rx: bundle received src_csp=%u bytes=%zu", src_addr, bundle_len);
+        log_payload_preview("rx", bundle_buffer, bundle_len);
 
         pthread_mutex_lock(&cfg->lock);
         if (ensure_link_for_addr(cfg, src_addr) != 0)
@@ -715,7 +801,10 @@ static void *csp_rx_task(void *arg)
             size_t chunk = (remaining > 4096U) ? 4096U : remaining;
             ssize_t n = write(fd, cursor, chunk);
             if (n <= 0)
+            {
+                log_info("rx: write failed fd=%d errno=%d (%s)", fd, errno, strerror(errno));
                 break;
+            }
 
             remaining -= (size_t)n;
             cursor += n;
@@ -724,8 +813,11 @@ static void *csp_rx_task(void *arg)
         if (remaining == 0)
         {
             lseek(fd, 0, SEEK_SET);
-            (void)unibo_bp_cla_inbound_pdu(cfg->handle, link_id, fd, bundle_len);
-            log_info("rx: delivered inbound pdu link_id=%" PRIu64 " bytes=%zu", link_id, bundle_len);
+            UniboBPError in_err = unibo_bp_cla_inbound_pdu(cfg->handle, link_id, fd, bundle_len);
+            if (in_err != UniboBP_NoError)
+                log_bp_error("unibo_bp_cla_inbound_pdu", in_err);
+            else
+                log_info("rx: delivered inbound pdu link_id=%" PRIu64 " bytes=%zu", link_id, bundle_len);
         }
         else
         {
@@ -904,6 +996,11 @@ static int csp_cla_init(
     unibo_bp_cla_register_callback_change_range_owlt(cfg->handle, NULL);
 
     observe_default_peers(cfg);
+
+    log_info("trace settings: CSPCL_TRACE=%s CSPCLA_TRACE_PAYLOAD=%s CSPCLA_TRACE_BYTES=%s",
+             getenv("CSPCL_TRACE") ? getenv("CSPCL_TRACE") : "(unset)",
+             getenv("CSPCLA_TRACE_PAYLOAD") ? getenv("CSPCLA_TRACE_PAYLOAD") : "(unset)",
+             getenv("CSPCLA_TRACE_BYTES") ? getenv("CSPCLA_TRACE_BYTES") : "(unset)");
 
     cfg->rx_running = true;
     if (pthread_create(&cfg->rx_thread, NULL, csp_rx_task, cfg) != 0)
