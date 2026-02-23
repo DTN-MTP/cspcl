@@ -7,7 +7,7 @@ add_executable(test_cspcl
 
 target_include_directories(test_cspcl PRIVATE
     ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/stubs
+    ${CSP_ALL_INCLUDE_DIRS}
 )
 
 target_link_libraries(test_cspcl PRIVATE
