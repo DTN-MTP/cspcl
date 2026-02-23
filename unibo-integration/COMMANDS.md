@@ -42,7 +42,7 @@ pgrep -fa 'unibo-bp-cspcl|zmqhub_broker.py|unibo-bp-sink' || true
 cd "$INTEG_DIR"
 mkdir -p build
 
-gcc -O2 -Wall -Wextra -DCSPCLA_STANDALONE_MAIN \
+gcc -O2 -Wall -Wextra \
   src/cspcl_daemon.c ../src/cspcl.c \
   -o build/unibo-bp-cspcl \
   -I../src \

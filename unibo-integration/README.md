@@ -83,7 +83,7 @@ The CSPCLA daemon is a standalone executable that bridges Unibo-BP with libcsp o
 cd /path/to/cspcl/unibo-integration
 mkdir -p build
 
-gcc -O2 -Wall -Wextra -DCSPCLA_STANDALONE_MAIN \
+gcc -O2 -Wall -Wextra \
   src/cspcl_daemon.c ../src/cspcl.c \
   -o build/unibo-bp-cspcl \
   -I../src \

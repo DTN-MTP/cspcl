@@ -1,16 +1,12 @@
 // SPDX-License-Identifier: BSD-3-Clause OR Apache-2.0
 /**
  * @file cspcl_daemon.c
- * @brief Standalone CSP CLA daemon scaffold populated with concrete Unibo-BP/LTP APIs
+ * @brief CSP Convergence Layer Adapter for Unibo
  *
- * This file is an integration-oriented C scaffold that keeps the CSPCL data
- * plane from `cla_csp.c` and replaces many TODO placeholders with real
- * interfaces discovered in:
- *  - Unibo-BP C CLA API (`Unibo-BP/cla.h`, `EID.h`, `CLAOutboundPDU.h`)
- *  - Unibo-LTP adapter patterns (`UniboBP-BundleProtocol_upper_protocol.c`)
+ * This CLA integrates CSPCL (CubeSat Space Protocol Convergence Layer)
+ * with Unibo's bundle processor to enable BP7 over CSP.
  *
- * Remaining TODOs are only where project-specific policy/architecture decisions
- * are still needed (e.g. persistent peer config source, admin passthrough).
+ * @version 1.0
  */
 
 #include <stdbool.h>
@@ -44,7 +40,7 @@
 #endif
 
 /* ------------------------------------------------------------------------- */
-/* Unibo-BP C API (concrete replacements for uD3TN framework placeholders)   */
+/* Unibo-BP C API                                                            */
 /* ------------------------------------------------------------------------- */
 
 #include "Unibo-BP/cla.h"
@@ -52,6 +48,10 @@
 #include "Unibo-BP/ECOS.h"
 #include "Unibo-BP/Scheme.h"
 #include "Unibo-BP/CLAOutboundPDU.h"
+
+#ifndef CSPCLA_STANDALONE_MAIN
+#define CSPCLA_STANDALONE_MAIN 1
+#endif
 
 /* ------------------------------------------------------------------------- */
 /* Constants and global state                                                 */
@@ -549,7 +549,7 @@ static bool pdu_prefers_reliable_ltp(ConstUniboBPCLAOutboundPDU pdu)
 }
 
 /* ------------------------------------------------------------------------- */
-/* BP callbacks (concrete Unibo-BP glue)                                     */
+/* BP callbacks                                                              */
 /* ------------------------------------------------------------------------- */
 
 static bool on_outbound_pdu(uint64_t link_id, ConstUniboBPCLAOutboundPDU pdu, void *user_arg)
@@ -1055,7 +1055,7 @@ static void csp_cla_cleanup(struct csp_cla_config *cfg)
 /* ------------------------------------------------------------------------- */
 
 /*
- * Host-managed startup path (uD3TN-style):
+ * Host-managed startup path:
  *   a host process parses config and calls this create function.
  *
  * Standalone path:
@@ -1099,10 +1099,6 @@ int csp_cla_create_unibo_update(const char *const options[], size_t option_count
 
     log_info("host-managed create successful local_addr=%u csp_port=%u cla_id=%" PRIu64, local_addr, csp_port, cla_id);
 
-    /*
-     * TODO: register `cfg` into the final Unibo daemon lifecycle/container.
-     * For now it stays allocated intentionally, like a daemon singleton.
-     */
     return 0;
 }
 
