@@ -39,16 +39,16 @@
 
 /* CAN interface support - requires libcsp built with CAN driver */
 #ifdef CSP_HAVE_LIBSOCKETCAN
-#include <csp/interfaces/csp_if_can.h>
 #include <csp/drivers/can_socketcan.h>
+#include <csp/interfaces/csp_if_can.h>
 #endif
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
 
 /*===========================================================================*/
 /* Constants                                                                  */
@@ -80,19 +80,11 @@ static const char *CLA_NAME = "csp";
 /** Maximum length for ZMQHUB address or CAN interface name */
 #define CSP_IFACE_PARAM_MAX 64
 
-/** CSP interface types */
-enum csp_iface_type {
-    CSP_IFACE_ZMQHUB,   /* ZeroMQ hub - for testing/ground segment */
-    CSP_IFACE_CAN,      /* CAN bus - for space segment */
-    CSP_IFACE_LOOPBACK  /* Loopback - for local testing */
-};
-
 /** Flag to track if CSP has been initialized globally */
 static bool csp_initialized = false;
 
 /** Active CSP interface */
 static csp_iface_t *csp_active_iface = NULL;
-
 
 /*===========================================================================*/
 /* Data Structures                                                            */
@@ -102,73 +94,58 @@ static csp_iface_t *csp_active_iface = NULL;
  * @brief CSP CLA configuration
  */
 struct csp_cla_config {
-    struct cla_config base;
+  struct cla_config base;
 
-    /* CSPCL instance */
-    cspcl_t cspcl;
+  /* CSPCL instance */
+  cspcl_t cspcl;
 
-    /* Local CSP address */
-    uint8_t local_addr;
+  /* Link management */
+  struct htab_entrylist *param_htab_elem[CSP_PARAM_HTAB_SLOT_COUNT];
+  struct htab param_htab;
+  Semaphore_t param_htab_sem;
 
-    /* CSP port for BP traffic */
-    uint8_t csp_port;
-
-    /* Interface selection */
-    enum csp_iface_type iface_type;
-
-    /* ZMQHUB: broker host (e.g. "localhost" or "192.168.1.10") */
-    char zmqhub_addr[CSP_IFACE_PARAM_MAX];
-
-    /* CAN: SocketCAN interface name (e.g. "vcan0" or "can0") */
-    char can_iface[CSP_IFACE_PARAM_MAX];
-
-    /* Link management */
-    struct htab_entrylist *param_htab_elem[CSP_PARAM_HTAB_SLOT_COUNT];
-    struct htab param_htab;
-    Semaphore_t param_htab_sem;
-
-    /* RX task control */
-    bool rx_running;
-    Semaphore_t rx_task_sem;
+  /* RX task control */
+  bool rx_running;
+  Semaphore_t rx_task_sem;
 };
 
 /**
  * @brief CSP link structure
  */
 struct csp_link {
-    struct cla_link base;
+  struct cla_link base;
 
-    /* CSPCL-specific protocol parser */
-    struct parser csp_parser;
+  /* CSPCL-specific protocol parser */
+  struct parser csp_parser;
 
-    /* Destination CSP address for this link */
-    uint8_t dest_addr;
+  /* Destination CSP address for this link */
+  uint8_t dest_addr;
 
-    /* TX buffer for accumulating bundle data before sending */
-    uint8_t *tx_buffer;
-    size_t tx_buffer_len;
-    size_t tx_buffer_capacity;
+  /* TX buffer for accumulating bundle data before sending */
+  uint8_t *tx_buffer;
+  size_t tx_buffer_len;
+  size_t tx_buffer_capacity;
 
-    /* RX buffer for incoming bundle data */
-    uint8_t *rx_buffer;
-    size_t rx_buffer_len;
-    size_t rx_buffer_pos;
+  /* RX buffer for incoming bundle data */
+  uint8_t *rx_buffer;
+  size_t rx_buffer_len;
+  size_t rx_buffer_pos;
 };
 
 /**
  * @brief CSP contact parameters for link management
  */
 struct csp_contact_parameters {
-    struct csp_link link;
-    struct csp_cla_config *config;
+  struct csp_link link;
+  struct csp_cla_config *config;
 
-    Semaphore_t param_semphr;
+  Semaphore_t param_semphr;
 
-    char *cla_addr;
-    uint8_t dest_addr;
+  char *cla_addr;
+  uint8_t dest_addr;
 
-    bool in_contact;
-    bool is_outgoing;
+  bool in_contact;
+  bool is_outgoing;
 };
 
 /*===========================================================================*/
@@ -187,11 +164,10 @@ static const struct cla_vtable csp_vtable;
  * CSP bundles arrive as complete units via CSPCL (which handles
  * fragmentation/reassembly), so the parser is straightforward.
  */
-static void csp_parser_reset(struct parser *parser)
-{
-    parser->status = PARSER_STATUS_GOOD;
-    parser->next_bytes = 0;
-    parser->flags = PARSER_FLAG_NONE;
+static void csp_parser_reset(struct parser *parser) {
+  parser->status = PARSER_STATUS_GOOD;
+  parser->next_bytes = 0;
+  parser->flags = PARSER_FLAG_NONE;
 }
 
 /**
@@ -200,17 +176,15 @@ static void csp_parser_reset(struct parser *parser)
  * CSPCL delivers complete bundles, so we just signal that all data
  * should be forwarded to the bundle parser.
  */
-static size_t csp_parser_parse(struct parser *parser,
-                               const uint8_t *buffer,
-                               size_t length)
-{
-    (void)buffer;
+static size_t csp_parser_parse(struct parser *parser, const uint8_t *buffer,
+                               size_t length) {
+  (void)buffer;
 
-    /* Signal that data should be forwarded to bundle subparser */
-    parser->flags = PARSER_FLAG_DATA_SUBPARSER;
-    parser->next_bytes = length;
+  /* Signal that data should be forwarded to bundle subparser */
+  parser->flags = PARSER_FLAG_DATA_SUBPARSER;
+  parser->next_bytes = length;
 
-    return 0; /* Header bytes consumed (none for CSP - data is raw bundle) */
+  return 0; /* Header bytes consumed (none for CSP - data is raw bundle) */
 }
 
 /*===========================================================================*/
@@ -225,582 +199,535 @@ static size_t csp_parser_parse(struct parser *parser,
  * @param cla_addr  Full CLA address (e.g., "csp:2")
  * @return CSP address, or 0 on parse error
  */
-static uint8_t parse_csp_addr(const char *cla_addr)
-{
-    if (!cla_addr)
-        return 0;
+static uint8_t parse_csp_addr(const char *cla_addr) {
+  if (!cla_addr)
+    return 0;
 
-    /* Skip CLA name prefix if present */
-    const char *addr_str = cla_addr;
-    if (strncmp(addr_str, "csp:", 4) == 0) {
-        addr_str += 4;
-    }
+  /* Skip CLA name prefix if present */
+  const char *addr_str = cla_addr;
+  if (strncmp(addr_str, "csp:", 4) == 0) {
+    addr_str += 4;
+  }
 
-    int addr = atoi(addr_str);
-    if (addr < 0 || addr > 255)
-        return 0;
+  int addr = atoi(addr_str);
+  if (addr < 0 || addr > 255)
+    return 0;
 
-    return (uint8_t)addr;
+  return (uint8_t)addr;
 }
 
 /**
  * @brief Create CLA address string from CSP address
  */
-static char *create_cla_addr(uint8_t csp_addr)
-{
-    char *addr = malloc(16);
-    if (addr) {
-        snprintf(addr, 16, "csp:%u", csp_addr);
-    }
-    return addr;
+static char *create_cla_addr(uint8_t csp_addr) {
+  char *addr = malloc(16);
+  if (addr) {
+    snprintf(addr, 16, "csp:%u", csp_addr);
+  }
+  return addr;
 }
 
 /*===========================================================================*/
 /* Link Management                                                            */
 /*===========================================================================*/
 
-static enum ud3tn_result csp_link_init(
-    struct csp_link *link,
-    struct csp_cla_config *config,
-    uint8_t dest_addr,
-    const char *cla_addr)
-{
-    /* Initialize base link */
-    if (cla_link_init(&link->base, &config->base, cla_addr,
-                      true, true) != UD3TN_OK) {
-        return UD3TN_FAIL;
-    }
+static enum ud3tn_result csp_link_init(struct csp_link *link,
+                                       struct csp_cla_config *config,
+                                       uint8_t dest_addr,
+                                       const char *cla_addr) {
+  /* Initialize base link */
+  if (cla_link_init(&link->base, &config->base, cla_addr, true, true) !=
+      UD3TN_OK) {
+    return UD3TN_FAIL;
+  }
 
-    link->dest_addr = dest_addr;
+  link->dest_addr = dest_addr;
 
-    /* Allocate TX buffer */
-    link->tx_buffer = malloc(CSP_TX_BUFFER_SIZE);
-    if (!link->tx_buffer) {
-        LOG_ERROR("CSP: Failed to allocate TX buffer");
-        cla_link_cleanup(&link->base);
-        return UD3TN_FAIL;
-    }
-    link->tx_buffer_len = 0;
-    link->tx_buffer_capacity = CSP_TX_BUFFER_SIZE;
+  /* Allocate TX buffer */
+  link->tx_buffer = malloc(CSP_TX_BUFFER_SIZE);
+  if (!link->tx_buffer) {
+    LOG_ERROR("CSP: Failed to allocate TX buffer");
+    cla_link_cleanup(&link->base);
+    return UD3TN_FAIL;
+  }
+  link->tx_buffer_len = 0;
+  link->tx_buffer_capacity = CSP_TX_BUFFER_SIZE;
 
-    /* Allocate RX buffer */
-    link->rx_buffer = malloc(CSP_RX_BUFFER_SIZE);
-    if (!link->rx_buffer) {
-        LOG_ERROR("CSP: Failed to allocate RX buffer");
-        free(link->tx_buffer);
-        cla_link_cleanup(&link->base);
-        return UD3TN_FAIL;
-    }
-    link->rx_buffer_len = 0;
-    link->rx_buffer_pos = 0;
+  /* Allocate RX buffer */
+  link->rx_buffer = malloc(CSP_RX_BUFFER_SIZE);
+  if (!link->rx_buffer) {
+    LOG_ERROR("CSP: Failed to allocate RX buffer");
+    free(link->tx_buffer);
+    cla_link_cleanup(&link->base);
+    return UD3TN_FAIL;
+  }
+  link->rx_buffer_len = 0;
+  link->rx_buffer_pos = 0;
 
-    /* Initialize parser */
-    csp_parser_reset(&link->csp_parser);
+  /* Initialize parser */
+  csp_parser_reset(&link->csp_parser);
 
-    return UD3TN_OK;
+  return UD3TN_OK;
 }
 
-static void csp_link_cleanup(struct csp_link *link)
-{
-    if (link->tx_buffer) {
-        free(link->tx_buffer);
-        link->tx_buffer = NULL;
-    }
-    if (link->rx_buffer) {
-        free(link->rx_buffer);
-        link->rx_buffer = NULL;
-    }
+static void csp_link_cleanup(struct csp_link *link) {
+  if (link->tx_buffer) {
+    free(link->tx_buffer);
+    link->tx_buffer = NULL;
+  }
+  if (link->rx_buffer) {
+    free(link->rx_buffer);
+    link->rx_buffer = NULL;
+  }
 
-    cla_link_cleanup(&link->base);
+  cla_link_cleanup(&link->base);
 }
 
 /*===========================================================================*/
 /* Contact Management                                                         */
 /*===========================================================================*/
 
-static void csp_link_management_task(void *p)
-{
-    struct csp_contact_parameters *const param = p;
-    struct csp_cla_config *const config = param->config;
+static void csp_link_management_task(void *p) {
+  struct csp_contact_parameters *const param = p;
+  struct csp_cla_config *const config = param->config;
 
-    LOGF_INFO("CSP: Starting link management for csp:%u", param->dest_addr);
+  LOGF_INFO("CSP: Starting link management for csp:%u", param->dest_addr);
 
-    /* Initialize the link */
-    if (csp_link_init(&param->link, config, param->dest_addr,
-                      param->cla_addr) != UD3TN_OK) {
-        LOG_ERROR("CSP: Failed to initialize link");
-        goto cleanup;
-    }
+  /* Initialize the link */
+  if (csp_link_init(&param->link, config, param->dest_addr, param->cla_addr) !=
+      UD3TN_OK) {
+    LOG_ERROR("CSP: Failed to initialize link");
+    goto cleanup;
+  }
 
-    /* Release semaphore for TX/RX tasks */
-    hal_semaphore_release(param->param_semphr);
+  /* Release semaphore for TX/RX tasks */
+  hal_semaphore_release(param->param_semphr);
 
-    /* Wait for link tasks to complete */
-    cla_link_wait(&param->link.base);
+  /* Wait for link tasks to complete */
+  cla_link_wait(&param->link.base);
 
-    /* Reacquire semaphore */
-    hal_semaphore_take_blocking(param->config->param_htab_sem);
-    hal_semaphore_take_blocking(param->param_semphr);
-    csp_link_cleanup(&param->link);
-    hal_semaphore_release(param->config->param_htab_sem);
+  /* Reacquire semaphore */
+  hal_semaphore_take_blocking(param->config->param_htab_sem);
+  hal_semaphore_take_blocking(param->param_semphr);
+  csp_link_cleanup(&param->link);
+  hal_semaphore_release(param->config->param_htab_sem);
 
 cleanup:
-    LOGF_INFO("CSP: Terminating link manager for csp:%u", param->dest_addr);
+  LOGF_INFO("CSP: Terminating link manager for csp:%u", param->dest_addr);
 
-    /* Remove from hash table */
-    hal_semaphore_take_blocking(param->config->param_htab_sem);
-    if (htab_get(&param->config->param_htab, param->cla_addr) == param)
-        htab_remove(&param->config->param_htab, param->cla_addr);
-    hal_semaphore_release(param->config->param_htab_sem);
+  /* Remove from hash table */
+  hal_semaphore_take_blocking(param->config->param_htab_sem);
+  if (htab_get(&param->config->param_htab, param->cla_addr) == param)
+    htab_remove(&param->config->param_htab, param->cla_addr);
+  hal_semaphore_release(param->config->param_htab_sem);
 
-    /* Cleanup */
-    hal_semaphore_take_blocking(param->param_semphr);
-    free(param->cla_addr);
-    hal_semaphore_delete(param->param_semphr);
+  /* Cleanup */
+  hal_semaphore_take_blocking(param->param_semphr);
+  free(param->cla_addr);
+  hal_semaphore_delete(param->param_semphr);
+  free(param);
+}
+
+static struct csp_contact_parameters *
+create_contact_params(struct csp_cla_config *config, uint8_t dest_addr,
+                      bool is_outgoing) {
+  struct csp_contact_parameters *param = malloc(sizeof(*param));
+  if (!param) {
+    LOG_ERROR("CSP: Failed to allocate contact parameters");
+    return NULL;
+  }
+
+  memset(param, 0, sizeof(*param));
+  param->config = config;
+  param->dest_addr = dest_addr;
+  param->cla_addr = create_cla_addr(dest_addr);
+  param->in_contact = true;
+  param->is_outgoing = is_outgoing;
+
+  if (!param->cla_addr) {
     free(param);
+    return NULL;
+  }
+
+  param->param_semphr = hal_semaphore_init_binary();
+  if (!param->param_semphr) {
+    free(param->cla_addr);
+    free(param);
+    return NULL;
+  }
+
+  return param;
 }
 
-static struct csp_contact_parameters *create_contact_params(
-    struct csp_cla_config *config,
-    uint8_t dest_addr,
-    bool is_outgoing)
-{
-    struct csp_contact_parameters *param = malloc(sizeof(*param));
-    if (!param) {
-        LOG_ERROR("CSP: Failed to allocate contact parameters");
-        return NULL;
-    }
+static void launch_connection_management(struct csp_cla_config *config,
+                                         uint8_t dest_addr) {
+  struct csp_contact_parameters *param =
+      create_contact_params(config, dest_addr, true);
 
-    memset(param, 0, sizeof(*param));
-    param->config = config;
-    param->dest_addr = dest_addr;
-    param->cla_addr = create_cla_addr(dest_addr);
-    param->in_contact = true;
-    param->is_outgoing = is_outgoing;
+  if (!param)
+    return;
 
-    if (!param->cla_addr) {
-        free(param);
-        return NULL;
-    }
+  /* Add to hash table */
+  struct htab_entrylist *entry =
+      htab_add(&config->param_htab, param->cla_addr, param);
 
-    param->param_semphr = hal_semaphore_init_binary();
-    if (!param->param_semphr) {
-        free(param->cla_addr);
-        free(param);
-        return NULL;
-    }
+  if (!entry) {
+    LOG_ERROR("CSP: Failed to add to hash table");
+    hal_semaphore_delete(param->param_semphr);
+    free(param->cla_addr);
+    free(param);
+    return;
+  }
 
-    return param;
-}
-
-static void launch_connection_management(
-    struct csp_cla_config *config,
-    uint8_t dest_addr)
-{
-    struct csp_contact_parameters *param = create_contact_params(
-        config, dest_addr, true);
-
-    if (!param)
-        return;
-
-    /* Add to hash table */
-    struct htab_entrylist *entry = htab_add(
-        &config->param_htab,
-        param->cla_addr,
-        param
-    );
-
-    if (!entry) {
-        LOG_ERROR("CSP: Failed to add to hash table");
-        hal_semaphore_delete(param->param_semphr);
-        free(param->cla_addr);
-        free(param);
-        return;
-    }
-
-    /* Launch management task */
-    if (hal_task_create(csp_link_management_task, param, true, NULL)
-            != UD3TN_OK) {
-        LOG_ERROR("CSP: Failed to create management task");
-        htab_remove(&config->param_htab, param->cla_addr);
-        hal_semaphore_delete(param->param_semphr);
-        free(param->cla_addr);
-        free(param);
-    }
+  /* Launch management task */
+  if (hal_task_create(csp_link_management_task, param, true, NULL) !=
+      UD3TN_OK) {
+    LOG_ERROR("CSP: Failed to create management task");
+    htab_remove(&config->param_htab, param->cla_addr);
+    hal_semaphore_delete(param->param_semphr);
+    free(param->cla_addr);
+    free(param);
+  }
 }
 
 /*===========================================================================*/
 /* RX Task                                                                    */
 /*===========================================================================*/
 
-static void csp_rx_task(void *p)
-{
-    struct csp_cla_config *const config = p;
-    uint8_t bundle_buffer[CSP_RX_BUFFER_SIZE];
-    size_t bundle_len;
-    uint8_t src_addr;
+static void csp_rx_task(void *p) {
+  struct csp_cla_config *const config = p;
+  uint8_t bundle_buffer[CSP_RX_BUFFER_SIZE];
+  size_t bundle_len;
+  uint8_t src_addr;
 
-    LOG_INFO("CSP: RX task started");
+  LOG_INFO("CSP: RX task started");
 
-    while (config->rx_running) {
-        bundle_len = sizeof(bundle_buffer);
+  while (config->rx_running) {
+    bundle_len = sizeof(bundle_buffer);
 
-        /* Receive bundle via CSPCL */
-        cspcl_error_t err = cspcl_recv_bundle(
-            &config->cspcl,
-            bundle_buffer,
-            &bundle_len,
-            &src_addr,
-            1000  /* 1 second timeout */
+    /* Receive bundle via CSPCL */
+    cspcl_error_t err =
+        cspcl_recv_bundle(&config->cspcl, bundle_buffer, &bundle_len, &src_addr,
+                          1000 /* 1 second timeout */
         );
 
-        if (err == CSPCL_ERR_TIMEOUT)
-            continue;
+    if (err == CSPCL_ERR_TIMEOUT)
+      continue;
 
-        if (err != CSPCL_OK) {
-            LOGF_WARN("CSP: RX error: %s", cspcl_strerror(err));
-            continue;
-        }
-
-        LOGF_DEBUG("CSP: Received %zu bytes from csp:%u", bundle_len, src_addr);
-
-        /* Look up or create link for this source */
-        char *cla_addr = create_cla_addr(src_addr);
-        if (!cla_addr)
-            continue;
-
-        hal_semaphore_take_blocking(config->param_htab_sem);
-        struct csp_contact_parameters *param = htab_get(
-            &config->param_htab, cla_addr);
-
-        if (!param) {
-            /* Create opportunistic link */
-            launch_connection_management(config, src_addr);
-            param = htab_get(&config->param_htab, cla_addr);
-        }
-        hal_semaphore_release(config->param_htab_sem);
-        free(cla_addr);
-
-        if (!param)
-            continue;
-
-        /* Store received data in link's RX buffer */
-        hal_semaphore_take_blocking(param->param_semphr);
-        if (bundle_len <= CSP_RX_BUFFER_SIZE - param->link.rx_buffer_len) {
-            memcpy(param->link.rx_buffer + param->link.rx_buffer_len,
-                   bundle_buffer, bundle_len);
-            param->link.rx_buffer_len += bundle_len;
-        }
-        hal_semaphore_release(param->param_semphr);
+    if (err != CSPCL_OK) {
+      LOGF_WARN("CSP: RX error: %s", cspcl_strerror(err));
+      continue;
     }
 
-    LOG_INFO("CSP: RX task terminated");
-    hal_semaphore_release(config->rx_task_sem);
+    LOGF_DEBUG("CSP: Received %zu bytes from csp:%u", bundle_len, src_addr);
+
+    /* Look up or create link for this source */
+    char *cla_addr = create_cla_addr(src_addr);
+    if (!cla_addr)
+      continue;
+
+    hal_semaphore_take_blocking(config->param_htab_sem);
+    struct csp_contact_parameters *param =
+        htab_get(&config->param_htab, cla_addr);
+
+    if (!param) {
+      /* Create opportunistic link */
+      launch_connection_management(config, src_addr);
+      param = htab_get(&config->param_htab, cla_addr);
+    }
+    hal_semaphore_release(config->param_htab_sem);
+    free(cla_addr);
+
+    if (!param)
+      continue;
+
+    /* Store received data in link's RX buffer */
+    hal_semaphore_take_blocking(param->param_semphr);
+    if (bundle_len <= CSP_RX_BUFFER_SIZE - param->link.rx_buffer_len) {
+      memcpy(param->link.rx_buffer + param->link.rx_buffer_len, bundle_buffer,
+             bundle_len);
+      param->link.rx_buffer_len += bundle_len;
+    }
+    hal_semaphore_release(param->param_semphr);
+  }
+
+  LOG_INFO("CSP: RX task terminated");
+  hal_semaphore_release(config->rx_task_sem);
 }
 
 /*===========================================================================*/
 /* CLA VTable Implementation                                                  */
 /*===========================================================================*/
 
-static const char *csp_cla_name_get(void)
-{
-    return CLA_NAME;
+static const char *csp_cla_name_get(void) { return CLA_NAME; }
+
+static enum ud3tn_result csp_cla_launch(struct cla_config *const config) {
+  struct csp_cla_config *const csp_config = (struct csp_cla_config *)config;
+
+  csp_config->rx_running = true;
+
+  return hal_task_create(csp_rx_task, csp_config, true, NULL);
 }
 
-static enum ud3tn_result csp_cla_launch(struct cla_config *const config)
-{
-    struct csp_cla_config *const csp_config = (struct csp_cla_config *)config;
+static enum ud3tn_result csp_cla_terminate(struct cla_config *const config) {
+  struct csp_cla_config *const csp_config = (struct csp_cla_config *)config;
 
-    csp_config->rx_running = true;
+  csp_config->rx_running = false;
 
-    return hal_task_create(csp_rx_task, csp_config, true, NULL);
+  /* Wait for RX task to finish */
+  hal_semaphore_take_blocking(csp_config->rx_task_sem);
+
+  LOG_DEBUG("CSP: CLA terminated gracefully");
+  return UD3TN_OK;
 }
 
-static enum ud3tn_result csp_cla_terminate(struct cla_config *const config)
-{
-    struct csp_cla_config *const csp_config = (struct csp_cla_config *)config;
-
-    csp_config->rx_running = false;
-
-    /* Wait for RX task to finish */
-    hal_semaphore_take_blocking(csp_config->rx_task_sem);
-
-    LOG_DEBUG("CSP: CLA terminated gracefully");
-    return UD3TN_OK;
+size_t csp_cla_mbs_get(struct cla_config *const config) {
+  (void)config;
+  /* CSPCL supports bundles up to CSPCL_MAX_BUNDLE_SIZE */
+  return CSPCL_MAX_BUNDLE_SIZE;
 }
 
-size_t csp_cla_mbs_get(struct cla_config *const config)
-{
-    (void)config;
-    /* CSPCL supports bundles up to CSPCL_MAX_BUNDLE_SIZE */
-    return CSPCL_MAX_BUNDLE_SIZE;
-}
+static struct cla_tx_queue csp_cla_get_tx_queue(struct cla_config *config,
+                                                const char *eid,
+                                                const char *cla_addr) {
+  (void)eid;
+  struct csp_cla_config *const csp_config = (struct csp_cla_config *)config;
 
-static struct cla_tx_queue csp_cla_get_tx_queue(
-    struct cla_config *config,
-    const char *eid,
-    const char *cla_addr)
-{
-    (void)eid;
-    struct csp_cla_config *const csp_config = (struct csp_cla_config *)config;
+  struct cla_tx_queue result = {
+      .tx_queue_handle = NULL,
+      .tx_queue_sem = NULL,
+  };
 
-    struct cla_tx_queue result = {
-        .tx_queue_handle = NULL,
-        .tx_queue_sem = NULL,
-    };
-
-    uint8_t dest_addr = parse_csp_addr(cla_addr);
-    if (dest_addr == 0 && strcmp(cla_addr, "csp:0") != 0) {
-        LOGF_WARN("CSP: Invalid CLA address: %s", cla_addr);
-        return result;
-    }
-
-    hal_semaphore_take_blocking(csp_config->param_htab_sem);
-
-    struct csp_contact_parameters *param = htab_get(
-        &csp_config->param_htab, cla_addr);
-
-    if (param) {
-        hal_semaphore_take_blocking(param->param_semphr);
-        result.tx_queue_handle = param->link.base.tx_queue_handle;
-        result.tx_queue_sem = param->link.base.tx_queue_sem;
-        hal_semaphore_release(param->param_semphr);
-    }
-
-    hal_semaphore_release(csp_config->param_htab_sem);
-
+  uint8_t dest_addr = parse_csp_addr(cla_addr);
+  if (dest_addr == 0 && strcmp(cla_addr, "csp:0") != 0) {
+    LOGF_WARN("CSP: Invalid CLA address: %s", cla_addr);
     return result;
+  }
+
+  hal_semaphore_take_blocking(csp_config->param_htab_sem);
+
+  struct csp_contact_parameters *param =
+      htab_get(&csp_config->param_htab, cla_addr);
+
+  if (param) {
+    hal_semaphore_take_blocking(param->param_semphr);
+    result.tx_queue_handle = param->link.base.tx_queue_handle;
+    result.tx_queue_sem = param->link.base.tx_queue_sem;
+    hal_semaphore_release(param->param_semphr);
+  }
+
+  hal_semaphore_release(csp_config->param_htab_sem);
+
+  return result;
 }
 
-static enum cla_link_update_result csp_cla_start_scheduled_contact(
-    struct cla_config *config,
-    const char *eid,
-    const char *cla_addr)
-{
-    (void)eid;
-    struct csp_cla_config *const csp_config = (struct csp_cla_config *)config;
+static enum cla_link_update_result
+csp_cla_start_scheduled_contact(struct cla_config *config, const char *eid,
+                                const char *cla_addr) {
+  (void)eid;
+  struct csp_cla_config *const csp_config = (struct csp_cla_config *)config;
 
-    uint8_t dest_addr = parse_csp_addr(cla_addr);
-    if (dest_addr == 0 && strcmp(cla_addr, "csp:0") != 0) {
-        LOGF_WARN("CSP: Invalid CLA address for contact: %s", cla_addr);
-        return CLA_LINK_UPDATE_FAILED;
-    }
+  uint8_t dest_addr = parse_csp_addr(cla_addr);
+  if (dest_addr == 0 && strcmp(cla_addr, "csp:0") != 0) {
+    LOGF_WARN("CSP: Invalid CLA address for contact: %s", cla_addr);
+    return CLA_LINK_UPDATE_FAILED;
+  }
 
-    LOGF_INFO("CSP: Starting scheduled contact to csp:%u", dest_addr);
+  LOGF_INFO("CSP: Starting scheduled contact to csp:%u", dest_addr);
 
-    hal_semaphore_take_blocking(csp_config->param_htab_sem);
+  hal_semaphore_take_blocking(csp_config->param_htab_sem);
 
-    /* Check if link already exists */
-    struct csp_contact_parameters *existing = htab_get(
-        &csp_config->param_htab, cla_addr);
+  /* Check if link already exists */
+  struct csp_contact_parameters *existing =
+      htab_get(&csp_config->param_htab, cla_addr);
 
-    if (existing) {
-        hal_semaphore_take_blocking(existing->param_semphr);
-        existing->in_contact = true;
-        hal_semaphore_release(existing->param_semphr);
-        hal_semaphore_release(csp_config->param_htab_sem);
-        return CLA_LINK_UPDATE_UNCHANGED;
-    }
-
-    /* Create new link */
-    launch_connection_management(csp_config, dest_addr);
-
-    hal_semaphore_release(csp_config->param_htab_sem);
-
-    return CLA_LINK_UPDATE_INITIATED;
-}
-
-static enum cla_link_update_result csp_cla_end_scheduled_contact(
-    struct cla_config *config,
-    const char *eid,
-    const char *cla_addr)
-{
-    (void)eid;
-    struct csp_cla_config *const csp_config = (struct csp_cla_config *)config;
-
-    LOGF_INFO("CSP: Ending scheduled contact to %s", cla_addr);
-
-    hal_semaphore_take_blocking(csp_config->param_htab_sem);
-
-    struct csp_contact_parameters *param = htab_get(
-        &csp_config->param_htab, cla_addr);
-
-    if (param) {
-        hal_semaphore_take_blocking(param->param_semphr);
-        param->in_contact = false;
-        /* Notify RX task to finish */
-        hal_semaphore_try_take(param->link.base.rx_task_notification, 0);
-        hal_semaphore_release(param->param_semphr);
-        hal_semaphore_release(csp_config->param_htab_sem);
-        return CLA_LINK_UPDATE_INITIATED;
-    }
-
+  if (existing) {
+    hal_semaphore_take_blocking(existing->param_semphr);
+    existing->in_contact = true;
+    hal_semaphore_release(existing->param_semphr);
     hal_semaphore_release(csp_config->param_htab_sem);
     return CLA_LINK_UPDATE_UNCHANGED;
+  }
+
+  /* Create new link */
+  launch_connection_management(csp_config, dest_addr);
+
+  hal_semaphore_release(csp_config->param_htab_sem);
+
+  return CLA_LINK_UPDATE_INITIATED;
 }
 
-enum cla_begin_packet_result csp_cla_begin_packet(
-    struct cla_link *link,
-    const struct bundle *const bundle,
-    size_t length,
-    char *cla_addr)
-{
-    (void)bundle;
-    (void)cla_addr;
+static enum cla_link_update_result
+csp_cla_end_scheduled_contact(struct cla_config *config, const char *eid,
+                              const char *cla_addr) {
+  (void)eid;
+  struct csp_cla_config *const csp_config = (struct csp_cla_config *)config;
 
-    struct csp_link *const csp_link = (struct csp_link *)link;
+  LOGF_INFO("CSP: Ending scheduled contact to %s", cla_addr);
 
-    /* Reset TX buffer for new bundle */
-    csp_link->tx_buffer_len = 0;
+  hal_semaphore_take_blocking(csp_config->param_htab_sem);
 
-    /* Check if bundle fits in buffer */
-    if (length > csp_link->tx_buffer_capacity) {
-        LOG_WARN("CSP: Bundle too large for TX buffer");
-        return CLA_BEGIN_PACKET_FAIL;
-    }
+  struct csp_contact_parameters *param =
+      htab_get(&csp_config->param_htab, cla_addr);
 
-    LOGF_DEBUG("CSP: Beginning packet of %zu bytes to csp:%u",
-               length, csp_link->dest_addr);
+  if (param) {
+    hal_semaphore_take_blocking(param->param_semphr);
+    param->in_contact = false;
+    /* Notify RX task to finish */
+    hal_semaphore_try_take(param->link.base.rx_task_notification, 0);
+    hal_semaphore_release(param->param_semphr);
+    hal_semaphore_release(csp_config->param_htab_sem);
+    return CLA_LINK_UPDATE_INITIATED;
+  }
 
-    return CLA_BEGIN_PACKET_OK;
+  hal_semaphore_release(csp_config->param_htab_sem);
+  return CLA_LINK_UPDATE_UNCHANGED;
 }
 
-enum ud3tn_result csp_cla_end_packet(struct cla_link *link)
-{
-    struct csp_link *const csp_link = (struct csp_link *)link;
-    struct csp_cla_config *const config =
-        (struct csp_cla_config *)link->config;
+enum cla_begin_packet_result
+csp_cla_begin_packet(struct cla_link *link, const struct bundle *const bundle,
+                     size_t length, char *cla_addr) {
+  (void)bundle;
+  (void)cla_addr;
 
-    if (csp_link->tx_buffer_len == 0) {
-        LOG_WARN("CSP: Empty packet, nothing to send");
-        return UD3TN_OK;
-    }
+  struct csp_link *const csp_link = (struct csp_link *)link;
 
-    LOGF_DEBUG("CSP: Sending %zu bytes to csp:%u",
-               csp_link->tx_buffer_len, csp_link->dest_addr);
+  /* Reset TX buffer for new bundle */
+  csp_link->tx_buffer_len = 0;
 
-    /* Send bundle via CSPCL */
-    cspcl_error_t err = cspcl_send_bundle(
-        &config->cspcl,
-        csp_link->tx_buffer,
-        csp_link->tx_buffer_len,
-        csp_link->dest_addr
-    );
+  /* Check if bundle fits in buffer */
+  if (length > csp_link->tx_buffer_capacity) {
+    LOG_WARN("CSP: Bundle too large for TX buffer");
+    return CLA_BEGIN_PACKET_FAIL;
+  }
 
-    /* Reset TX buffer */
-    csp_link->tx_buffer_len = 0;
+  LOGF_DEBUG("CSP: Beginning packet of %zu bytes to csp:%u", length,
+             csp_link->dest_addr);
 
-    if (err != CSPCL_OK) {
-        LOGF_WARN("CSP: Failed to send bundle: %s", cspcl_strerror(err));
-        link->config->vtable->cla_disconnect_handler(link);
-        return UD3TN_FAIL;
-    }
+  return CLA_BEGIN_PACKET_OK;
+}
 
+enum ud3tn_result csp_cla_end_packet(struct cla_link *link) {
+  struct csp_link *const csp_link = (struct csp_link *)link;
+  struct csp_cla_config *const config = (struct csp_cla_config *)link->config;
+
+  if (csp_link->tx_buffer_len == 0) {
+    LOG_WARN("CSP: Empty packet, nothing to send");
     return UD3TN_OK;
+  }
+
+  LOGF_DEBUG("CSP: Sending %zu bytes to csp:%u", csp_link->tx_buffer_len,
+             csp_link->dest_addr);
+
+  /* Send bundle via CSPCL */
+  cspcl_error_t err =
+      cspcl_send_bundle(&config->cspcl, csp_link->tx_buffer,
+                        csp_link->tx_buffer_len, csp_link->dest_addr);
+
+  /* Reset TX buffer */
+  csp_link->tx_buffer_len = 0;
+
+  if (err != CSPCL_OK) {
+    LOGF_WARN("CSP: Failed to send bundle: %s", cspcl_strerror(err));
+    link->config->vtable->cla_disconnect_handler(link);
+    return UD3TN_FAIL;
+  }
+
+  return UD3TN_OK;
 }
 
-enum ud3tn_result csp_cla_send_packet_data(
-    struct cla_link *link,
-    const void *data,
-    const size_t length)
-{
-    struct csp_link *const csp_link = (struct csp_link *)link;
+enum ud3tn_result csp_cla_send_packet_data(struct cla_link *link,
+                                           const void *data,
+                                           const size_t length) {
+  struct csp_link *const csp_link = (struct csp_link *)link;
 
-    /* Accumulate data in TX buffer */
-    if (csp_link->tx_buffer_len + length > csp_link->tx_buffer_capacity) {
-        LOG_WARN("CSP: TX buffer overflow");
-        return UD3TN_FAIL;
-    }
+  /* Accumulate data in TX buffer */
+  if (csp_link->tx_buffer_len + length > csp_link->tx_buffer_capacity) {
+    LOG_WARN("CSP: TX buffer overflow");
+    return UD3TN_FAIL;
+  }
 
-    memcpy(csp_link->tx_buffer + csp_link->tx_buffer_len, data, length);
-    csp_link->tx_buffer_len += length;
+  memcpy(csp_link->tx_buffer + csp_link->tx_buffer_len, data, length);
+  csp_link->tx_buffer_len += length;
 
-    return UD3TN_OK;
+  return UD3TN_OK;
 }
 
-void csp_cla_reset_parsers(struct cla_link *link)
-{
-    struct csp_link *const csp_link = (struct csp_link *)link;
+void csp_cla_reset_parsers(struct cla_link *link) {
+  struct csp_link *const csp_link = (struct csp_link *)link;
 
-    rx_task_reset_parsers(&link->rx_task_data);
+  rx_task_reset_parsers(&link->rx_task_data);
 
-    csp_parser_reset(&csp_link->csp_parser);
-    link->rx_task_data.cur_parser = &csp_link->csp_parser;
+  csp_parser_reset(&csp_link->csp_parser);
+  link->rx_task_data.cur_parser = &csp_link->csp_parser;
 }
 
 size_t csp_cla_forward_to_specific_parser(struct cla_link *link,
                                           const uint8_t *buffer,
-                                          size_t length)
-{
-    struct rx_task_data *const rx_data = &link->rx_task_data;
-    size_t result = 0;
+                                          size_t length) {
+  struct rx_task_data *const rx_data = &link->rx_task_data;
+  size_t result = 0;
 
-    switch (rx_data->payload_type) {
-    case PAYLOAD_UNKNOWN:
-        result = select_bundle_parser_version(rx_data, buffer, length);
-        if (result == 0)
-            csp_cla_reset_parsers(link);
-        break;
-    case PAYLOAD_BUNDLE6:
-        rx_data->cur_parser = rx_data->bundle6_parser.basedata;
-        result = bundle6_parser_read(&rx_data->bundle6_parser,
-                                     buffer, length);
-        break;
-    case PAYLOAD_BUNDLE7:
-        rx_data->cur_parser = rx_data->bundle7_parser.basedata;
-        result = bundle7_parser_read(&rx_data->bundle7_parser,
-                                     buffer, length);
-        break;
-    default:
-        csp_cla_reset_parsers(link);
-        result = length;
-        break;
-    }
+  switch (rx_data->payload_type) {
+  case PAYLOAD_UNKNOWN:
+    result = select_bundle_parser_version(rx_data, buffer, length);
+    if (result == 0)
+      csp_cla_reset_parsers(link);
+    break;
+  case PAYLOAD_BUNDLE6:
+    rx_data->cur_parser = rx_data->bundle6_parser.basedata;
+    result = bundle6_parser_read(&rx_data->bundle6_parser, buffer, length);
+    break;
+  case PAYLOAD_BUNDLE7:
+    rx_data->cur_parser = rx_data->bundle7_parser.basedata;
+    result = bundle7_parser_read(&rx_data->bundle7_parser, buffer, length);
+    break;
+  default:
+    csp_cla_reset_parsers(link);
+    result = length;
+    break;
+  }
 
-    return result;
+  return result;
 }
 
-enum ud3tn_result csp_cla_read(struct cla_link *link,
-                               uint8_t *buffer,
-                               size_t length,
-                               size_t *bytes_read)
-{
-    struct csp_link *const csp_link = (struct csp_link *)link;
+enum ud3tn_result csp_cla_read(struct cla_link *link, uint8_t *buffer,
+                               size_t length, size_t *bytes_read) {
+  struct csp_link *const csp_link = (struct csp_link *)link;
 
-    *bytes_read = 0;
+  *bytes_read = 0;
 
-    /* Check if there's data in the RX buffer */
-    if (csp_link->rx_buffer_pos >= csp_link->rx_buffer_len) {
-        /* No data available, wait briefly */
-        hal_task_delay(10);
-        return UD3TN_OK;
-    }
-
-    /* Calculate how much data to return */
-    size_t available = csp_link->rx_buffer_len - csp_link->rx_buffer_pos;
-    size_t to_read = (length < available) ? length : available;
-
-    memcpy(buffer, csp_link->rx_buffer + csp_link->rx_buffer_pos, to_read);
-    csp_link->rx_buffer_pos += to_read;
-    *bytes_read = to_read;
-
-    /* Reset buffer if fully consumed */
-    if (csp_link->rx_buffer_pos >= csp_link->rx_buffer_len) {
-        csp_link->rx_buffer_len = 0;
-        csp_link->rx_buffer_pos = 0;
-    }
-
-    /* Update last RX time */
-    link->last_rx_time_ms = hal_time_get_timestamp_ms();
-
+  /* Check if there's data in the RX buffer */
+  if (csp_link->rx_buffer_pos >= csp_link->rx_buffer_len) {
+    /* No data available, wait briefly */
+    hal_task_delay(10);
     return UD3TN_OK;
+  }
+
+  /* Calculate how much data to return */
+  size_t available = csp_link->rx_buffer_len - csp_link->rx_buffer_pos;
+  size_t to_read = (length < available) ? length : available;
+
+  memcpy(buffer, csp_link->rx_buffer + csp_link->rx_buffer_pos, to_read);
+  csp_link->rx_buffer_pos += to_read;
+  *bytes_read = to_read;
+
+  /* Reset buffer if fully consumed */
+  if (csp_link->rx_buffer_pos >= csp_link->rx_buffer_len) {
+    csp_link->rx_buffer_len = 0;
+    csp_link->rx_buffer_pos = 0;
+  }
+
+  /* Update last RX time */
+  link->last_rx_time_ms = hal_time_get_timestamp_ms();
+
+  return UD3TN_OK;
 }
 
-static void csp_cla_disconnect_handler(struct cla_link *link)
-{
-    LOGF_DEBUG("CSP: Disconnect handler called for %s",
-               link->cla_addr ? link->cla_addr : "(unknown)");
-    cla_generic_disconnect_handler(link);
+static void csp_cla_disconnect_handler(struct cla_link *link) {
+  LOGF_DEBUG("CSP: Disconnect handler called for %s",
+             link->cla_addr ? link->cla_addr : "(unknown)");
+  cla_generic_disconnect_handler(link);
 }
 
 /*===========================================================================*/
@@ -824,7 +751,8 @@ static const struct cla_vtable csp_vtable = {
     .cla_send_packet_data = csp_cla_send_packet_data,
 
     .cla_rx_task_reset_parsers = csp_cla_reset_parsers,
-    .cla_rx_task_forward_to_specific_parser = csp_cla_forward_to_specific_parser,
+    .cla_rx_task_forward_to_specific_parser =
+        csp_cla_forward_to_specific_parser,
 
     .cla_read = csp_cla_read,
 
@@ -835,231 +763,133 @@ static const struct cla_vtable csp_vtable = {
 /* Initialization                                                             */
 /*===========================================================================*/
 
-static enum ud3tn_result csp_cla_init(
-    struct csp_cla_config *config,
-    uint8_t local_addr,
-    uint8_t csp_port,
-    const struct bundle_agent_interface *bundle_agent_interface)
-{
-    /* Initialize base config */
-    if (cla_config_init(&config->base, bundle_agent_interface) != UD3TN_OK)
-        return UD3TN_FAIL;
+static enum ud3tn_result
+csp_cla_init(struct csp_cla_config *config, uint8_t local_addr,
+             uint8_t csp_port,
+             const struct bundle_agent_interface *bundle_agent_interface) {
+  /* Initialize base config */
+  if (cla_config_init(&config->base, bundle_agent_interface) != UD3TN_OK)
+    return UD3TN_FAIL;
 
-    config->base.vtable = &csp_vtable;
-    config->local_addr = local_addr;
-    config->csp_port = csp_port;
+  config->base.vtable = &csp_vtable;
+  config->local_addr = local_addr;
+  config->csp_port = csp_port;
 
-    /* Initialize libcsp if not already done */
-    if (!csp_initialized) {
-        LOGF_DEBUG("CSP: Initializing libcsp with address %u", local_addr);
+  config->cspcl.active_iface = NULL;
+  config->cspcl.initialized = false;
+  config->cspcl.can_iface = "";
+  config->cspcl.can_iface = "";
 
-        /* Configure CSP */
-        csp_conf_t csp_conf;
-        csp_conf_get_defaults(&csp_conf);
-        csp_conf.address = local_addr;
-        csp_conf.hostname = "ud3tn";
-        csp_conf.model = "csp-cla";
-        csp_conf.revision = "1.0";
-        csp_conf.conn_max = 10;
-        csp_conf.conn_queue_length = 100;
-        csp_conf.fifo_length = 25;
-        csp_conf.port_max_bind = 31;
-        csp_conf.rdp_max_window = 20;
-        csp_conf.buffers = 100;
-        csp_conf.buffer_data_size = 256;
+  /* Initialize hash table semaphore */
+  config->param_htab_sem = hal_semaphore_init_binary();
+  if (!config->param_htab_sem) {
+    cspcl_cleanup(&config->cspcl);
+    return UD3TN_FAIL;
+  }
+  hal_semaphore_release(config->param_htab_sem);
 
-        /* Initialize the CSP stack */
-        int ret = csp_init(&csp_conf);
-        if (ret != CSP_ERR_NONE) {
-            LOGF_ERROR("CSP: Failed to initialize libcsp: %d", ret);
-            return UD3TN_FAIL;
-        }
+  /* Initialize RX task semaphore */
+  config->rx_task_sem = hal_semaphore_init_binary();
+  if (!config->rx_task_sem) {
+    hal_semaphore_delete(config->param_htab_sem);
+    cspcl_cleanup(&config->cspcl);
+    return UD3TN_FAIL;
+  }
 
-        /* Initialize the selected interface */
-        switch (config->iface_type) {
-        case CSP_IFACE_ZMQHUB:
-            LOGF_INFO("CSP: Connecting to ZMQHUB broker at '%s'",
-                      config->zmqhub_addr);
-            ret = csp_zmqhub_init(local_addr, config->zmqhub_addr, 0,
-                                  &csp_active_iface);
-            if (ret != CSP_ERR_NONE) {
-                LOGF_ERROR("CSP: Failed to initialize ZMQHUB interface: %d",
-                           ret);
-                return UD3TN_FAIL;
-            }
-            LOGF_INFO("CSP: ZMQHUB interface initialized (broker: %s)",
-                      config->zmqhub_addr);
-            break;
+  /* Initialize hash table */
+  htab_init(&config->param_htab, CSP_PARAM_HTAB_SLOT_COUNT,
+            config->param_htab_elem);
 
-        case CSP_IFACE_CAN:
-#ifdef CSP_HAVE_LIBSOCKETCAN
-            LOGF_INFO("CSP: Opening CAN interface '%s'", config->can_iface);
-            ret = csp_can_socketcan_open_and_add_interface(
-                config->can_iface,  /* CAN device name (can0, vcan0, etc.) */
-                config->can_iface,  /* CSP interface name */
-                0,                  /* Bitrate (0 = don't change) */
-                true,               /* Promisc mode */
-                &csp_active_iface
-            );
-            if (ret != CSP_ERR_NONE) {
-                LOGF_ERROR("CSP: Failed to initialize CAN interface '%s': %d",
-                           config->can_iface, ret);
-                return UD3TN_FAIL;
-            }
-            LOGF_INFO("CSP: CAN interface '%s' initialized",
-                      config->can_iface);
-#else
-            LOG_ERROR("CSP: CAN interface not supported (libcsp not built with CAN driver)");
-            LOG_ERROR("CSP: Rebuild libcsp with --enable-can-socketcan to enable CAN support");
-            return UD3TN_FAIL;
-#endif
-            break;
+  config->rx_running = false;
 
-        case CSP_IFACE_LOOPBACK:
-            csp_active_iface = NULL;  /* Will use default loopback */
-            LOG_INFO("CSP: Using loopback interface");
-            break;
-        }
+  LOGF_INFO("CSP: Initialized with local address %u, port %u", local_addr,
+            csp_port);
 
-        /* Set default route via active interface */
-        if (csp_active_iface != NULL) {
-            csp_rtable_set(CSP_DEFAULT_ROUTE, 0, csp_active_iface, CSP_NODE_MAC);
-        }
-
-        /* Start the CSP router task */
-        ret = csp_route_start_task(500, 0);
-        if (ret != CSP_ERR_NONE) {
-            LOGF_ERROR("CSP: Failed to start router task: %d", ret);
-            return UD3TN_FAIL;
-        }
-
-        csp_initialized = true;
-        LOG_INFO("CSP: libcsp initialized successfully");
-    }
-
-    /* Initialize CSPCL */
-    cspcl_error_t err = cspcl_init(&config->cspcl, local_addr);
-    if (err != CSPCL_OK) {
-        LOGF_ERROR("CSP: Failed to initialize CSPCL: %s", cspcl_strerror(err));
-        return UD3TN_FAIL;
-    }
-
-    /* Open RX socket (bind to BP port once) */
-    err = cspcl_open_rx_socket(&config->cspcl);
-    if (err != CSPCL_OK) {
-        LOGF_ERROR("CSP: Failed to open RX socket: %s", cspcl_strerror(err));
-        cspcl_cleanup(&config->cspcl);
-        return UD3TN_FAIL;
-    }
-
-    /* Initialize hash table semaphore */
-    config->param_htab_sem = hal_semaphore_init_binary();
-    if (!config->param_htab_sem) {
-        cspcl_cleanup(&config->cspcl);
-        return UD3TN_FAIL;
-    }
-    hal_semaphore_release(config->param_htab_sem);
-
-    /* Initialize RX task semaphore */
-    config->rx_task_sem = hal_semaphore_init_binary();
-    if (!config->rx_task_sem) {
-        hal_semaphore_delete(config->param_htab_sem);
-        cspcl_cleanup(&config->cspcl);
-        return UD3TN_FAIL;
-    }
-
-    /* Initialize hash table */
-    htab_init(&config->param_htab, CSP_PARAM_HTAB_SLOT_COUNT,
-              config->param_htab_elem);
-
-    config->rx_running = false;
-
-    LOGF_INFO("CSP: Initialized with local address %u, port %u",
-              local_addr, csp_port);
-
-    return UD3TN_OK;
+  return UD3TN_OK;
 }
 
-struct cla_config *csp_cla_create(
-    const char *const options[],
-    const size_t option_count,
-    const struct bundle_agent_interface *bundle_agent_interface)
-{
-    if (option_count < 2 || option_count > 3) {
-        LOG_ERROR("CSP: Options format: <local_addr>,<csp_port>[,<iface>]");
-        LOG_ERROR("CSP: Where <iface> is one of:");
-        LOG_ERROR("CSP:   zmqhub           - ZMQHUB broker at localhost (default)");
-        LOG_ERROR("CSP:   zmqhub:<host>    - ZMQHUB broker at <host>");
-        LOG_ERROR("CSP:   can              - SocketCAN on vcan0 (default)");
-        LOG_ERROR("CSP:   can:<iface>      - SocketCAN on <iface> (e.g. can0)");
-        LOG_ERROR("CSP:   loopback         - local loopback");
-        LOG_ERROR("CSP: Examples:");
-        LOG_ERROR("CSP:   csp:1,10");
-        LOG_ERROR("CSP:   csp:1,10,zmqhub");
-        LOG_ERROR("CSP:   csp:1,10,zmqhub:192.168.1.10");
-        LOG_ERROR("CSP:   csp:1,10,can");
-        LOG_ERROR("CSP:   csp:1,10,can:can0");
-        return NULL;
-    }
+struct cla_config *
+csp_cla_create(const char *const options[], const size_t option_count,
+               const struct bundle_agent_interface *bundle_agent_interface) {
+  if (option_count < 2 || option_count > 3) {
+    LOG_ERROR("CSP: Options format: <local_addr>,<csp_port>[,<iface>]");
+    LOG_ERROR("CSP: Where <iface> is one of:");
+    LOG_ERROR("CSP:   zmqhub           - ZMQHUB broker at localhost (default)");
+    LOG_ERROR("CSP:   zmqhub:<host>    - ZMQHUB broker at <host>");
+    LOG_ERROR("CSP:   can              - SocketCAN on vcan0 (default)");
+    LOG_ERROR("CSP:   can:<iface>      - SocketCAN on <iface> (e.g. can0)");
+    LOG_ERROR("CSP:   loopback         - local loopback");
+    LOG_ERROR("CSP: Examples:");
+    LOG_ERROR("CSP:   csp:1,10");
+    LOG_ERROR("CSP:   csp:1,10,zmqhub");
+    LOG_ERROR("CSP:   csp:1,10,zmqhub:192.168.1.10");
+    LOG_ERROR("CSP:   csp:1,10,can");
+    LOG_ERROR("CSP:   csp:1,10,can:can0");
+    return NULL;
+  }
 
-    uint8_t local_addr = (uint8_t)atoi(options[0]);
-    uint8_t csp_port   = (uint8_t)atoi(options[1]);
+  uint8_t local_addr = (uint8_t)atoi(options[0]);
+  uint8_t csp_port = (uint8_t)atoi(options[1]);
 
-    struct csp_cla_config *config = malloc(sizeof(struct csp_cla_config));
-    if (!config) {
-        LOG_ERROR("CSP: Memory allocation failed");
-        return NULL;
-    }
-    memset(config, 0, sizeof(*config));
+  struct csp_cla_config *config = malloc(sizeof(struct csp_cla_config));
+  if (!config) {
+    LOG_ERROR("CSP: Memory allocation failed");
+    return NULL;
+  }
+  memset(config, 0, sizeof(*config));
 
-    config->iface_type = CSP_IFACE_ZMQHUB;
-    strncpy(config->zmqhub_addr, CSP_ZMQHUB_ADDR_DEFAULT,
-            CSP_IFACE_PARAM_MAX - 1);
-    strncpy(config->can_iface, CSP_CAN_IFACE_DEFAULT,
-            CSP_IFACE_PARAM_MAX - 1);
+  config->cspcl.iface_type = CSP_IFACE_ZMQHUB;
+  strncpy(config->cspcl.zmqhub_addr, CSP_ZMQHUB_ADDR_DEFAULT,
+          CSP_IFACE_PARAM_MAX - 1);
+  strncpy(config->cspcl.can_iface, CSP_CAN_IFACE_DEFAULT,
+          CSP_IFACE_PARAM_MAX - 1);
 
-    if (option_count >= 3) {
-        const char *iface_spec = options[2];
+  if (option_count >= 3) {
+    const char *iface_spec = options[2];
 
-        if (strncmp(iface_spec, "zmqhub:", 7) == 0) {
-            config->iface_type = CSP_IFACE_ZMQHUB;
-            strncpy(config->zmqhub_addr, iface_spec + 7,
-                    CSP_IFACE_PARAM_MAX - 1);
-            if (config->zmqhub_addr[0] == '\0') {
-                LOG_ERROR("CSP: zmqhub:<host> — host must not be empty");
-                free(config);
-                return NULL;
-            }
-        } else if (strcmp(iface_spec, "zmqhub") == 0) {
-            config->iface_type = CSP_IFACE_ZMQHUB;
-        } else if (strncmp(iface_spec, "can:", 4) == 0) {
-            config->iface_type = CSP_IFACE_CAN;
-            strncpy(config->can_iface, iface_spec + 4,
-                    CSP_IFACE_PARAM_MAX - 1);
-            if (config->can_iface[0] == '\0') {
-                LOG_ERROR("CSP: can:<iface> — interface name must not be empty");
-                free(config);
-                return NULL;
-            }
-        } else if (strcmp(iface_spec, "can") == 0) {
-            config->iface_type = CSP_IFACE_CAN;
-        } else if (strcmp(iface_spec, "loopback") == 0) {
-            config->iface_type = CSP_IFACE_LOOPBACK;
-        } else {
-            LOGF_ERROR("CSP: Unknown interface specifier '%s'", iface_spec);
-            LOG_ERROR("CSP: Valid: zmqhub, zmqhub:<host>, can, can:<iface>, loopback");
-            free(config);
-            return NULL;
-        }
-    }
-
-    if (csp_cla_init(config, local_addr, csp_port,
-                     bundle_agent_interface) != UD3TN_OK) {
+    if (strncmp(iface_spec, "zmqhub:", 7) == 0) {
+      config->cspcl.iface_type = CSP_IFACE_ZMQHUB;
+      strncpy(config->cspcl.zmqhub_addr, iface_spec + 7,
+              CSP_IFACE_PARAM_MAX - 1);
+      if (config->cspcl.zmqhub_addr[0] == '\0') {
+        LOG_ERROR("CSP: zmqhub:<host> — host must not be empty");
         free(config);
-        LOG_ERROR("CSP: Initialization failed");
         return NULL;
+      }
+    } else if (strcmp(iface_spec, "zmqhub") == 0) {
+      config->cspcl.iface_type = CSP_IFACE_ZMQHUB;
+    } else if (strncmp(iface_spec, "can:", 4) == 0) {
+      config->cspcl.iface_type = CSP_IFACE_CAN;
+      strncpy(config->cspcl.can_iface, iface_spec + 4, CSP_IFACE_PARAM_MAX - 1);
+      if (config->cspcl.can_iface[0] == '\0') {
+        LOG_ERROR("CSP: can:<iface> — interface name must not be empty");
+        free(config);
+        return NULL;
+      }
+    } else if (strcmp(iface_spec, "can") == 0) {
+      config->cspcl.iface_type = CSP_IFACE_CAN;
+    } else if (strcmp(iface_spec, "loopback") == 0) {
+      config->cspcl.iface_type = CSP_IFACE_LOOPBACK;
+    } else {
+      LOGF_ERROR("CSP: Unknown interface specifier '%s'", iface_spec);
+      LOG_ERROR(
+          "CSP: Valid: zmqhub, zmqhub:<host>, can, can:<iface>, loopback");
+      free(config);
+      return NULL;
     }
+  }
 
-    return &config->base;
+  if (csp_cla_init(config, local_addr, csp_port, bundle_agent_interface) !=
+      UD3TN_OK) {
+    free(config);
+    LOG_ERROR("CSP: Initialization failed");
+    return NULL;
+  }
+
+  if (cspcl_init(config->cspcl, local_addr) != CSPCL_OK) {
+    free(config);
+    LOG_ERROR("CSP: Initialization failed");
+    return NULL;
+  }
+  return &config->base;
 }
-

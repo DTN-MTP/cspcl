@@ -217,6 +217,18 @@ if(CSPCL_USE_SYSTEM_CSP)
             list(APPEND CSP_ALL_INCLUDE_DIRS "${_CSP_GENERATED_INCLUDE}")
         endif()
         list(REMOVE_DUPLICATES CSP_ALL_INCLUDE_DIRS)
+        # If libcsp was built with ZMQ support, we need to link against it too
+        find_library(ZMQ_LIBRARY zmq)
+        if(ZMQ_LIBRARY)
+            list(APPEND CSP_LIBRARIES "${ZMQ_LIBRARY}")
+            message(STATUS "Found libzmq: ${ZMQ_LIBRARY}")
+        endif()
+        # If libcsp was built with SocketCAN support, we need libsocketcan too
+        find_library(SOCKETCAN_LIBRARY socketcan)
+        if(SOCKETCAN_LIBRARY)
+            list(APPEND CSP_LIBRARIES "${SOCKETCAN_LIBRARY}")
+            message(STATUS "Found libsocketcan: ${SOCKETCAN_LIBRARY}")
+        endif()
     else()
         if(NOT CSP_INCLUDE_DIRS)
             message(FATAL_ERROR
