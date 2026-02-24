@@ -772,13 +772,6 @@ csp_cla_init(struct csp_cla_config *config, uint8_t local_addr,
     return UD3TN_FAIL;
 
   config->base.vtable = &csp_vtable;
-  config->local_addr = local_addr;
-  config->csp_port = csp_port;
-
-  config->cspcl.active_iface = NULL;
-  config->cspcl.initialized = false;
-  config->cspcl.can_iface = "";
-  config->cspcl.can_iface = "";
 
   /* Initialize hash table semaphore */
   config->param_htab_sem = hal_semaphore_init_binary();
@@ -828,15 +821,14 @@ csp_cla_create(const char *const options[], const size_t option_count,
     return NULL;
   }
 
-  uint8_t local_addr = (uint8_t)atoi(options[0]);
-  uint8_t csp_port = (uint8_t)atoi(options[1]);
-
   struct csp_cla_config *config = malloc(sizeof(struct csp_cla_config));
   if (!config) {
     LOG_ERROR("CSP: Memory allocation failed");
     return NULL;
   }
   memset(config, 0, sizeof(*config));
+  config->cspcl.local_addr = (uint8_t)atoi(options[0]);
+  config->cspcl.csp_port = (uint8_t)atoi(options[1]);
 
   config->cspcl.iface_type = CSP_IFACE_ZMQHUB;
   strncpy(config->cspcl.zmqhub_addr, CSP_ZMQHUB_ADDR_DEFAULT,
@@ -879,16 +871,62 @@ csp_cla_create(const char *const options[], const size_t option_count,
     }
   }
 
-  if (csp_cla_init(config, local_addr, csp_port, bundle_agent_interface) !=
-      UD3TN_OK) {
+  LOGF_DEBUG("CSP: Creating CLA with local_addr=%u, csp_port=%u",
+             config->cspcl.local_addr, config->cspcl.csp_port);
+  switch (config->cspcl.iface_type) {
+  case CSP_IFACE_ZMQHUB:
+    LOGF_DEBUG("CSP:   iface=zmqhub, host='%s'", config->cspcl.zmqhub_addr);
+    break;
+  case CSP_IFACE_CAN:
+    LOGF_DEBUG("CSP:   iface=can, iface='%s'", config->cspcl.can_iface);
+    break;
+  case CSP_IFACE_LOOPBACK:
+    LOG_DEBUG("CSP:   iface=loopback");
+    break;
+  }
+
+  if (csp_cla_init(config, config->cspcl.local_addr, config->cspcl.csp_port,
+                   bundle_agent_interface) != UD3TN_OK) {
     free(config);
     LOG_ERROR("CSP: Initialization failed");
     return NULL;
   }
 
-  if (cspcl_init(config->cspcl, local_addr) != CSPCL_OK) {
+  cspcl_error_t ret = cspcl_init(&config->cspcl, config->cspcl.local_addr);
+  if (ret != CSPCL_OK) {
     free(config);
-    LOG_ERROR("CSP: Initialization failed");
+    switch (ret) {
+    case CSPCL_ERR_INVALID_PARAM:
+      LOG_ERROR("CSP: Initialization failed: invalid parameter");
+      break;
+    case CSPCL_ERR_NO_MEMORY:
+      LOG_ERROR("CSP: Initialization failed: memory allocation failed");
+      break;
+    case CSPCL_ERR_CSP_STACK_INIT:
+      LOG_ERROR("CSP: Initialization failed: csp_init() failed");
+      break;
+    case CSPCL_ERR_CSP_ZMQHUB_INIT:
+      LOGF_ERROR("CSP: Initialization failed: ZMQ hub interface init failed "
+                 "(host: '%s')",
+                 config->cspcl.zmqhub_addr);
+      break;
+    case CSPCL_ERR_CSP_CAN_INIT:
+      LOGF_ERROR(
+          "CSP: Initialization failed: CAN interface init failed (iface: '%s')",
+          config->cspcl.can_iface);
+      break;
+    case CSPCL_ERR_CSP_CAN_NOT_SUPPORTED:
+      LOGF_ERROR("CSP: Initialization failed: CAN support not compiled in "
+                 "(iface: '%s')",
+                 config->cspcl.can_iface);
+      break;
+    case CSPCL_ERR_CSP_ROUTER:
+      LOG_ERROR("CSP: Initialization failed: CSP router task start failed");
+      break;
+    default:
+      LOGF_ERROR("CSP: Initialization failed (error %d)", ret);
+      break;
+    }
     return NULL;
   }
   return &config->base;
