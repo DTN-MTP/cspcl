@@ -128,7 +128,8 @@ void cspcl_cleanup(cspcl_t *cspcl) {
 /*===========================================================================*/
 
 cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle,
-                                size_t len, uint8_t dest_addr) {
+                                size_t len, uint8_t dest_addr,
+                                uint8_t dest_port) {
   if (cspcl == NULL || bundle == NULL || len == 0) {
     return CSPCL_ERR_INVALID_PARAM;
   }
@@ -142,7 +143,7 @@ cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle,
   }
 
   /* Open connection to destination */
-  csp_conn_t *conn = csp_connect(CSP_PRIO_NORM, dest_addr, CSPCL_PORT_BP,
+  csp_conn_t *conn = csp_connect(CSP_PRIO_NORM, dest_addr, dest_port,
                                  CSPCL_CSP_TIMEOUT_MS, CSP_O_NONE);
   if (conn == NULL) {
     return CSPCL_ERR_CONNECTION;
@@ -187,7 +188,7 @@ cspcl_error_t cspcl_open_rx_socket(cspcl_t *cspcl) {
   }
 
   /* Bind to BP port */
-  int bind_result = csp_bind(sock, CSPCL_PORT_BP);
+  int bind_result = csp_bind(sock, cspcl->csp_port);
   if (bind_result != CSP_ERR_NONE) {
     csp_close(sock);
     return CSPCL_ERR_CSP_RECV;
@@ -217,7 +218,8 @@ void cspcl_close_rx_socket(cspcl_t *cspcl) {
 }
 
 cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len,
-                                uint8_t *src_addr, uint32_t timeout_ms) {
+                                uint8_t *src_addr, uint8_t *src_port,
+                                uint32_t timeout_ms) {
   if (cspcl == NULL || bundle == NULL || len == NULL) {
     return CSPCL_ERR_INVALID_PARAM;
   }
@@ -244,6 +246,7 @@ cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len,
 
   /* Get source address from connection */
   uint8_t pkt_src_addr = csp_conn_src(conn);
+  uint8_t pkt_src_port = csp_conn_sport(conn);
 
   /* Use CSP's SFP to receive the bundle with automatic reassembly */
   void *data = NULL;
@@ -280,6 +283,9 @@ cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len,
 
   if (src_addr != NULL) {
     *src_addr = pkt_src_addr;
+  }
+  if (src_port != NULL) {
+    *src_port = pkt_src_port;
   }
 
   /* Free SFP-allocated memory */

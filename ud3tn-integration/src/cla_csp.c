@@ -121,6 +121,8 @@ struct csp_link {
   /* Destination CSP address for this link */
   uint8_t dest_addr;
 
+  uint8_t dest_port;
+
   /* TX buffer for accumulating bundle data before sending */
   uint8_t *tx_buffer;
   size_t tx_buffer_len;
@@ -143,6 +145,7 @@ struct csp_contact_parameters {
 
   char *cla_addr;
   uint8_t dest_addr;
+  uint8_t dest_port;
 
   bool in_contact;
   bool is_outgoing;
@@ -217,12 +220,37 @@ static uint8_t parse_csp_addr(const char *cla_addr) {
 }
 
 /**
- * @brief Create CLA address string from CSP address
+ * @brief Parse CSP port from CLA address string
+ *
+ * Expects format: "csp:<addr>,<port>" or falls back to CSP_DEFAULT_BP_PORT
+ *
+ * @param cla_addr  Full CLA address (e.g., "csp:2,10")
+ * @return CSP port
  */
-static char *create_cla_addr(uint8_t csp_addr) {
+static uint8_t parse_csp_port(const char *cla_addr) {
+  if (!cla_addr)
+    return CSP_DEFAULT_BP_PORT;
+
+  const char *addr_str = cla_addr;
+  if (strncmp(addr_str, "csp:", 4) == 0)
+    addr_str += 4;
+
+  const char *comma = strchr(addr_str, ',');
+  if (!comma)
+    return CSP_DEFAULT_BP_PORT;
+
+  int port = atoi(comma + 1);
+  if (port < 0 || port > 31)
+    return CSP_DEFAULT_BP_PORT;
+
+  return (uint8_t)port;
+}
+
+
+static char *create_cla_addr(uint8_t csp_addr, uint8_t csp_port) {
   char *addr = malloc(16);
   if (addr) {
-    snprintf(addr, 16, "csp:%u", csp_addr);
+    snprintf(addr, 16, "csp:%u,%u", csp_addr, csp_port);
   }
   return addr;
 }
@@ -233,7 +261,7 @@ static char *create_cla_addr(uint8_t csp_addr) {
 
 static enum ud3tn_result csp_link_init(struct csp_link *link,
                                        struct csp_cla_config *config,
-                                       uint8_t dest_addr,
+                                       uint8_t dest_addr, uint8_t dest_port,
                                        const char *cla_addr) {
   /* Initialize base link */
   if (cla_link_init(&link->base, &config->base, cla_addr, true, true) !=
@@ -242,6 +270,7 @@ static enum ud3tn_result csp_link_init(struct csp_link *link,
   }
 
   link->dest_addr = dest_addr;
+  link->dest_port = dest_port;
 
   /* Allocate TX buffer */
   link->tx_buffer = malloc(CSP_TX_BUFFER_SIZE);
@@ -294,8 +323,8 @@ static void csp_link_management_task(void *p) {
   LOGF_INFO("CSP: Starting link management for csp:%u", param->dest_addr);
 
   /* Initialize the link */
-  if (csp_link_init(&param->link, config, param->dest_addr, param->cla_addr) !=
-      UD3TN_OK) {
+  if (csp_link_init(&param->link, config, param->dest_addr, param->dest_port,
+                    param->cla_addr) != UD3TN_OK) {
     LOG_ERROR("CSP: Failed to initialize link");
     goto cleanup;
   }
@@ -330,7 +359,7 @@ cleanup:
 
 static struct csp_contact_parameters *
 create_contact_params(struct csp_cla_config *config, uint8_t dest_addr,
-                      bool is_outgoing) {
+                      uint8_t dest_port, bool is_outgoing) {
   struct csp_contact_parameters *param = malloc(sizeof(*param));
   if (!param) {
     LOG_ERROR("CSP: Failed to allocate contact parameters");
@@ -340,7 +369,8 @@ create_contact_params(struct csp_cla_config *config, uint8_t dest_addr,
   memset(param, 0, sizeof(*param));
   param->config = config;
   param->dest_addr = dest_addr;
-  param->cla_addr = create_cla_addr(dest_addr);
+  param->dest_port = dest_port;
+  param->cla_addr = create_cla_addr(dest_addr, dest_port);
   param->in_contact = true;
   param->is_outgoing = is_outgoing;
 
@@ -360,9 +390,9 @@ create_contact_params(struct csp_cla_config *config, uint8_t dest_addr,
 }
 
 static void launch_connection_management(struct csp_cla_config *config,
-                                         uint8_t dest_addr) {
+                                         uint8_t dest_addr, uint8_t dest_port) {
   struct csp_contact_parameters *param =
-      create_contact_params(config, dest_addr, true);
+      create_contact_params(config, dest_addr, dest_port, true);
 
   if (!param)
     return;
@@ -399,16 +429,17 @@ static void csp_rx_task(void *p) {
   uint8_t bundle_buffer[CSP_RX_BUFFER_SIZE];
   size_t bundle_len;
   uint8_t src_addr;
+  uint8_t src_port;
 
   LOG_INFO("CSP: RX task started");
 
   while (config->rx_running) {
     bundle_len = sizeof(bundle_buffer);
-
     /* Receive bundle via CSPCL */
+
     cspcl_error_t err =
         cspcl_recv_bundle(&config->cspcl, bundle_buffer, &bundle_len, &src_addr,
-                          1000 /* 1 second timeout */
+                          &src_port, 1000 /* 1 second timeout */
         );
 
     if (err == CSPCL_ERR_TIMEOUT)
@@ -419,10 +450,11 @@ static void csp_rx_task(void *p) {
       continue;
     }
 
-    LOGF_DEBUG("CSP: Received %zu bytes from csp:%u", bundle_len, src_addr);
+    LOGF_DEBUG("CSP: Received %zu bytes from csp:%u,%u", bundle_len, src_addr,
+               src_port);
 
     /* Look up or create link for this source */
-    char *cla_addr = create_cla_addr(src_addr);
+    char *cla_addr = create_cla_addr(src_addr, src_port);
     if (!cla_addr)
       continue;
 
@@ -432,7 +464,7 @@ static void csp_rx_task(void *p) {
 
     if (!param) {
       /* Create opportunistic link */
-      launch_connection_management(config, src_addr);
+      launch_connection_management(config, src_addr, src_port);
       param = htab_get(&config->param_htab, cla_addr);
     }
     hal_semaphore_release(config->param_htab_sem);
@@ -499,7 +531,7 @@ static struct cla_tx_queue csp_cla_get_tx_queue(struct cla_config *config,
   };
 
   uint8_t dest_addr = parse_csp_addr(cla_addr);
-  if (dest_addr == 0 && strcmp(cla_addr, "csp:0") != 0) {
+  if (dest_addr == 0 && strncmp(cla_addr, "csp:0,", 6) != 0) {
     LOGF_WARN("CSP: Invalid CLA address: %s", cla_addr);
     return result;
   }
@@ -528,11 +560,12 @@ csp_cla_start_scheduled_contact(struct cla_config *config, const char *eid,
   struct csp_cla_config *const csp_config = (struct csp_cla_config *)config;
 
   uint8_t dest_addr = parse_csp_addr(cla_addr);
-  if (dest_addr == 0 && strcmp(cla_addr, "csp:0") != 0) {
+  if (dest_addr == 0 && strncmp(cla_addr, "csp:0,", 6) != 0) {
     LOGF_WARN("CSP: Invalid CLA address for contact: %s", cla_addr);
     return CLA_LINK_UPDATE_FAILED;
   }
 
+  uint8_t dest_port = parse_csp_port(cla_addr);
   LOGF_INFO("CSP: Starting scheduled contact to csp:%u", dest_addr);
 
   hal_semaphore_take_blocking(csp_config->param_htab_sem);
@@ -550,7 +583,7 @@ csp_cla_start_scheduled_contact(struct cla_config *config, const char *eid,
   }
 
   /* Create new link */
-  launch_connection_management(csp_config, dest_addr);
+  launch_connection_management(csp_config, dest_addr, dest_port);
 
   hal_semaphore_release(csp_config->param_htab_sem);
 
@@ -622,7 +655,8 @@ enum ud3tn_result csp_cla_end_packet(struct cla_link *link) {
   /* Send bundle via CSPCL */
   cspcl_error_t err =
       cspcl_send_bundle(&config->cspcl, csp_link->tx_buffer,
-                        csp_link->tx_buffer_len, csp_link->dest_addr);
+                        csp_link->tx_buffer_len, csp_link->dest_addr,
+                        csp_link->dest_port);
 
   /* Reset TX buffer */
   csp_link->tx_buffer_len = 0;
@@ -892,7 +926,7 @@ csp_cla_create(const char *const options[], const size_t option_count,
     return NULL;
   }
 
-  cspcl_error_t ret = cspcl_init(&config->cspcl, config->cspcl.local_addr);
+  cspcl_error_t ret = cspcl_init(&config->cspcl);
   if (ret != CSPCL_OK) {
     free(config);
     switch (ret) {

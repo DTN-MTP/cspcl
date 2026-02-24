@@ -158,7 +158,8 @@ void cspcl_cleanup(cspcl_t *cspcl);
  * @return CSPCL_OK on success, error code otherwise
  */
 cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle,
-                                size_t len, uint8_t dest_addr);
+                                size_t len, uint8_t dest_addr,
+                                uint8_t dest_port);
 
 /**
  * @brief Receive a BP7 bundle from CSP
@@ -176,7 +177,8 @@ cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle,
  * @return CSPCL_OK on success, error code otherwise
  */
 cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len,
-                                uint8_t *src_addr, uint32_t timeout_ms);
+                                uint8_t *src_addr, uint8_t *src_port,
+                                uint32_t timeout_ms);
 
 /**
  * @brief Open and bind server socket for incoming connections
