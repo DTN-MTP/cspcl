@@ -14,8 +14,8 @@
  *   Example: csp:1,10
  *
  * CLA Address format:
- *   csp:<dest_addr>
- *   Example: csp:2
+ *   csp:<dest_addr>,<port>
+ *   Example: csp:2,10
  *
  * @version 1.0
  */
