@@ -131,7 +131,7 @@ typedef struct {
  * @param local_addr Local CSP address for this node
  * @return CSPCL_OK on success, error code otherwise
  */
-cspcl_error_t cspcl_init(cspcl_t *cspcl, uint8_t local_addr);
+cspcl_error_t cspcl_init(cspcl_t *cspcl);
 
 /**
  * @brief Cleanup and free CSPCL resources

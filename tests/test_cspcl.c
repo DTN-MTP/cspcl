@@ -42,7 +42,7 @@ static int test_init_cleanup(void)
     cspcl_error_t err;
 
     /* Test init with valid parameters */
-    err = cspcl_init(&cspcl, 1);
+    err = cspcl_init(&cspcl);
     ASSERT_EQ(err, CSPCL_OK);
     ASSERT_TRUE(cspcl.initialized);
     ASSERT_EQ(cspcl.local_addr, 1);
@@ -60,7 +60,7 @@ static int test_init_null_param(void)
     cspcl_error_t err;
 
     /* Test init with NULL parameter */
-    err = cspcl_init(NULL, 1);
+    err = cspcl_init(NULL);
     ASSERT_EQ(err, CSPCL_ERR_INVALID_PARAM);
 
     TEST_PASS();
@@ -220,7 +220,7 @@ static int test_send_bundle_invalid_params(void)
     uint8_t bundle[] = {0x01, 0x02, 0x03};
     cspcl_error_t err;
 
-    cspcl_init(&cspcl, 1);
+    cspcl_init(&cspcl);
 
     /* Test NULL cspcl */
     err = cspcl_send_bundle(NULL, bundle, sizeof(bundle), 2);
@@ -246,7 +246,7 @@ static int test_send_bundle_too_large(void)
     uint8_t bundle[100];
     cspcl_error_t err;
 
-    cspcl_init(&cspcl, 1);
+    cspcl_init(&cspcl);
 
     /* Test bundle exceeding max size */
     err = cspcl_send_bundle(&cspcl, bundle, CSPCL_MAX_BUNDLE_SIZE + 1, 2);
@@ -264,7 +264,7 @@ static int test_send_small_bundle(void)
     uint8_t bundle[] = "Hello Bundle Protocol!";
     cspcl_error_t err;
 
-    cspcl_init(&cspcl, 1);
+    cspcl_init(&cspcl);
 
     /* Send small bundle (no fragmentation needed) */
     err = cspcl_send_bundle(&cspcl, bundle, sizeof(bundle), 2);
@@ -291,7 +291,7 @@ static int test_send_large_bundle(void)
         bundle[i] = (uint8_t)(i & 0xFF);
     }
 
-    cspcl_init(&cspcl, 1);
+    cspcl_init(&cspcl);
 
     /* Send large bundle (fragmentation needed) */
     err = cspcl_send_bundle(&cspcl, bundle, bundle_size, 2);

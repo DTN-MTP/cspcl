@@ -29,7 +29,7 @@
 /* Initialization Functions                                                   */
 /*===========================================================================*/
 
-cspcl_error_t cspcl_init(cspcl_t *cspcl, uint8_t local_addr) {
+cspcl_error_t cspcl_init(cspcl_t *cspcl) {
   if (cspcl == NULL) {
     return CSPCL_ERR_INVALID_PARAM;
   }
@@ -39,7 +39,7 @@ cspcl_error_t cspcl_init(cspcl_t *cspcl, uint8_t local_addr) {
     /* Configure CSP */
     csp_conf_t csp_conf;
     csp_conf_get_defaults(&csp_conf);
-    csp_conf.address = local_addr;
+    csp_conf.address = cspcl->local_addr;
     csp_conf.hostname = "ud3tn";
     csp_conf.model = "csp-cla";
     csp_conf.revision = "1.0";
@@ -60,7 +60,7 @@ cspcl_error_t cspcl_init(cspcl_t *cspcl, uint8_t local_addr) {
     /* Initialize the selected interface */
     switch (cspcl->iface_type) {
     case CSP_IFACE_ZMQHUB:
-      ret = csp_zmqhub_init(local_addr, cspcl->zmqhub_addr, 0,
+      ret = csp_zmqhub_init(cspcl->local_addr, cspcl->zmqhub_addr, 0,
                             &cspcl->active_iface);
       if (ret != CSP_ERR_NONE) {
         return CSPCL_ERR_CSP_ZMQHUB_INIT;
@@ -99,7 +99,6 @@ cspcl_error_t cspcl_init(cspcl_t *cspcl, uint8_t local_addr) {
       return CSPCL_ERR_CSP_ROUTER;
     }
 
-    cspcl->local_addr = local_addr;
     cspcl->initialized = true;
   }
 
