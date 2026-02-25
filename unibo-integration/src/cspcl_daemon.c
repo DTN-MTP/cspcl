@@ -67,12 +67,6 @@
 
 #define DEFAULT_CSP_CLA_ID 2001
 
-enum csp_iface_type
-{
-    CSP_IFACE_ZMQHUB,
-    CSP_IFACE_CAN,
-    CSP_IFACE_LOOPBACK
-};
 
 struct csp_peer
 {
@@ -99,8 +93,6 @@ struct csp_cla_config
     struct csp_peer peers[CSP_MAX_LINKS];
 };
 
-static bool csp_initialized = false;
-static csp_iface_t *csp_active_iface = NULL;
 static enum csp_iface_type g_iface_type = CSP_IFACE_ZMQHUB;
 #ifdef CSPCLA_STANDALONE_MAIN
 static volatile sig_atomic_t g_shutdown_requested = 0;
@@ -606,7 +598,7 @@ static bool on_outbound_pdu(uint64_t link_id, ConstUniboBPCLAOutboundPDU pdu, vo
 
     log_payload_preview("tx", buffer, (size_t)len);
 
-    cspcl_error_t cerr = cspcl_send_bundle(&cfg->cspcl, buffer, (size_t)len, peer->csp_addr);
+    cspcl_error_t cerr = cspcl_send_bundle(&cfg->cspcl, buffer, (size_t)len, peer->csp_addr, cfg->csp_port);
     free(buffer);
 
     if (cerr == CSPCL_OK)
@@ -751,12 +743,14 @@ static void *csp_rx_task(void *arg)
     {
         size_t bundle_len = sizeof(bundle_buffer);
         uint8_t src_addr = 0;
+        uint8_t src_port = 0;
 
         cspcl_error_t err = cspcl_recv_bundle(
             &cfg->cspcl,
             bundle_buffer,
             &bundle_len,
             &src_addr,
+            &src_port,
             1000);
 
         if (err == CSPCL_ERR_TIMEOUT)
@@ -836,81 +830,6 @@ static void *csp_rx_task(void *arg)
 /* Init / cleanup                                                             */
 /* ------------------------------------------------------------------------- */
 
-static int csp_runtime_init(uint8_t local_addr)
-{
-    if (csp_initialized)
-    {
-        log_info("csp runtime already initialized");
-        return 0;
-    }
-
-    log_info("initializing csp runtime local_addr=%u iface=%d", local_addr, (int)g_iface_type);
-
-    csp_conf_t csp_conf;
-    csp_conf_get_defaults(&csp_conf);
-
-    csp_conf.address = local_addr;
-    csp_conf.hostname = "unibo";
-    csp_conf.model = "csp-cla";
-    csp_conf.revision = "1.0";
-
-    int ret = csp_init(&csp_conf);
-    if (ret != CSP_ERR_NONE)
-    {
-        log_info("csp_init failed ret=%d", ret);
-        return -1;
-    }
-
-    switch (g_iface_type)
-    {
-    case CSP_IFACE_ZMQHUB:
-        ret = csp_zmqhub_init(local_addr, CSP_ZMQHUB_ADDR, 0, &csp_active_iface);
-        if (ret != CSP_ERR_NONE)
-        {
-            log_info("csp_zmqhub_init failed ret=%d", ret);
-            return -1;
-        }
-        break;
-
-    case CSP_IFACE_CAN:
-#ifdef CSP_USE_CAN
-        ret = csp_can_socketcan_open_and_add_interface(
-            CSP_CAN_IFACE,
-            CSP_CAN_IFACE,
-            0,
-            true,
-            &csp_active_iface);
-        if (ret != CSP_ERR_NONE)
-        {
-            log_info("csp_can_socketcan_open_and_add_interface failed ret=%d", ret);
-            return -1;
-        }
-#else
-        log_info("CAN requested but CSP_USE_CAN not enabled");
-        return -1;
-#endif
-        break;
-
-    case CSP_IFACE_LOOPBACK:
-        csp_active_iface = NULL;
-        break;
-    }
-
-    if (csp_active_iface != NULL)
-        csp_rtable_set(CSP_DEFAULT_ROUTE, 0, csp_active_iface, CSP_NODE_MAC);
-
-    ret = csp_route_start_task(500, 0);
-    if (ret != CSP_ERR_NONE)
-    {
-        log_info("csp_route_start_task failed ret=%d", ret);
-        return -1;
-    }
-
-    csp_initialized = true;
-    log_info("csp runtime initialized");
-    return 0;
-}
-
 static int csp_cla_init(
     struct csp_cla_config *cfg,
     uint8_t local_addr,
@@ -932,22 +851,16 @@ static int csp_cla_init(
         return -1;
     }
 
-    if (csp_runtime_init(local_addr) != 0)
-    {
-        log_info("csp_runtime_init failed");
-        return -1;
-    }
+    /* Populate cspcl struct before calling cspcl_init */
+    cfg->cspcl.local_addr = local_addr;
+    cfg->cspcl.csp_port = csp_port;
+    cfg->cspcl.iface_type = g_iface_type;
+    strncpy(cfg->cspcl.zmqhub_addr, CSP_ZMQHUB_ADDR, CSP_IFACE_PARAM_MAX - 1);
+    strncpy(cfg->cspcl.can_iface, CSP_CAN_IFACE, CSP_IFACE_PARAM_MAX - 1);
 
-    if (cspcl_init(&cfg->cspcl, local_addr) != CSPCL_OK)
+    if (cspcl_init(&cfg->cspcl) != CSPCL_OK)
     {
         log_info("cspcl_init failed");
-        return -1;
-    }
-
-    if (cspcl_open_rx_socket(&cfg->cspcl) != CSPCL_OK)
-    {
-        log_info("cspcl_open_rx_socket failed");
-        cspcl_cleanup(&cfg->cspcl);
         return -1;
     }
 
