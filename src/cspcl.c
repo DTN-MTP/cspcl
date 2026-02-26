@@ -29,7 +29,8 @@
 /* Internal Pool Helpers                                                     */
 /*===========================================================================*/
 
-static int cspcl_pool_lock(cspcl_conn_pool_t *pool) {
+static int cspcl_pool_lock(cspcl_conn_pool_t *pool)
+{
 #ifndef FREERTOS
   return pthread_mutex_lock(&pool->lock);
 #else
@@ -38,7 +39,8 @@ static int cspcl_pool_lock(cspcl_conn_pool_t *pool) {
 #endif
 }
 
-static int cspcl_pool_unlock(cspcl_conn_pool_t *pool) {
+static int cspcl_pool_unlock(cspcl_conn_pool_t *pool)
+{
 #ifndef FREERTOS
   return pthread_mutex_unlock(&pool->lock);
 #else
@@ -49,32 +51,40 @@ static int cspcl_pool_unlock(cspcl_conn_pool_t *pool) {
 
 static csp_conn_t *cspcl_pool_get_or_create_locked(cspcl_conn_pool_t *pool,
                                                    uint8_t dest_addr,
-                                                   uint8_t dest_port) {
+                                                   uint8_t dest_port)
+{
   size_t free_slot = CSPCL_CONN_POOL_SIZE;
 
-  for (size_t i = 0; i < CSPCL_CONN_POOL_SIZE; i++) {
-    if (!pool->entries[i].used) {
-      if (free_slot == CSPCL_CONN_POOL_SIZE) {
+  for (size_t i = 0; i < CSPCL_CONN_POOL_SIZE; i++)
+  {
+    if (!pool->entries[i].used)
+    {
+      if (free_slot == CSPCL_CONN_POOL_SIZE)
+      {
         free_slot = i;
       }
       continue;
     }
 
     if (pool->entries[i].dest_addr == dest_addr &&
-        pool->entries[i].dest_port == dest_port && pool->entries[i].conn != NULL) {
+        pool->entries[i].dest_port == dest_port && pool->entries[i].conn != NULL)
+    {
       return pool->entries[i].conn;
     }
   }
 
   csp_conn_t *conn = csp_connect(CSP_PRIO_NORM, dest_addr, dest_port,
                                  CSPCL_CSP_TIMEOUT_MS, CSP_O_NONE);
-  if (conn == NULL) {
+  if (conn == NULL)
+  {
     return NULL;
   }
 
-  if (free_slot == CSPCL_CONN_POOL_SIZE) {
+  if (free_slot == CSPCL_CONN_POOL_SIZE)
+  {
     free_slot = 0;
-    if (pool->entries[free_slot].conn != NULL) {
+    if (pool->entries[free_slot].conn != NULL)
+    {
       csp_close(pool->entries[free_slot].conn);
     }
   }
@@ -89,15 +99,20 @@ static csp_conn_t *cspcl_pool_get_or_create_locked(cspcl_conn_pool_t *pool,
 
 static void cspcl_pool_invalidate_locked(cspcl_conn_pool_t *pool,
                                          uint8_t dest_addr,
-                                         uint8_t dest_port) {
-  for (size_t i = 0; i < CSPCL_CONN_POOL_SIZE; i++) {
-    if (!pool->entries[i].used) {
+                                         uint8_t dest_port)
+{
+  for (size_t i = 0; i < CSPCL_CONN_POOL_SIZE; i++)
+  {
+    if (!pool->entries[i].used)
+    {
       continue;
     }
 
     if (pool->entries[i].dest_addr == dest_addr &&
-        pool->entries[i].dest_port == dest_port) {
-      if (pool->entries[i].conn != NULL) {
+        pool->entries[i].dest_port == dest_port)
+    {
+      if (pool->entries[i].conn != NULL)
+      {
         csp_close(pool->entries[i].conn);
       }
       pool->entries[i].conn = NULL;
@@ -107,16 +122,44 @@ static void cspcl_pool_invalidate_locked(cspcl_conn_pool_t *pool,
   }
 }
 
+static void cspcl_release_conn_pool(cspcl_t *cspcl)
+{
+  if (cspcl == NULL || cspcl->conn_pool == NULL)
+  {
+    return;
+  }
+
+  cspcl_conn_pool_cleanup(cspcl->conn_pool);
+  free(cspcl->conn_pool);
+  cspcl->conn_pool = NULL;
+}
+
 /*===========================================================================*/
 /* Initialization Functions                                                   */
 /*===========================================================================*/
 
-cspcl_error_t cspcl_init(cspcl_t *cspcl) {
-  if (cspcl == NULL) {
+cspcl_error_t cspcl_init(cspcl_t *cspcl)
+{
+  if (cspcl == NULL)
+  {
     return CSPCL_ERR_INVALID_PARAM;
   }
 
-  if (!cspcl->initialized) {
+  if (!cspcl->initialized)
+  {
+    cspcl->conn_pool = malloc(sizeof(*cspcl->conn_pool));
+    if (cspcl->conn_pool == NULL)
+    {
+      return CSPCL_ERR_NO_MEMORY;
+    }
+
+    cspcl_error_t pool_err = cspcl_conn_pool_init(cspcl->conn_pool);
+    if (pool_err != CSPCL_OK)
+    {
+      free(cspcl->conn_pool);
+      cspcl->conn_pool = NULL;
+      return pool_err;
+    }
 
     /* Configure CSP */
     csp_conf_t csp_conf;
@@ -135,16 +178,21 @@ cspcl_error_t cspcl_init(cspcl_t *cspcl) {
 
     int ret = csp_init(&csp_conf);
     /* Initialize the CSP stack */
-    if (ret != CSP_ERR_NONE) {
+    if (ret != CSP_ERR_NONE)
+    {
+      cspcl_release_conn_pool(cspcl);
       return CSPCL_ERR_CSP_STACK_INIT;
     }
 
     /* Initialize the selected interface */
-    switch (cspcl->iface_type) {
+    switch (cspcl->iface_type)
+    {
     case CSP_IFACE_ZMQHUB:
       ret = csp_zmqhub_init(cspcl->local_addr, cspcl->zmqhub_addr, 0,
                             &cspcl->active_iface);
-      if (ret != CSP_ERR_NONE) {
+      if (ret != CSP_ERR_NONE)
+      {
+        cspcl_release_conn_pool(cspcl);
         return CSPCL_ERR_CSP_ZMQHUB_INIT;
       }
       break;
@@ -157,10 +205,13 @@ cspcl_error_t cspcl_init(cspcl_t *cspcl) {
           0,                /* Bitrate (0 = don't change) */
           true,             /* Promisc mode */
           &cspcl->active_iface);
-      if (ret != CSP_ERR_NONE) {
+      if (ret != CSP_ERR_NONE)
+      {
+        cspcl_release_conn_pool(cspcl);
         return CSPCL_ERR_CSP_CAN_INIT;
       }
 #else
+      cspcl_release_conn_pool(cspcl);
       return CSPCL_ERR_CSP_CAN_NOT_SUPPORTED;
 #endif
       break;
@@ -171,13 +222,16 @@ cspcl_error_t cspcl_init(cspcl_t *cspcl) {
     }
 
     /* Set default route via active interface */
-    if (cspcl->active_iface != NULL) {
+    if (cspcl->active_iface != NULL)
+    {
       csp_rtable_set(CSP_DEFAULT_ROUTE, 0, cspcl->active_iface, CSP_NODE_MAC);
     }
 
     /* Start the CSP router task */
     ret = csp_route_start_task(500, 0);
-    if (ret != CSP_ERR_NONE) {
+    if (ret != CSP_ERR_NONE)
+    {
+      cspcl_release_conn_pool(cspcl);
       return CSPCL_ERR_CSP_ROUTER;
     }
 
@@ -186,7 +240,8 @@ cspcl_error_t cspcl_init(cspcl_t *cspcl) {
 
   /* Open RX socket (bind to BP port once) */
   cspcl_error_t err = cspcl_open_rx_socket(cspcl);
-  if (err != CSPCL_OK) {
+  if (err != CSPCL_OK)
+  {
     cspcl_cleanup(cspcl);
     return err;
   }
@@ -194,26 +249,32 @@ cspcl_error_t cspcl_init(cspcl_t *cspcl) {
   return CSPCL_OK;
 }
 
-void cspcl_cleanup(cspcl_t *cspcl) {
-  if (cspcl == NULL) {
+void cspcl_cleanup(cspcl_t *cspcl)
+{
+  if (cspcl == NULL)
+  {
     return;
   }
 
   /* Close server socket */
   cspcl_close_rx_socket(cspcl);
+  cspcl_release_conn_pool(cspcl);
 
   cspcl->initialized = false;
 }
 
-cspcl_error_t cspcl_conn_pool_init(cspcl_conn_pool_t *pool) {
-  if (pool == NULL) {
+cspcl_error_t cspcl_conn_pool_init(cspcl_conn_pool_t *pool)
+{
+  if (pool == NULL)
+  {
     return CSPCL_ERR_INVALID_PARAM;
   }
 
   memset(pool, 0, sizeof(*pool));
 
 #ifndef FREERTOS
-  if (pthread_mutex_init(&pool->lock, NULL) != 0) {
+  if (pthread_mutex_init(&pool->lock, NULL) != 0)
+  {
     return CSPCL_ERR_NO_MEMORY;
   }
 #endif
@@ -222,17 +283,22 @@ cspcl_error_t cspcl_conn_pool_init(cspcl_conn_pool_t *pool) {
   return CSPCL_OK;
 }
 
-void cspcl_conn_pool_cleanup(cspcl_conn_pool_t *pool) {
-  if (pool == NULL || !pool->initialized) {
+void cspcl_conn_pool_cleanup(cspcl_conn_pool_t *pool)
+{
+  if (pool == NULL || !pool->initialized)
+  {
     return;
   }
 
-  if (cspcl_pool_lock(pool) != 0) {
+  if (cspcl_pool_lock(pool) != 0)
+  {
     return;
   }
 
-  for (size_t i = 0; i < CSPCL_CONN_POOL_SIZE; i++) {
-    if (pool->entries[i].used && pool->entries[i].conn != NULL) {
+  for (size_t i = 0; i < CSPCL_CONN_POOL_SIZE; i++)
+  {
+    if (pool->entries[i].used && pool->entries[i].conn != NULL)
+    {
       csp_close(pool->entries[i].conn);
     }
     pool->entries[i].used = false;
@@ -251,33 +317,40 @@ void cspcl_conn_pool_cleanup(cspcl_conn_pool_t *pool) {
 /* Bundle Transmission Functions                                              */
 /*===========================================================================*/
 
-cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, cspcl_conn_pool_t *pool,
-                                const uint8_t *bundle,
+cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle,
                                 size_t len, uint8_t dest_addr,
-                                uint8_t dest_port) {
-  if (cspcl == NULL || pool == NULL || bundle == NULL || len == 0) {
+                                uint8_t dest_port)
+{
+  if (cspcl == NULL || bundle == NULL || len == 0)
+  {
     return CSPCL_ERR_INVALID_PARAM;
   }
 
-  if (!cspcl->initialized) {
+  if (!cspcl->initialized)
+  {
     return CSPCL_ERR_NOT_INITIALIZED;
   }
 
-  if (len > CSPCL_MAX_BUNDLE_SIZE) {
+  if (len > CSPCL_MAX_BUNDLE_SIZE)
+  {
     return CSPCL_ERR_BUNDLE_TOO_LARGE;
   }
 
-  if (!pool->initialized) {
-    return CSPCL_ERR_INVALID_PARAM;
+  cspcl_conn_pool_t *pool = cspcl->conn_pool;
+  if (pool == NULL || !pool->initialized)
+  {
+    return CSPCL_ERR_NOT_INITIALIZED;
   }
 
-  if (cspcl_pool_lock(pool) != 0) {
+  if (cspcl_pool_lock(pool) != 0)
+  {
     return CSPCL_ERR_CONNECTION;
   }
 
   /* Reuse pooled connection or open a new one on miss */
   csp_conn_t *conn = cspcl_pool_get_or_create_locked(pool, dest_addr, dest_port);
-  if (conn == NULL) {
+  if (conn == NULL)
+  {
     (void)cspcl_pool_unlock(pool);
     return CSPCL_ERR_CONNECTION;
   }
@@ -286,13 +359,15 @@ cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, cspcl_conn_pool_t *pool,
   int ret = csp_sfp_send(conn, bundle, (unsigned int)len, CSPCL_MAX_PAYLOAD,
                          CSPCL_CSP_TIMEOUT_MS);
 
-  if (ret != CSP_ERR_NONE) {
+  if (ret != CSP_ERR_NONE)
+  {
     cspcl_pool_invalidate_locked(pool, dest_addr, dest_port);
   }
 
   (void)cspcl_pool_unlock(pool);
 
-  if (ret != CSP_ERR_NONE) {
+  if (ret != CSP_ERR_NONE)
+  {
     return CSPCL_ERR_CSP_SEND;
   }
 
@@ -308,31 +383,37 @@ cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, cspcl_conn_pool_t *pool,
  * @param cspcl CSPCL instance
  * @return CSPCL_OK on success, error code otherwise
  */
-cspcl_error_t cspcl_open_rx_socket(cspcl_t *cspcl) {
-  if (cspcl == NULL || !cspcl->initialized) {
+cspcl_error_t cspcl_open_rx_socket(cspcl_t *cspcl)
+{
+  if (cspcl == NULL || !cspcl->initialized)
+  {
     return CSPCL_ERR_INVALID_PARAM;
   }
 
-  if (cspcl->rx_socket != NULL) {
+  if (cspcl->rx_socket != NULL)
+  {
     return CSPCL_OK; /* Already open */
   }
 
   /* Create socket for connection-oriented mode */
   csp_socket_t *sock = csp_socket(CSP_SO_NONE);
-  if (sock == NULL) {
+  if (sock == NULL)
+  {
     return CSPCL_ERR_NO_MEMORY;
   }
 
   /* Bind to BP port */
   int bind_result = csp_bind(sock, cspcl->csp_port);
-  if (bind_result != CSP_ERR_NONE) {
+  if (bind_result != CSP_ERR_NONE)
+  {
     csp_close(sock);
     return CSPCL_ERR_CSP_RECV;
   }
 
   /* Set socket to listen mode */
   int listen_result = csp_listen(sock, 5);
-  if (listen_result != CSP_ERR_NONE) {
+  if (listen_result != CSP_ERR_NONE)
+  {
     csp_close(sock);
     return CSPCL_ERR_CSP_RECV;
   }
@@ -346,8 +427,10 @@ cspcl_error_t cspcl_open_rx_socket(cspcl_t *cspcl) {
  *
  * @param cspcl CSPCL instance
  */
-void cspcl_close_rx_socket(cspcl_t *cspcl) {
-  if (cspcl != NULL && cspcl->rx_socket != NULL) {
+void cspcl_close_rx_socket(cspcl_t *cspcl)
+{
+  if (cspcl != NULL && cspcl->rx_socket != NULL)
+  {
     csp_close((csp_socket_t *)cspcl->rx_socket);
     cspcl->rx_socket = NULL;
   }
@@ -355,12 +438,15 @@ void cspcl_close_rx_socket(cspcl_t *cspcl) {
 
 cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len,
                                 uint8_t *src_addr, uint8_t *src_port,
-                                uint32_t timeout_ms) {
-  if (cspcl == NULL || bundle == NULL || len == NULL) {
+                                uint32_t timeout_ms)
+{
+  if (cspcl == NULL || bundle == NULL || len == NULL)
+  {
     return CSPCL_ERR_INVALID_PARAM;
   }
 
-  if (!cspcl->initialized) {
+  if (!cspcl->initialized)
+  {
     return CSPCL_ERR_NOT_INITIALIZED;
   }
 
@@ -368,7 +454,8 @@ cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len,
   *len = 0;
 
   /* RX socket should already be open from initialization */
-  if (cspcl->rx_socket == NULL) {
+  if (cspcl->rx_socket == NULL)
+  {
     return CSPCL_ERR_NOT_INITIALIZED;
   }
 
@@ -376,7 +463,8 @@ cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len,
   csp_conn_t *conn =
       csp_accept((csp_socket_t *)cspcl->rx_socket,
                  timeout_ms > 0 ? timeout_ms : CSPCL_CSP_TIMEOUT_MS);
-  if (conn == NULL) {
+  if (conn == NULL)
+  {
     return CSPCL_ERR_TIMEOUT;
   }
 
@@ -393,22 +481,27 @@ cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len,
   /* Close connection */
   csp_close(conn);
 
-  if (ret != CSP_ERR_NONE) {
-    if (data != NULL) {
+  if (ret != CSP_ERR_NONE)
+  {
+    if (data != NULL)
+    {
       csp_free(data);
     }
-    if (ret == CSP_ERR_TIMEDOUT) {
+    if (ret == CSP_ERR_TIMEDOUT)
+    {
       return CSPCL_ERR_TIMEOUT;
     }
     return CSPCL_ERR_SFP;
   }
 
-  if (data == NULL || datasize <= 0) {
+  if (data == NULL || datasize <= 0)
+  {
     return CSPCL_ERR_CSP_RECV;
   }
 
   /* Check if bundle fits in output buffer */
-  if ((size_t)datasize > max_len) {
+  if ((size_t)datasize > max_len)
+  {
     csp_free(data);
     return CSPCL_ERR_NO_MEMORY;
   }
@@ -417,10 +510,12 @@ cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len,
   memcpy(bundle, data, (size_t)datasize);
   *len = (size_t)datasize;
 
-  if (src_addr != NULL) {
+  if (src_addr != NULL)
+  {
     *src_addr = pkt_src_addr;
   }
-  if (src_port != NULL) {
+  if (src_port != NULL)
+  {
     *src_port = pkt_src_port;
   }
 
@@ -434,26 +529,34 @@ cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len,
 /* Address Translation Functions                                              */
 /*===========================================================================*/
 
-uint8_t cspcl_endpoint_to_addr(const char *endpoint_id) {
-  if (endpoint_id == NULL) {
+uint8_t cspcl_endpoint_to_addr(const char *endpoint_id)
+{
+  if (endpoint_id == NULL)
+  {
     return 0;
   }
 
   /* Parse IPN scheme: ipn:X.Y → CSP address X */
-  if (strncmp(endpoint_id, "ipn:", 4) == 0) {
+  if (strncmp(endpoint_id, "ipn:", 4) == 0)
+  {
     int node = 0;
-    if (sscanf(endpoint_id + 4, "%d", &node) == 1) {
-      if (node >= 0 && node <= 255) {
+    if (sscanf(endpoint_id + 4, "%d", &node) == 1)
+    {
+      if (node >= 0 && node <= 255)
+      {
         return (uint8_t)node;
       }
     }
   }
 
   /* Parse DTN scheme: dtn://nodeX/... → CSP address X */
-  if (strncmp(endpoint_id, "dtn://node", 10) == 0) {
+  if (strncmp(endpoint_id, "dtn://node", 10) == 0)
+  {
     int node = 0;
-    if (sscanf(endpoint_id + 10, "%d", &node) == 1) {
-      if (node >= 0 && node <= 255) {
+    if (sscanf(endpoint_id + 10, "%d", &node) == 1)
+    {
+      if (node >= 0 && node <= 255)
+      {
         return (uint8_t)node;
       }
     }
@@ -462,14 +565,17 @@ uint8_t cspcl_endpoint_to_addr(const char *endpoint_id) {
   return 0;
 }
 
-cspcl_error_t cspcl_addr_to_endpoint(uint8_t addr, char *endpoint, size_t len) {
-  if (endpoint == NULL || len < 12) {
+cspcl_error_t cspcl_addr_to_endpoint(uint8_t addr, char *endpoint, size_t len)
+{
+  if (endpoint == NULL || len < 12)
+  {
     return CSPCL_ERR_INVALID_PARAM;
   }
 
   /* Generate IPN endpoint: CSP address X → ipn:X.0 */
   int written = snprintf(endpoint, len, "ipn:%d.0", addr);
-  if (written < 0 || (size_t)written >= len) {
+  if (written < 0 || (size_t)written >= len)
+  {
     return CSPCL_ERR_INVALID_PARAM;
   }
 
@@ -480,8 +586,10 @@ cspcl_error_t cspcl_addr_to_endpoint(uint8_t addr, char *endpoint, size_t len) {
 /* Utility Functions                                                          */
 /*===========================================================================*/
 
-const char *cspcl_strerror(cspcl_error_t err) {
-  switch (err) {
+const char *cspcl_strerror(cspcl_error_t err)
+{
+  switch (err)
+  {
   case CSPCL_OK:
     return "Success";
   case CSPCL_ERR_INVALID_PARAM:

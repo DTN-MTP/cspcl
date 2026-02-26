@@ -222,18 +222,13 @@ static int test_error_strings(void)
 static int test_send_bundle_not_initialized(void)
 {
     cspcl_t cspcl = {0};
-    cspcl_conn_pool_t pool;
     uint8_t bundle[] = {0x01, 0x02, 0x03};
     cspcl_error_t err;
 
-    cspcl_conn_pool_init(&pool);
-
     /* Test send without init */
-    err = cspcl_send_bundle(&cspcl, &pool, bundle, sizeof(bundle), 2,
+    err = cspcl_send_bundle(&cspcl, bundle, sizeof(bundle), 2,
                             CSPCL_PORT_BP);
     ASSERT_EQ(err, CSPCL_ERR_NOT_INITIALIZED);
-
-    cspcl_conn_pool_cleanup(&pool);
 
     TEST_PASS();
     return 0;
@@ -242,32 +237,24 @@ static int test_send_bundle_not_initialized(void)
 static int test_send_bundle_invalid_params(void)
 {
     cspcl_t cspcl;
-    cspcl_conn_pool_t pool;
     uint8_t bundle[] = {0x01, 0x02, 0x03};
     cspcl_error_t err;
 
     cspcl_init(&cspcl);
-    cspcl_conn_pool_init(&pool);
 
     /* Test NULL cspcl */
-    err = cspcl_send_bundle(NULL, &pool, bundle, sizeof(bundle), 2,
-                            CSPCL_PORT_BP);
-    ASSERT_EQ(err, CSPCL_ERR_INVALID_PARAM);
-
-    /* Test NULL pool */
-    err = cspcl_send_bundle(&cspcl, NULL, bundle, sizeof(bundle), 2,
+    err = cspcl_send_bundle(NULL, bundle, sizeof(bundle), 2,
                             CSPCL_PORT_BP);
     ASSERT_EQ(err, CSPCL_ERR_INVALID_PARAM);
 
     /* Test NULL bundle */
-    err = cspcl_send_bundle(&cspcl, &pool, NULL, 10, 2, CSPCL_PORT_BP);
+    err = cspcl_send_bundle(&cspcl, NULL, 10, 2, CSPCL_PORT_BP);
     ASSERT_EQ(err, CSPCL_ERR_INVALID_PARAM);
 
     /* Test zero length */
-    err = cspcl_send_bundle(&cspcl, &pool, bundle, 0, 2, CSPCL_PORT_BP);
+    err = cspcl_send_bundle(&cspcl, bundle, 0, 2, CSPCL_PORT_BP);
     ASSERT_EQ(err, CSPCL_ERR_INVALID_PARAM);
 
-    cspcl_conn_pool_cleanup(&pool);
     cspcl_cleanup(&cspcl);
 
     TEST_PASS();
@@ -277,19 +264,16 @@ static int test_send_bundle_invalid_params(void)
 static int test_send_bundle_too_large(void)
 {
     cspcl_t cspcl;
-    cspcl_conn_pool_t pool;
     uint8_t bundle[100];
     cspcl_error_t err;
 
     cspcl_init(&cspcl);
-    cspcl_conn_pool_init(&pool);
 
     /* Test bundle exceeding max size */
-    err = cspcl_send_bundle(&cspcl, &pool, bundle,
+    err = cspcl_send_bundle(&cspcl, bundle,
                             CSPCL_MAX_BUNDLE_SIZE + 1, 2, CSPCL_PORT_BP);
     ASSERT_EQ(err, CSPCL_ERR_BUNDLE_TOO_LARGE);
 
-    cspcl_conn_pool_cleanup(&pool);
     cspcl_cleanup(&cspcl);
 
     TEST_PASS();
@@ -299,19 +283,16 @@ static int test_send_bundle_too_large(void)
 static int test_send_small_bundle(void)
 {
     cspcl_t cspcl;
-    cspcl_conn_pool_t pool;
     uint8_t bundle[] = "Hello Bundle Protocol!";
     cspcl_error_t err;
 
     cspcl_init(&cspcl);
-    cspcl_conn_pool_init(&pool);
 
     /* Send small bundle (no fragmentation needed) */
-    err = cspcl_send_bundle(&cspcl, &pool, bundle, sizeof(bundle), 2,
+    err = cspcl_send_bundle(&cspcl, bundle, sizeof(bundle), 2,
                             CSPCL_PORT_BP);
     ASSERT_EQ(err, CSPCL_OK);
 
-    cspcl_conn_pool_cleanup(&pool);
     cspcl_cleanup(&cspcl);
 
     TEST_PASS();
@@ -321,7 +302,6 @@ static int test_send_small_bundle(void)
 static int test_send_large_bundle(void)
 {
     cspcl_t cspcl;
-    cspcl_conn_pool_t pool;
     cspcl_error_t err;
 
     /* Create bundle larger than MTU to test fragmentation */
@@ -336,15 +316,13 @@ static int test_send_large_bundle(void)
     }
 
     cspcl_init(&cspcl);
-    cspcl_conn_pool_init(&pool);
 
     /* Send large bundle (fragmentation needed) */
-    err = cspcl_send_bundle(&cspcl, &pool, bundle, bundle_size, 2,
+    err = cspcl_send_bundle(&cspcl, bundle, bundle_size, 2,
                             CSPCL_PORT_BP);
     ASSERT_EQ(err, CSPCL_OK);
 
     free(bundle);
-    cspcl_conn_pool_cleanup(&pool);
     cspcl_cleanup(&cspcl);
 
     TEST_PASS();

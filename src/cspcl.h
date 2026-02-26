@@ -98,6 +98,8 @@ extern "C"
     CSP_IFACE_LOOPBACK /* Loopback - for local testing */
   };
 
+  typedef struct cspcl_conn_pool cspcl_conn_pool_t;
+
   /*===========================================================================*/
   /* CSPCL Instance                                                             */
   /*===========================================================================*/
@@ -127,6 +129,9 @@ extern "C"
     /* CAN: SocketCAN interface name (e.g. "vcan0" or "can0") */
     char can_iface[CSP_IFACE_PARAM_MAX];
 
+    /* Internal outbound CSP connection pool */
+    cspcl_conn_pool_t *conn_pool;
+
     csp_iface_t *active_iface;
   } cspcl_t;
 
@@ -142,7 +147,7 @@ extern "C"
     csp_conn_t *conn;
   } cspcl_conn_pool_entry_t;
 
-  typedef struct
+  typedef struct cspcl_conn_pool
   {
     bool initialized;
 #ifndef FREERTOS
@@ -200,15 +205,13 @@ extern "C"
    * them over a reliable CSP connection to the specified destination.
    *
    * @param cspcl     Pointer to CSPCL instance
-   * @param pool      Pointer to connection pool instance
    * @param bundle    Serialized bundle data
    * @param len       Bundle length in bytes
    * @param dest_addr Destination CSP address
    * @param dest_port Destination CSP port
    * @return CSPCL_OK on success, error code otherwise
    */
-  cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, cspcl_conn_pool_t *pool,
-                                  const uint8_t *bundle,
+  cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle,
                                   size_t len, uint8_t dest_addr,
                                   uint8_t dest_port);
 
