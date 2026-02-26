@@ -127,4 +127,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 - [C API Reference]({% link api/c.md %}) — complete function documentation
 - [uD3TN Integration]({% link integration/ud3tn.md %}) — use CSPCL with uD3TN
+- [Unibo Integration]({% link integration/unibo.md %}) — use CSPCL with Unibo-BP
 - [Architecture]({% link architecture.md %}) — understand how SFP fragmentation works
