@@ -1,0 +1,5 @@
+[env]
+# Path to the libcsp repository root.
+# Used by cspcl-sys/build.rs to locate libcsp headers (include/ and build/include/).
+# Adjust this path to match your local checkout of libcsp.
+CSP_REPO_DIR = "/your/path/to/libcsp"
