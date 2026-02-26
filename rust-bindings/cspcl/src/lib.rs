@@ -10,6 +10,7 @@ mod address;
 mod bundle;
 mod error;
 mod instance;
+mod interface;
 
 // Public exports
 pub use address::{addr_to_endpoint, endpoint_to_addr};
