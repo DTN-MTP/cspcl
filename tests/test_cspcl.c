@@ -15,22 +15,42 @@
 /*===========================================================================*/
 
 #define TEST_PASS() printf("  [PASS] %s\n", __func__)
-#define TEST_FAIL(msg) do { printf("  [FAIL] %s: %s\n", __func__, msg); return 1; } while(0)
+#define TEST_FAIL(msg)                              \
+    do                                              \
+    {                                               \
+        printf("  [FAIL] %s: %s\n", __func__, msg); \
+        return 1;                                   \
+    } while (0)
 
-#define ASSERT_EQ(a, b) do { if ((a) != (b)) { \
-    printf("  [FAIL] %s: %s != %s at line %d\n", __func__, #a, #b, __LINE__); \
-    return 1; \
-}} while(0)
+#define ASSERT_EQ(a, b)                                                               \
+    do                                                                                \
+    {                                                                                 \
+        if ((a) != (b))                                                               \
+        {                                                                             \
+            printf("  [FAIL] %s: %s != %s at line %d\n", __func__, #a, #b, __LINE__); \
+            return 1;                                                                 \
+        }                                                                             \
+    } while (0)
 
-#define ASSERT_NE(a, b) do { if ((a) == (b)) { \
-    printf("  [FAIL] %s: %s == %s at line %d\n", __func__, #a, #b, __LINE__); \
-    return 1; \
-}} while(0)
+#define ASSERT_NE(a, b)                                                               \
+    do                                                                                \
+    {                                                                                 \
+        if ((a) == (b))                                                               \
+        {                                                                             \
+            printf("  [FAIL] %s: %s == %s at line %d\n", __func__, #a, #b, __LINE__); \
+            return 1;                                                                 \
+        }                                                                             \
+    } while (0)
 
-#define ASSERT_TRUE(cond) do { if (!(cond)) { \
-    printf("  [FAIL] %s: %s is false at line %d\n", __func__, #cond, __LINE__); \
-    return 1; \
-}} while(0)
+#define ASSERT_TRUE(cond)                                                               \
+    do                                                                                  \
+    {                                                                                   \
+        if (!(cond))                                                                    \
+        {                                                                               \
+            printf("  [FAIL] %s: %s is false at line %d\n", __func__, #cond, __LINE__); \
+            return 1;                                                                   \
+        }                                                                               \
+    } while (0)
 
 /*===========================================================================*/
 /* Test: Initialization                                                       */
@@ -66,7 +86,6 @@ static int test_init_null_param(void)
     TEST_PASS();
     return 0;
 }
-
 
 /*===========================================================================*/
 /* Test: Address Translation                                                  */
@@ -203,12 +222,18 @@ static int test_error_strings(void)
 static int test_send_bundle_not_initialized(void)
 {
     cspcl_t cspcl = {0};
+    cspcl_conn_pool_t pool;
     uint8_t bundle[] = {0x01, 0x02, 0x03};
     cspcl_error_t err;
 
+    cspcl_conn_pool_init(&pool);
+
     /* Test send without init */
-    err = cspcl_send_bundle(&cspcl, bundle, sizeof(bundle), 2);
+    err = cspcl_send_bundle(&cspcl, &pool, bundle, sizeof(bundle), 2,
+                            CSPCL_PORT_BP);
     ASSERT_EQ(err, CSPCL_ERR_NOT_INITIALIZED);
+
+    cspcl_conn_pool_cleanup(&pool);
 
     TEST_PASS();
     return 0;
@@ -217,23 +242,32 @@ static int test_send_bundle_not_initialized(void)
 static int test_send_bundle_invalid_params(void)
 {
     cspcl_t cspcl;
+    cspcl_conn_pool_t pool;
     uint8_t bundle[] = {0x01, 0x02, 0x03};
     cspcl_error_t err;
 
     cspcl_init(&cspcl);
+    cspcl_conn_pool_init(&pool);
 
     /* Test NULL cspcl */
-    err = cspcl_send_bundle(NULL, bundle, sizeof(bundle), 2);
+    err = cspcl_send_bundle(NULL, &pool, bundle, sizeof(bundle), 2,
+                            CSPCL_PORT_BP);
+    ASSERT_EQ(err, CSPCL_ERR_INVALID_PARAM);
+
+    /* Test NULL pool */
+    err = cspcl_send_bundle(&cspcl, NULL, bundle, sizeof(bundle), 2,
+                            CSPCL_PORT_BP);
     ASSERT_EQ(err, CSPCL_ERR_INVALID_PARAM);
 
     /* Test NULL bundle */
-    err = cspcl_send_bundle(&cspcl, NULL, 10, 2);
+    err = cspcl_send_bundle(&cspcl, &pool, NULL, 10, 2, CSPCL_PORT_BP);
     ASSERT_EQ(err, CSPCL_ERR_INVALID_PARAM);
 
     /* Test zero length */
-    err = cspcl_send_bundle(&cspcl, bundle, 0, 2);
+    err = cspcl_send_bundle(&cspcl, &pool, bundle, 0, 2, CSPCL_PORT_BP);
     ASSERT_EQ(err, CSPCL_ERR_INVALID_PARAM);
 
+    cspcl_conn_pool_cleanup(&pool);
     cspcl_cleanup(&cspcl);
 
     TEST_PASS();
@@ -243,15 +277,19 @@ static int test_send_bundle_invalid_params(void)
 static int test_send_bundle_too_large(void)
 {
     cspcl_t cspcl;
+    cspcl_conn_pool_t pool;
     uint8_t bundle[100];
     cspcl_error_t err;
 
     cspcl_init(&cspcl);
+    cspcl_conn_pool_init(&pool);
 
     /* Test bundle exceeding max size */
-    err = cspcl_send_bundle(&cspcl, bundle, CSPCL_MAX_BUNDLE_SIZE + 1, 2);
+    err = cspcl_send_bundle(&cspcl, &pool, bundle,
+                            CSPCL_MAX_BUNDLE_SIZE + 1, 2, CSPCL_PORT_BP);
     ASSERT_EQ(err, CSPCL_ERR_BUNDLE_TOO_LARGE);
 
+    cspcl_conn_pool_cleanup(&pool);
     cspcl_cleanup(&cspcl);
 
     TEST_PASS();
@@ -261,15 +299,19 @@ static int test_send_bundle_too_large(void)
 static int test_send_small_bundle(void)
 {
     cspcl_t cspcl;
+    cspcl_conn_pool_t pool;
     uint8_t bundle[] = "Hello Bundle Protocol!";
     cspcl_error_t err;
 
     cspcl_init(&cspcl);
+    cspcl_conn_pool_init(&pool);
 
     /* Send small bundle (no fragmentation needed) */
-    err = cspcl_send_bundle(&cspcl, bundle, sizeof(bundle), 2);
+    err = cspcl_send_bundle(&cspcl, &pool, bundle, sizeof(bundle), 2,
+                            CSPCL_PORT_BP);
     ASSERT_EQ(err, CSPCL_OK);
 
+    cspcl_conn_pool_cleanup(&pool);
     cspcl_cleanup(&cspcl);
 
     TEST_PASS();
@@ -279,6 +321,7 @@ static int test_send_small_bundle(void)
 static int test_send_large_bundle(void)
 {
     cspcl_t cspcl;
+    cspcl_conn_pool_t pool;
     cspcl_error_t err;
 
     /* Create bundle larger than MTU to test fragmentation */
@@ -287,17 +330,21 @@ static int test_send_large_bundle(void)
     ASSERT_NE(bundle, NULL);
 
     /* Fill with pattern */
-    for (size_t i = 0; i < bundle_size; i++) {
+    for (size_t i = 0; i < bundle_size; i++)
+    {
         bundle[i] = (uint8_t)(i & 0xFF);
     }
 
     cspcl_init(&cspcl);
+    cspcl_conn_pool_init(&pool);
 
     /* Send large bundle (fragmentation needed) */
-    err = cspcl_send_bundle(&cspcl, bundle, bundle_size, 2);
+    err = cspcl_send_bundle(&cspcl, &pool, bundle, bundle_size, 2,
+                            CSPCL_PORT_BP);
     ASSERT_EQ(err, CSPCL_OK);
 
     free(bundle);
+    cspcl_conn_pool_cleanup(&pool);
     cspcl_cleanup(&cspcl);
 
     TEST_PASS();
@@ -329,7 +376,8 @@ static int test_constants(void)
 
 typedef int (*test_func_t)(void);
 
-typedef struct {
+typedef struct
+{
     const char *name;
     test_func_t func;
 } test_case_t;
@@ -338,7 +386,6 @@ static test_case_t tests[] = {
     /* Initialization tests */
     {"test_init_cleanup", test_init_cleanup},
     {"test_init_null_param", test_init_null_param},
-
 
     /* Address translation tests */
     {"test_endpoint_to_addr_ipn", test_endpoint_to_addr_ipn},
@@ -360,8 +407,7 @@ static test_case_t tests[] = {
     /* Constant tests */
     {"test_constants", test_constants},
 
-    {NULL, NULL}
-};
+    {NULL, NULL}};
 
 int main(int argc, char *argv[])
 {
@@ -374,13 +420,17 @@ int main(int argc, char *argv[])
     int passed = 0;
     int failed = 0;
 
-    for (int i = 0; tests[i].name != NULL; i++) {
+    for (int i = 0; tests[i].name != NULL; i++)
+    {
         total++;
         printf("Running: %s\n", tests[i].name);
 
-        if (tests[i].func() == 0) {
+        if (tests[i].func() == 0)
+        {
             passed++;
-        } else {
+        }
+        else
+        {
             failed++;
         }
     }
@@ -393,4 +443,3 @@ int main(int argc, char *argv[])
 
     return failed > 0 ? 1 : 0;
 }
-

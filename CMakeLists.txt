@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.10)
 project(cspcl VERSION 1.0.0 LANGUAGES C)
 
+find_package(Threads REQUIRED)
+
 # C standard
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -281,7 +283,7 @@ if(CSPCL_USE_FREERTOS)
     target_compile_definitions(cspcl PRIVATE FREERTOS)
 else()
     target_compile_definitions(cspcl PRIVATE __linux__)
-    target_link_libraries(cspcl PRIVATE rt)
+    target_link_libraries(cspcl PRIVATE rt Threads::Threads)
 endif()
 
 # Debug settings

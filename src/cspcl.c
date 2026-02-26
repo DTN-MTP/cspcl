@@ -26,6 +26,88 @@
 #endif
 
 /*===========================================================================*/
+/* Internal Pool Helpers                                                     */
+/*===========================================================================*/
+
+static int cspcl_pool_lock(cspcl_conn_pool_t *pool) {
+#ifndef FREERTOS
+  return pthread_mutex_lock(&pool->lock);
+#else
+  (void)pool;
+  return 0;
+#endif
+}
+
+static int cspcl_pool_unlock(cspcl_conn_pool_t *pool) {
+#ifndef FREERTOS
+  return pthread_mutex_unlock(&pool->lock);
+#else
+  (void)pool;
+  return 0;
+#endif
+}
+
+static csp_conn_t *cspcl_pool_get_or_create_locked(cspcl_conn_pool_t *pool,
+                                                   uint8_t dest_addr,
+                                                   uint8_t dest_port) {
+  size_t free_slot = CSPCL_CONN_POOL_SIZE;
+
+  for (size_t i = 0; i < CSPCL_CONN_POOL_SIZE; i++) {
+    if (!pool->entries[i].used) {
+      if (free_slot == CSPCL_CONN_POOL_SIZE) {
+        free_slot = i;
+      }
+      continue;
+    }
+
+    if (pool->entries[i].dest_addr == dest_addr &&
+        pool->entries[i].dest_port == dest_port && pool->entries[i].conn != NULL) {
+      return pool->entries[i].conn;
+    }
+  }
+
+  csp_conn_t *conn = csp_connect(CSP_PRIO_NORM, dest_addr, dest_port,
+                                 CSPCL_CSP_TIMEOUT_MS, CSP_O_NONE);
+  if (conn == NULL) {
+    return NULL;
+  }
+
+  if (free_slot == CSPCL_CONN_POOL_SIZE) {
+    free_slot = 0;
+    if (pool->entries[free_slot].conn != NULL) {
+      csp_close(pool->entries[free_slot].conn);
+    }
+  }
+
+  pool->entries[free_slot].used = true;
+  pool->entries[free_slot].dest_addr = dest_addr;
+  pool->entries[free_slot].dest_port = dest_port;
+  pool->entries[free_slot].conn = conn;
+
+  return conn;
+}
+
+static void cspcl_pool_invalidate_locked(cspcl_conn_pool_t *pool,
+                                         uint8_t dest_addr,
+                                         uint8_t dest_port) {
+  for (size_t i = 0; i < CSPCL_CONN_POOL_SIZE; i++) {
+    if (!pool->entries[i].used) {
+      continue;
+    }
+
+    if (pool->entries[i].dest_addr == dest_addr &&
+        pool->entries[i].dest_port == dest_port) {
+      if (pool->entries[i].conn != NULL) {
+        csp_close(pool->entries[i].conn);
+      }
+      pool->entries[i].conn = NULL;
+      pool->entries[i].used = false;
+      return;
+    }
+  }
+}
+
+/*===========================================================================*/
 /* Initialization Functions                                                   */
 /*===========================================================================*/
 
@@ -123,14 +205,57 @@ void cspcl_cleanup(cspcl_t *cspcl) {
   cspcl->initialized = false;
 }
 
+cspcl_error_t cspcl_conn_pool_init(cspcl_conn_pool_t *pool) {
+  if (pool == NULL) {
+    return CSPCL_ERR_INVALID_PARAM;
+  }
+
+  memset(pool, 0, sizeof(*pool));
+
+#ifndef FREERTOS
+  if (pthread_mutex_init(&pool->lock, NULL) != 0) {
+    return CSPCL_ERR_NO_MEMORY;
+  }
+#endif
+
+  pool->initialized = true;
+  return CSPCL_OK;
+}
+
+void cspcl_conn_pool_cleanup(cspcl_conn_pool_t *pool) {
+  if (pool == NULL || !pool->initialized) {
+    return;
+  }
+
+  if (cspcl_pool_lock(pool) != 0) {
+    return;
+  }
+
+  for (size_t i = 0; i < CSPCL_CONN_POOL_SIZE; i++) {
+    if (pool->entries[i].used && pool->entries[i].conn != NULL) {
+      csp_close(pool->entries[i].conn);
+    }
+    pool->entries[i].used = false;
+    pool->entries[i].conn = NULL;
+  }
+
+  (void)cspcl_pool_unlock(pool);
+
+#ifndef FREERTOS
+  pthread_mutex_destroy(&pool->lock);
+#endif
+  pool->initialized = false;
+}
+
 /*===========================================================================*/
 /* Bundle Transmission Functions                                              */
 /*===========================================================================*/
 
-cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle,
+cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, cspcl_conn_pool_t *pool,
+                                const uint8_t *bundle,
                                 size_t len, uint8_t dest_addr,
                                 uint8_t dest_port) {
-  if (cspcl == NULL || bundle == NULL || len == 0) {
+  if (cspcl == NULL || pool == NULL || bundle == NULL || len == 0) {
     return CSPCL_ERR_INVALID_PARAM;
   }
 
@@ -142,10 +267,18 @@ cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle,
     return CSPCL_ERR_BUNDLE_TOO_LARGE;
   }
 
-  /* Open connection to destination */
-  csp_conn_t *conn = csp_connect(CSP_PRIO_NORM, dest_addr, dest_port,
-                                 CSPCL_CSP_TIMEOUT_MS, CSP_O_NONE);
+  if (!pool->initialized) {
+    return CSPCL_ERR_INVALID_PARAM;
+  }
+
+  if (cspcl_pool_lock(pool) != 0) {
+    return CSPCL_ERR_CONNECTION;
+  }
+
+  /* Reuse pooled connection or open a new one on miss */
+  csp_conn_t *conn = cspcl_pool_get_or_create_locked(pool, dest_addr, dest_port);
   if (conn == NULL) {
+    (void)cspcl_pool_unlock(pool);
     return CSPCL_ERR_CONNECTION;
   }
 
@@ -153,8 +286,11 @@ cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle,
   int ret = csp_sfp_send(conn, bundle, (unsigned int)len, CSPCL_MAX_PAYLOAD,
                          CSPCL_CSP_TIMEOUT_MS);
 
-  /* Close connection */
-  csp_close(conn);
+  if (ret != CSP_ERR_NONE) {
+    cspcl_pool_invalidate_locked(pool, dest_addr, dest_port);
+  }
+
+  (void)cspcl_pool_unlock(pool);
 
   if (ret != CSP_ERR_NONE) {
     return CSPCL_ERR_CSP_SEND;
