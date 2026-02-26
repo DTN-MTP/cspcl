@@ -1,3 +1,11 @@
+---
+layout: default
+title: Unibo Integration
+nav_order: 2
+parent: BP Integrations
+permalink: /integration/unibo/
+---
+
 # Unibo-BP Integration with CSPCL
 
 This guide explains how to integrate CSPCL (CubeSat Space Protocol Convergence Layer) with Unibo-BP to enable Bundle Protocol communication over CSP using the ZMQHUB interface.
@@ -146,13 +154,13 @@ The `unibo-bp-cspcl` daemon bridges a Unibo-BP node to CSP via ZMQHUB.
 unibo-bp-cspcl <node_id> <port> <broker_type> <broker_port> <node_workdir>
 ```
 
-| Parameter | Description | Example |
-| ----------- | ------------- | --------- |
-| `node_id` | CSP node address (0-255) | `1` |
-| `port` | CSP port for BP messages | `10` |
-| `broker_type` | Broker interface type | `zmqhub` |
-| `broker_port` | Broker connection port (ZMQ) | `2001` (for node1), `2002` (for node2) |
-| `node_workdir` | Unibo-BP working directory | `/tmp/unibo-node1` |
+| Parameter      | Description                  | Example                                |
+| -------------- | ---------------------------- | -------------------------------------- |
+| `node_id`      | CSP node address (0-255)     | `1`                                    |
+| `port`         | CSP port for BP messages     | `10`                                   |
+| `broker_type`  | Broker interface type        | `zmqhub`                               |
+| `broker_port`  | Broker connection port (ZMQ) | `2001` (for node1), `2002` (for node2) |
+| `node_workdir` | Unibo-BP working directory   | `/tmp/unibo-node1`                     |
 
 **Example usage**:
 
@@ -160,7 +168,7 @@ unibo-bp-cspcl <node_id> <port> <broker_type> <broker_port> <node_workdir>
 # Node 1 (CSP addr 1)
 ./build/unibo-bp-cspcl 1 10 zmqhub 2001 /tmp/unibo-node1
 
-# Node 2 (CSP addr 2)  
+# Node 2 (CSP addr 2)
 ./build/unibo-bp-cspcl 2 10 zmqhub 2002 /tmp/unibo-node2
 ```
 
@@ -275,13 +283,13 @@ cspcl/
 
 ## Quick Reference
 
-| Task | Command |
-| ------ | --------- |
-| Start ZMQ broker | `python3 $CSPCL_DIR/tools/zmqhub_broker.py -v` |
-| Start Unibo-BP node | `$UNIBO_BP_BIN/unibo-bp start --daemon --dtn-admin dtn://X.dtn/ --ipn-admin ipn:X.0` |
-| Configure DTN routes | `$UNIBO_BP_BIN/unibo-bp-admin routing static add --destination ipn:Y.Z --gateway ipn:Y.0` |
-| Start CSPCL daemon | `./build/unibo-bp-cspcl 1 10 zmqhub 2001 /tmp/unibo-node1` |
-| Send test bundle | `$UNIBO_BP_BIN/unibo-bp-send --source ipn:1.55 --destination ipn:2.55 --payload-string 'Hello'` |
-| Receive bundle | `$UNIBO_BP_BIN/unibo-bp-sink ipn:2.55` |
-| Check processes | `pgrep -fa 'unibo-bp\|cspcl\|zmqhub'` |
-| Cleanup all | `pkill -9 -f 'unibo-bp-cspcl\|unibo-bp-sink\|zmqhub_broker.py'` |
+| Task                 | Command                                                                                         |
+| -------------------- | ----------------------------------------------------------------------------------------------- |
+| Start ZMQ broker     | `python3 $CSPCL_DIR/tools/zmqhub_broker.py -v`                                                  |
+| Start Unibo-BP node  | `$UNIBO_BP_BIN/unibo-bp start --daemon --dtn-admin dtn://X.dtn/ --ipn-admin ipn:X.0`            |
+| Configure DTN routes | `$UNIBO_BP_BIN/unibo-bp-admin routing static add --destination ipn:Y.Z --gateway ipn:Y.0`       |
+| Start CSPCL daemon   | `./build/unibo-bp-cspcl 1 10 zmqhub 2001 /tmp/unibo-node1`                                      |
+| Send test bundle     | `$UNIBO_BP_BIN/unibo-bp-send --source ipn:1.55 --destination ipn:2.55 --payload-string 'Hello'` |
+| Receive bundle       | `$UNIBO_BP_BIN/unibo-bp-sink ipn:2.55`                                                          |
+| Check processes      | `pgrep -fa 'unibo-bp\|cspcl\|zmqhub'`                                                           |
+| Cleanup all          | `pkill -9 -f 'unibo-bp-cspcl\|unibo-bp-sink\|zmqhub_broker.py'`                                 |

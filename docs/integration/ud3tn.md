@@ -1,7 +1,8 @@
 ---
 layout: default
 title: uD3TN Integration
-nav_order: 4
+nav_order: 1
+parent: BP Integrations
 permalink: /integration/ud3tn/
 ---
 
@@ -39,26 +40,26 @@ aap2-send / aap2-receive
 
 ### Common
 
-| Requirement | Notes |
-| --- | --- |
-| uD3TN source | `git clone https://gitlab.com/d3tn/ud3tn.git` |
-| libcsp v1.6 | Built with the appropriate interface(s) enabled -- see below |
-| Build tools | gcc, make, cmake |
+| Requirement  | Notes                                                        |
+| ------------ | ------------------------------------------------------------ |
+| uD3TN source | `git clone https://gitlab.com/d3tn/ud3tn.git`                |
+| libcsp v1.6  | Built with the appropriate interface(s) enabled -- see below |
+| Build tools  | gcc, make, cmake                                             |
 
 ### ZMQHUB transport
 
-| Requirement | Notes |
-| --- | --- |
-| libcsp v1.6 | Built with `--enable-if-zmqhub` |
+| Requirement      | Notes                                            |
+| ---------------- | ------------------------------------------------ |
+| libcsp v1.6      | Built with `--enable-if-zmqhub`                  |
 | Python 3 + pyzmq | `pip3 install pyzmq` -- needed to run the broker |
 
 ### CAN transport
 
-| Requirement | Notes |
-| --- | --- |
-| libcsp v1.6 | Built with `--enable-can-socketcan` |
+| Requirement              | Notes                                                                 |
+| ------------------------ | --------------------------------------------------------------------- |
+| libcsp v1.6              | Built with `--enable-can-socketcan`                                   |
 | SocketCAN kernel modules | `vcan` for virtual testing, or a real CAN adapter (e.g. Peak, Kvaser) |
-| `can-utils` *(optional)* | `candump` / `cansend` for low-level debugging |
+| `can-utils` _(optional)_ | `candump` / `cansend` for low-level debugging                         |
 
 ---
 
@@ -115,14 +116,14 @@ The transport and its parameters are selected via the `--cla` argument passed to
 --cla "csp:<local_addr>,<port>[,<iface>]"
 ```
 
-| `<iface>` value | Transport | Parameter used |
-| --- | --- | --- |
-| *(omitted)* | ZMQHUB | broker at `localhost` (default) |
-| `zmqhub` | ZMQHUB | broker at `localhost` (default) |
-| `zmqhub:<host>` | ZMQHUB | broker at `<host>` (hostname or IP) |
-| `can` | SocketCAN | device `vcan0` (default) |
-| `can:<iface>` | SocketCAN | device `<iface>` (e.g. `can0`, `vcan1`) |
-| `loopback` | Loopback | built-in CSP loopback (no external process needed) |
+| `<iface>` value | Transport | Parameter used                                     |
+| --------------- | --------- | -------------------------------------------------- |
+| _(omitted)_     | ZMQHUB    | broker at `localhost` (default)                    |
+| `zmqhub`        | ZMQHUB    | broker at `localhost` (default)                    |
+| `zmqhub:<host>` | ZMQHUB    | broker at `<host>` (hostname or IP)                |
+| `can`           | SocketCAN | device `vcan0` (default)                           |
+| `can:<iface>`   | SocketCAN | device `<iface>` (e.g. `can0`, `vcan1`)            |
+| `loopback`      | Loopback  | built-in CSP loopback (no external process needed) |
 
 ### Examples
 
@@ -142,7 +143,6 @@ The transport and its parameters are selected via the `--cla` argument passed to
 # Local loopback (single-machine testing without a broker)
 --cla "csp:1,10,loopback"
 ```
-
 
 ---
 
@@ -186,7 +186,7 @@ ud3tn --node-id dtn://b.dtn/ --aap-port 4243 \
 
 ### CAN (SocketCAN)
 
-**1. Set up the virtual CAN interface** *(skip for physical CAN)*
+**1. Set up the virtual CAN interface** _(skip for physical CAN)_
 
 ```bash
 sudo modprobe vcan
