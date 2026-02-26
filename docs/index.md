@@ -12,7 +12,7 @@ CSPCL is a lightweight convergence layer that bridges **Bundle Protocol 7 (BP7)*
 **CubeSat Space Protocol (CSP)**, enabling Delay/Disruption Tolerant Networking (DTN)
 over space-grade radio links.
 
-```
+```bash
 BP7 Bundle → CSPCL → CSP SFP → Physical Layer (CAN / ZMQHUB / SocketCAN)
 ```
 
@@ -46,6 +46,7 @@ CSP's small MTU without requiring changes to either stack.
 - [C API Reference]({% link api/c.md %}) — full function and type reference
 - [Rust API Reference]({% link api/rust.md %}) — Rust crate documentation
 - [uD3TN Integration]({% link integration/ud3tn.md %}) — use CSPCL inside uD3TN
+- [Unibo Integration]({% link integration/unibo.md %}) — use CSPCL with Unibo-BP
 - [Architecture]({% link architecture.md %}) — design decisions and protocol stack
 
 ---
