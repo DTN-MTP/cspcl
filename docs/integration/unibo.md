@@ -251,36 +251,6 @@ cd /tmp/unibo-node1
 tail -f .uD3TN/unibo-bp.log
 ```
 
-## File Structure
-
-```bash
-cspcl/
-├── src/
-│   ├── cspcl.c              # CSPCL library implementation
-│   ├── cspcl.h              # CSPCL public API
-│   └── cspcl_config.h       # Configuration constants
-├── tools/
-│   └── zmqhub_broker.py     # ZMQ hub broker for testing
-├── unibo-integration/
-│   ├── README.md            # This file
-│   ├── COMMANDS.md          # Step-by-step runbook
-│   ├── src/
-│   │   ├── cspcl_daemon.c   # Unibo-BP CSPCL daemon implementation
-│   │   └── cspcl_daemon.h   # Daemon header
-│   └── build/
-│       └── unibo-bp-cspcl   # Compiled daemon executable
-└── stubs/
-    └── csp/                 # CSP stubs for standalone build
-```
-
-## References
-
-- [Unibo-BP on GitHub](https://gitlab.com/unibo-dtn/unibo-bp)
-- [CSPCL on GitHub](hhttps://github.com/DTN-MTP/cspcl)
-- [libcsp v1.6 on GitHub](https://github.com/libcsp/libcsp/tree/v1.6)
-- [Bundle Protocol 7 (RFC 9171)](https://www.rfc-editor.org/rfc/rfc9171)
-- [CubeSat Space Protocol Documentation](https://github.com/libcsp/libcsp/wiki)
-
 ## Quick Reference
 
 | Task                 | Command                                                                                         |
