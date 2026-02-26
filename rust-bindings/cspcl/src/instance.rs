@@ -1,5 +1,6 @@
 use crate::cspcl_sys;
 use crate::error::{Error, Result};
+use crate::interface::Interface;
 
 /// Safe wrapper for CSPCL instance
 pub struct Cspcl {
@@ -8,26 +9,25 @@ pub struct Cspcl {
 
 impl Cspcl {
     /// Initialize a new CSPCL instance with local CSP address
-    pub fn new(local_addr: u8) -> Result<Self> {
+    pub fn new(local_addr: u8, local_port: u8, interface: Interface) -> Result<Self> {
         let mut cspcl = cspcl_sys::cspcl_t {
-            initialized: false,
-            local_addr: 0,
-            rx_socket: std::ptr::null_mut(),
+            local_addr,
+            csp_port: local_port,
+            iface_type: interface.clone().into(),
+            ..Default::default()
+        };
+
+        match interface {
+            Interface::Zmq(interface_name) => cspcl.zmqhub_addr = interface_name.into(),
+            Interface::Can(interface_name) => cspcl.can_iface = interface_name.into(),
+            _ => {}
         };
 
         unsafe {
-            Error::from_code(cspcl_sys::cspcl_init(&mut cspcl, local_addr))?;
+            Error::from_code(cspcl_sys::cspcl_init(&mut cspcl))?;
         }
 
         Ok(Cspcl { inner: cspcl })
-    }
-
-    /// Open receive socket for listening to incoming bundles
-    pub fn open_rx_socket(&mut self) -> Result<()> {
-        unsafe {
-            Error::from_code(cspcl_sys::cspcl_open_rx_socket(&mut self.inner))?;
-        }
-        Ok(())
     }
 
     /// Close the receive socket
