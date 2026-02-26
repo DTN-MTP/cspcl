@@ -14,11 +14,7 @@ use std::ffi::CString;
 pub fn endpoint_to_addr(endpoint: &str) -> Option<u8> {
     let c_str = CString::new(endpoint).ok()?;
     let addr = unsafe { cspcl_sys::cspcl_endpoint_to_addr(c_str.as_ptr()) };
-    if addr == 0 {
-        None
-    } else {
-        Some(addr)
-    }
+    if addr == 0 { None } else { Some(addr) }
 }
 
 /// Convert CSP address to BP endpoint ID
