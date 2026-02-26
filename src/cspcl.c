@@ -124,14 +124,12 @@ static void cspcl_pool_invalidate_locked(cspcl_conn_pool_t *pool,
 
 static void cspcl_release_conn_pool(cspcl_t *cspcl)
 {
-  if (cspcl == NULL || cspcl->conn_pool == NULL)
+  if (cspcl == NULL)
   {
     return;
   }
 
-  cspcl_conn_pool_cleanup(cspcl->conn_pool);
-  free(cspcl->conn_pool);
-  cspcl->conn_pool = NULL;
+  cspcl_conn_pool_cleanup(&cspcl->conn_pool);
 }
 
 /*===========================================================================*/
@@ -147,17 +145,9 @@ cspcl_error_t cspcl_init(cspcl_t *cspcl)
 
   if (!cspcl->initialized)
   {
-    cspcl->conn_pool = malloc(sizeof(*cspcl->conn_pool));
-    if (cspcl->conn_pool == NULL)
-    {
-      return CSPCL_ERR_NO_MEMORY;
-    }
-
-    cspcl_error_t pool_err = cspcl_conn_pool_init(cspcl->conn_pool);
+    cspcl_error_t pool_err = cspcl_conn_pool_init(&cspcl->conn_pool);
     if (pool_err != CSPCL_OK)
     {
-      free(cspcl->conn_pool);
-      cspcl->conn_pool = NULL;
       return pool_err;
     }
 
@@ -336,8 +326,8 @@ cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle,
     return CSPCL_ERR_BUNDLE_TOO_LARGE;
   }
 
-  cspcl_conn_pool_t *pool = cspcl->conn_pool;
-  if (pool == NULL || !pool->initialized)
+  cspcl_conn_pool_t *pool = &cspcl->conn_pool;
+  if (!pool->initialized)
   {
     return CSPCL_ERR_NOT_INITIALIZED;
   }

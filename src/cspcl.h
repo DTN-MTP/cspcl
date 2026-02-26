@@ -98,7 +98,28 @@ extern "C"
     CSP_IFACE_LOOPBACK /* Loopback - for local testing */
   };
 
-  typedef struct cspcl_conn_pool cspcl_conn_pool_t;
+  /*===========================================================================*/
+  /* Connection Pool                                                           */
+  /*===========================================================================*/
+
+  typedef struct
+  {
+    bool used;
+    uint8_t dest_addr;
+    uint8_t dest_port;
+    csp_conn_t *conn;
+  } cspcl_conn_pool_entry_t;
+
+  typedef struct
+  {
+    bool initialized;
+#ifndef FREERTOS
+    pthread_mutex_t lock;
+#else
+  int lock;
+#endif
+    cspcl_conn_pool_entry_t entries[CSPCL_CONN_POOL_SIZE];
+  } cspcl_conn_pool_t;
 
   /*===========================================================================*/
   /* CSPCL Instance                                                             */
@@ -130,33 +151,10 @@ extern "C"
     char can_iface[CSP_IFACE_PARAM_MAX];
 
     /* Internal outbound CSP connection pool */
-    cspcl_conn_pool_t *conn_pool;
+    cspcl_conn_pool_t conn_pool;
 
     csp_iface_t *active_iface;
   } cspcl_t;
-
-  /*===========================================================================*/
-  /* Connection Pool                                                           */
-  /*===========================================================================*/
-
-  typedef struct
-  {
-    bool used;
-    uint8_t dest_addr;
-    uint8_t dest_port;
-    csp_conn_t *conn;
-  } cspcl_conn_pool_entry_t;
-
-  typedef struct cspcl_conn_pool
-  {
-    bool initialized;
-#ifndef FREERTOS
-    pthread_mutex_t lock;
-#else
-  int lock;
-#endif
-    cspcl_conn_pool_entry_t entries[CSPCL_CONN_POOL_SIZE];
-  } cspcl_conn_pool_t;
 
   /*===========================================================================*/
   /* Initialization Functions                                                   */
