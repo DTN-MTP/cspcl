@@ -29,4 +29,5 @@ ctest --verbose
 
 ## License
 
-University of Montpellier Space Center
+This project is licensed under the [MIT License](LICENSE).  
+Copyright © 2025 DTN-MTP contributors.
