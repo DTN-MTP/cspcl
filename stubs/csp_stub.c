@@ -39,6 +39,16 @@ static struct {
 } loopback_queue = {0};
 
 /*===========================================================================*/
+/* Test helpers                                                               */
+/*===========================================================================*/
+
+/**
+ * Set to non-zero to make csp_sfp_send_own_memcpy return CSP_ERR_TIMEDOUT.
+ * Reset to 0 to restore normal behaviour. Used for failure-injection tests.
+ */
+int g_csp_sfp_send_fail = 0;
+
+/*===========================================================================*/
 /* Buffer API                                                                 */
 /*===========================================================================*/
 
@@ -245,6 +255,10 @@ int csp_sfp_send_own_memcpy(csp_conn_t *conn, const void *data,
 
     if (conn == NULL || data == NULL || datasize == 0 || memcpyfcn == NULL) {
         return CSP_ERR_INVAL;
+    }
+
+    if (g_csp_sfp_send_fail) {
+        return CSP_ERR_TIMEDOUT;
     }
 
     /* For testing: store data in loopback buffer */

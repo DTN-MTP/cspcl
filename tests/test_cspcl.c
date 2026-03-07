@@ -7,8 +7,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef FREERTOS
+#include <pthread.h>
+#endif
 
 #include "cspcl.h"
+
+/* Failure injection flag exposed by csp_stub.c (stubs build only) */
+#ifdef USING_CSP_STUBS
+extern int g_csp_sfp_send_fail;
+#endif
 
 /*===========================================================================*/
 /* Test Utilities                                                             */
@@ -47,6 +55,129 @@
       return 1;                                                                \
     }                                                                          \
   } while (0)
+
+/*===========================================================================*/
+/* Test: Connection Pool                                                      */
+/*===========================================================================*/
+
+static int test_pool_init_valid(void) {
+  cspcl_conn_pool_t pool;
+  cspcl_error_t err;
+
+  err = cspcl_conn_pool_init(&pool);
+  ASSERT_EQ(err, CSPCL_OK);
+  ASSERT_TRUE(pool.initialized);
+
+  cspcl_conn_pool_cleanup(&pool);
+  ASSERT_TRUE(!pool.initialized);
+
+  TEST_PASS();
+  return 0;
+}
+
+static int test_pool_init_null(void) {
+  cspcl_error_t err = cspcl_conn_pool_init(NULL);
+  ASSERT_EQ(err, CSPCL_ERR_INVALID_PARAM);
+
+  TEST_PASS();
+  return 0;
+}
+
+static int test_pool_cleanup_empty(void) {
+  cspcl_conn_pool_t pool;
+
+  ASSERT_EQ(cspcl_conn_pool_init(&pool), CSPCL_OK);
+  cspcl_conn_pool_cleanup(&pool); /* Must not crash on empty pool */
+  ASSERT_TRUE(!pool.initialized);
+
+  TEST_PASS();
+  return 0;
+}
+
+static int test_pool_cleanup_uninitialized(void) {
+  cspcl_conn_pool_t pool = {0};
+
+  cspcl_conn_pool_cleanup(&pool); /* Must be a no-op */
+  cspcl_conn_pool_cleanup(NULL);  /* NULL must be safe */
+
+  TEST_PASS();
+  return 0;
+}
+
+static int test_pool_get_stats_empty(void) {
+  cspcl_conn_pool_t pool;
+  cspcl_conn_pool_stats_t stats;
+
+  ASSERT_EQ(cspcl_conn_pool_init(&pool), CSPCL_OK);
+
+  cspcl_conn_pool_get_stats(&pool, &stats);
+  ASSERT_EQ(stats.hits, (uint32_t)0);
+  ASSERT_EQ(stats.misses, (uint32_t)0);
+  ASSERT_EQ(stats.evictions, (uint32_t)0);
+  ASSERT_EQ(stats.connect_failures, (uint32_t)0);
+  ASSERT_EQ(stats.invalidations, (uint32_t)0);
+
+  cspcl_conn_pool_cleanup(&pool);
+
+  TEST_PASS();
+  return 0;
+}
+
+static int test_pool_get_stats_null(void) {
+  cspcl_conn_pool_stats_t stats;
+  cspcl_conn_pool_stats_t zeroed = {0};
+
+  /* NULL pool: stats output must remain unchanged */
+  stats = zeroed;
+  cspcl_conn_pool_get_stats(NULL, &stats);
+  ASSERT_EQ(memcmp(&stats, &zeroed, sizeof(stats)), 0);
+
+  /* NULL stats: must be a safe no-op */
+  cspcl_conn_pool_t pool;
+  ASSERT_EQ(cspcl_conn_pool_init(&pool), CSPCL_OK);
+  cspcl_conn_pool_get_stats(&pool, NULL); /* Must not crash */
+  cspcl_conn_pool_cleanup(&pool);
+
+  TEST_PASS();
+  return 0;
+}
+
+static int test_pool_double_cleanup(void) {
+  cspcl_conn_pool_t pool;
+
+  ASSERT_EQ(cspcl_conn_pool_init(&pool), CSPCL_OK);
+  cspcl_conn_pool_cleanup(&pool);
+  cspcl_conn_pool_cleanup(&pool); /* Second call must be a no-op */
+
+  TEST_PASS();
+  return 0;
+}
+
+#ifndef FREERTOS
+/* Concurrent cleanup stress: two threads call cleanup on the same pool.
+ * Only one should proceed; neither should crash or double-free. */
+static void *pool_cleanup_thread(void *arg) {
+  cspcl_conn_pool_t *pool = (cspcl_conn_pool_t *)arg;
+  cspcl_conn_pool_cleanup(pool);
+  return NULL;
+}
+
+static int test_pool_concurrent_cleanup(void) {
+  cspcl_conn_pool_t pool;
+  ASSERT_EQ(cspcl_conn_pool_init(&pool), CSPCL_OK);
+
+  pthread_t t1, t2;
+  pthread_create(&t1, NULL, pool_cleanup_thread, &pool);
+  pthread_create(&t2, NULL, pool_cleanup_thread, &pool);
+  pthread_join(t1, NULL);
+  pthread_join(t2, NULL);
+
+  ASSERT_TRUE(!pool.initialized);
+
+  TEST_PASS();
+  return 0;
+}
+#endif /* FREERTOS */
 
 /*===========================================================================*/
 /* Test: Initialization                                                       */
@@ -221,25 +352,21 @@ static int test_send_bundle_not_initialized(void) {
 }
 
 static int test_send_bundle_invalid_params(void) {
-  cspcl_t cspcl;
+  cspcl_t cspcl = {0};
   uint8_t bundle[] = {0x01, 0x02, 0x03};
   cspcl_error_t err;
 
-  cspcl_init(&cspcl);
-
-  /* Test NULL cspcl */
+  /* Test NULL cspcl — caught before initialization check */
   err = cspcl_send_bundle(NULL, bundle, sizeof(bundle), 2, CSPCL_PORT_BP);
   ASSERT_EQ(err, CSPCL_ERR_INVALID_PARAM);
 
-  /* Test NULL bundle */
+  /* Test NULL bundle — caught before initialization check */
   err = cspcl_send_bundle(&cspcl, NULL, 10, 2, CSPCL_PORT_BP);
   ASSERT_EQ(err, CSPCL_ERR_INVALID_PARAM);
 
-  /* Test zero length */
+  /* Test zero length — caught before initialization check */
   err = cspcl_send_bundle(&cspcl, bundle, 0, 2, CSPCL_PORT_BP);
   ASSERT_EQ(err, CSPCL_ERR_INVALID_PARAM);
-
-  cspcl_cleanup(&cspcl);
 
   TEST_PASS();
   return 0;
@@ -337,6 +464,18 @@ typedef struct {
 } test_case_t;
 
 static test_case_t tests[] = {
+    /* Pool unit tests (no CSP required) */
+    {"test_pool_init_valid", test_pool_init_valid},
+    {"test_pool_init_null", test_pool_init_null},
+    {"test_pool_cleanup_empty", test_pool_cleanup_empty},
+    {"test_pool_cleanup_uninitialized", test_pool_cleanup_uninitialized},
+    {"test_pool_get_stats_empty", test_pool_get_stats_empty},
+    {"test_pool_get_stats_null", test_pool_get_stats_null},
+    {"test_pool_double_cleanup", test_pool_double_cleanup},
+#ifndef FREERTOS
+    {"test_pool_concurrent_cleanup", test_pool_concurrent_cleanup},
+#endif
+
     /* Initialization tests */
     {"test_init_cleanup", test_init_cleanup},
     {"test_init_null_param", test_init_null_param},

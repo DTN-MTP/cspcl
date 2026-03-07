@@ -9,9 +9,14 @@
  */
 
 #include "cspcl.h"
+#include "cspcl_config.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifndef FREERTOS
+#include <time.h>
+#endif
 
 /* CSP library headers */
 #include <csp/arch/csp_malloc.h>
@@ -33,8 +38,7 @@ static int cspcl_pool_lock(cspcl_conn_pool_t *pool) {
 #ifndef FREERTOS
   return pthread_mutex_lock(&pool->lock);
 #else
-  (void)pool;
-  return 0;
+  return xSemaphoreTake(pool->lock, portMAX_DELAY) == pdTRUE ? 0 : -1;
 #endif
 }
 
@@ -42,14 +46,14 @@ static int cspcl_pool_unlock(cspcl_conn_pool_t *pool) {
 #ifndef FREERTOS
   return pthread_mutex_unlock(&pool->lock);
 #else
-  (void)pool;
-  return 0;
+  return xSemaphoreGive(pool->lock) == pdTRUE ? 0 : -1;
 #endif
 }
 
 static csp_conn_t *cspcl_pool_get_or_create_locked(cspcl_conn_pool_t *pool,
                                                    uint8_t dest_addr,
                                                    uint8_t dest_port) {
+  pool->tick++;
   size_t free_slot = CSPCL_CONN_POOL_SIZE;
 
   for (size_t i = 0; i < CSPCL_CONN_POOL_SIZE; i++) {
@@ -63,6 +67,26 @@ static csp_conn_t *cspcl_pool_get_or_create_locked(cspcl_conn_pool_t *pool,
     if (pool->entries[i].dest_addr == dest_addr &&
         pool->entries[i].dest_port == dest_port &&
         pool->entries[i].conn != NULL) {
+#ifndef FREERTOS
+      /* Age-based invalidation (disabled when max_conn_age_ms == 0) */
+      if (pool->max_conn_age_ms > 0) {
+        uint32_t age_s =
+            (uint32_t)(time(NULL) - pool->entries[i].connected_at);
+        if (age_s > pool->max_conn_age_ms / 1000u) {
+          csp_close(pool->entries[i].conn);
+          pool->entries[i].conn = NULL;
+          pool->entries[i].used = false;
+          pool->stats.invalidations++;
+          if (free_slot == CSPCL_CONN_POOL_SIZE) {
+            free_slot = i;
+          }
+          break; /* Fall through to create a fresh connection */
+        }
+      }
+#endif
+      /* Cache hit */
+      pool->entries[i].last_used = pool->tick;
+      pool->stats.hits++;
       return pool->entries[i].conn;
     }
   }
@@ -70,21 +94,39 @@ static csp_conn_t *cspcl_pool_get_or_create_locked(cspcl_conn_pool_t *pool,
   csp_conn_t *conn = csp_connect(CSP_PRIO_NORM, dest_addr, dest_port,
                                  CSPCL_CSP_TIMEOUT_MS, CSP_O_NONE);
   if (conn == NULL) {
+    pool->stats.connect_failures++;
     return NULL;
   }
 
+  /* LRU eviction when pool is full */
   if (free_slot == CSPCL_CONN_POOL_SIZE) {
-    free_slot = 0;
+    size_t lru = 0;
+    uint32_t oldest = pool->entries[0].last_used;
+    for (size_t i = 1; i < CSPCL_CONN_POOL_SIZE; i++) {
+      if (pool->entries[i].last_used < oldest) {
+        oldest = pool->entries[i].last_used;
+        lru = i;
+      }
+    }
+    free_slot = lru;
     if (pool->entries[free_slot].conn != NULL) {
       csp_close(pool->entries[free_slot].conn);
     }
+    pool->stats.evictions++;
+    CSPCL_LOG("pool full, evicted LRU entry (addr=%u port=%u)",
+              (unsigned)pool->entries[free_slot].dest_addr,
+              (unsigned)pool->entries[free_slot].dest_port);
   }
 
   pool->entries[free_slot].used = true;
   pool->entries[free_slot].dest_addr = dest_addr;
   pool->entries[free_slot].dest_port = dest_port;
   pool->entries[free_slot].conn = conn;
-
+  pool->entries[free_slot].last_used = pool->tick;
+#ifndef FREERTOS
+  pool->entries[free_slot].connected_at = time(NULL);
+#endif
+  pool->stats.misses++;
   return conn;
 }
 
@@ -102,6 +144,7 @@ static void cspcl_pool_invalidate_locked(cspcl_conn_pool_t *pool,
       }
       pool->entries[i].conn = NULL;
       pool->entries[i].used = false;
+      pool->stats.invalidations++;
       return;
     }
   }
@@ -137,7 +180,7 @@ cspcl_error_t cspcl_init(cspcl_t *cspcl) {
     csp_conf.hostname = "ud3tn";
     csp_conf.model = "csp-cla";
     csp_conf.revision = "1.0";
-    csp_conf.conn_max = 10;
+    csp_conf.conn_max = CSPCL_CONN_POOL_SIZE + 4; /* Must exceed pool size */
     csp_conf.conn_queue_length = 100;
     csp_conf.fifo_length = 25;
     csp_conf.port_max_bind = 31;
@@ -234,6 +277,11 @@ cspcl_error_t cspcl_conn_pool_init(cspcl_conn_pool_t *pool) {
   if (pthread_mutex_init(&pool->lock, NULL) != 0) {
     return CSPCL_ERR_NO_MEMORY;
   }
+#else
+  pool->lock = xSemaphoreCreateMutex();
+  if (pool->lock == NULL) {
+    return CSPCL_ERR_NO_MEMORY;
+  }
 #endif
 
   pool->initialized = true;
@@ -257,12 +305,20 @@ void cspcl_conn_pool_cleanup(cspcl_conn_pool_t *pool) {
     pool->entries[i].conn = NULL;
   }
 
-  (void)cspcl_pool_unlock(pool);
+  /* Set initialized=false while holding the lock so concurrent senders
+   * that observe it are guaranteed all connections are already closed. */
+  pool->initialized = false;
+
+  if (cspcl_pool_unlock(pool) != 0) {
+    CSPCL_LOG("pool unlock failed during cleanup");
+  }
 
 #ifndef FREERTOS
   pthread_mutex_destroy(&pool->lock);
+#else
+  vSemaphoreDelete(pool->lock);
+  pool->lock = NULL;
 #endif
-  pool->initialized = false;
 }
 
 /*===========================================================================*/
@@ -309,7 +365,9 @@ cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle,
     cspcl_pool_invalidate_locked(pool, dest_addr, dest_port);
   }
 
-  (void)cspcl_pool_unlock(pool);
+  if (cspcl_pool_unlock(pool) != 0) {
+    CSPCL_LOG("pool unlock failed after send");
+  }
 
   if (ret != CSP_ERR_NONE) {
     return CSPCL_ERR_CSP_SEND;
@@ -449,6 +507,14 @@ cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len,
   return CSPCL_OK;
 }
 
+void cspcl_conn_pool_get_stats(const cspcl_conn_pool_t *pool,
+                               cspcl_conn_pool_stats_t *stats) {
+  if (pool == NULL || stats == NULL) {
+    return;
+  }
+  *stats = pool->stats;
+}
+
 /*===========================================================================*/
 /* Address Translation Functions                                              */
 /*===========================================================================*/
@@ -533,6 +599,8 @@ const char *cspcl_strerror(cspcl_error_t err) {
     return "CSP CAN interface not supported (rebuild libcsp with CAN driver)";
   case CSPCL_ERR_CSP_ROUTER:
     return "CSP router task start failed";
+  case CSPCL_ERR_POOL_FULL:
+    return "Connection pool full, LRU eviction was performed";
   default:
     return "Unknown error";
   }

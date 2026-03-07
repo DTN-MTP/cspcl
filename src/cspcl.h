@@ -19,6 +19,10 @@
 #include <stdint.h>
 #ifndef FREERTOS
 #include <pthread.h>
+#include <time.h>
+#else
+#include <FreeRTOS.h>
+#include <semphr.h>
 #endif
 
 #include <csp/csp.h>
@@ -86,7 +90,8 @@ typedef enum {
   CSPCL_ERR_CSP_ZMQHUB_INIT,       /**< ZMQ hub interface init failed */
   CSPCL_ERR_CSP_CAN_INIT,          /**< CAN interface init failed */
   CSPCL_ERR_CSP_CAN_NOT_SUPPORTED, /**< CAN support not compiled in */
-  CSPCL_ERR_CSP_ROUTER             /**< CSP router task start failed */
+  CSPCL_ERR_CSP_ROUTER,            /**< CSP router task start failed */
+  CSPCL_ERR_POOL_FULL              /**< Connection pool full, LRU eviction was forced */
 } cspcl_error_t;
 
 enum csp_iface_type {
@@ -99,11 +104,26 @@ enum csp_iface_type {
 /* Connection Pool                                                           */
 /*===========================================================================*/
 
+/**
+ * @brief Pool operation statistics counters
+ */
+typedef struct {
+  uint32_t hits;             /**< Cache hits: existing connection reused */
+  uint32_t misses;           /**< Cache misses: new connection created */
+  uint32_t evictions;        /**< LRU evictions due to pool full */
+  uint32_t connect_failures; /**< Failed csp_connect() calls */
+  uint32_t invalidations;    /**< Connections invalidated (send error or age) */
+} cspcl_conn_pool_stats_t;
+
 typedef struct {
   bool used;
   uint8_t dest_addr;
   uint8_t dest_port;
   csp_conn_t *conn;
+  uint32_t last_used; /**< Monotonic tick at last access, for LRU eviction */
+#ifndef FREERTOS
+  time_t connected_at; /**< Wall-clock time of connection creation */
+#endif
 } cspcl_conn_pool_entry_t;
 
 typedef struct {
@@ -111,9 +131,12 @@ typedef struct {
 #ifndef FREERTOS
   pthread_mutex_t lock;
 #else
-  int lock;
+  SemaphoreHandle_t lock;
 #endif
   cspcl_conn_pool_entry_t entries[CSPCL_CONN_POOL_SIZE];
+  uint32_t tick;            /**< Monotonic counter incremented on each access */
+  uint32_t max_conn_age_ms; /**< Max connection age in ms (0 = disabled) */
+  cspcl_conn_pool_stats_t stats; /**< Pool operation counters */
 } cspcl_conn_pool_t;
 
 /*===========================================================================*/
@@ -184,6 +207,15 @@ cspcl_error_t cspcl_conn_pool_init(cspcl_conn_pool_t *pool);
  * @param pool      Pointer to pool instance
  */
 void cspcl_conn_pool_cleanup(cspcl_conn_pool_t *pool);
+
+/**
+ * @brief Read pool statistics counters
+ *
+ * @param pool   Pointer to pool instance (may be NULL — safe no-op)
+ * @param stats  Output buffer to fill
+ */
+void cspcl_conn_pool_get_stats(const cspcl_conn_pool_t *pool,
+                               cspcl_conn_pool_stats_t *stats);
 
 /*===========================================================================*/
 /* Bundle Transmission Functions                                              */
