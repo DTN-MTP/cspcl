@@ -284,6 +284,23 @@ cspcl_error_t cspcl_conn_pool_init(cspcl_conn_pool_t *pool) {
   }
 #endif
 
+  /* Read max connection age from environment variable */
+  const char *max_age_env = getenv("CSPCL_MAX_CONN_AGE_MS");
+  if (max_age_env != NULL) {
+    char *endptr;
+    long max_age_val = strtol(max_age_env, &endptr, 10);
+    
+    /* Validate that the entire string was consumed and value is in valid range */
+    if (*endptr == '\0' && max_age_val >= 0 && max_age_val <= (long)UINT32_MAX) {
+      pool->max_conn_age_ms = (uint32_t)max_age_val;
+      CSPCL_DEBUG("Connection pool max age set to %u ms from CSPCL_MAX_CONN_AGE_MS", 
+                  pool->max_conn_age_ms);
+    } else {
+      CSPCL_WARN("Invalid CSPCL_MAX_CONN_AGE_MS value '%s', ignoring (must be 0-%u)", 
+                 max_age_env, UINT32_MAX);
+    }
+  }
+
   pool->initialized = true;
   return CSPCL_OK;
 }

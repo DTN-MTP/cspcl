@@ -67,6 +67,29 @@ Defined in `cspcl_config.h`. Override with `-D` flags or by editing the file.
 
 ---
 
+## Runtime Configuration
+
+### Environment Variables
+
+The following environment variables can be set at runtime to configure CSPCL behavior:
+
+| Variable                   | Type     | Description                                                    |
+| -------------------------- | -------- | -------------------------------------------------------------- |
+| `CSPCL_MAX_CONN_AGE_MS`    | uint32_t | Maximum age of cached connections in milliseconds. When set to a positive value, connections older than this age will be automatically invalidated and recreated. Default: `0` (disabled - connections never age out). Valid range: `0` to `4294967295`. Invalid values are logged and ignored. |
+
+**Example:**
+```bash
+# Configure connections to age out after 60 seconds
+export CSPCL_MAX_CONN_AGE_MS=60000
+./my_cspcl_app
+
+# Disable connection aging (default)
+export CSPCL_MAX_CONN_AGE_MS=0
+./my_cspcl_app
+```
+
+---
+
 ## Lifecycle Functions
 
 ### `cspcl_init`
