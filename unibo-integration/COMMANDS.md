@@ -56,6 +56,24 @@ gcc -O2 -Wall -Wextra \
   -lzmq -lpthread -lm
 ```
 
+Or if you want to build for CAN:
+
+```bash
+gcc -O2 -Wall -Wextra \
+  src/cspcl_daemon.c ../src/cspcl.c \
+  -o build/unibo-bp-cspcl \
+  -I../src \
+  -I$DTN_ROOT/unibo-dtn/unibo-bp/include \
+  -I$DTN_ROOT/libcsp/include \
+  -I$DTN_ROOT/libcsp/build/include \
+  -L$UNIBO_BP_LIB \
+  -Wl,-rpath,$UNIBO_BP_LIB \
+  -lunibo-bp-api \
+  $LIBCSP_BUILD/libcsp.a \
+  -lzmq -lpthread -lm \
+  -lsocketcan
+```
+
 ## 3) Start components (separate terminals)
 
 ### Terminal 1: broker
@@ -125,6 +143,8 @@ $UNIBO_BP_BIN/unibo-bp-admin routing static add --destination ipn:1.0 --gateway 
 ```
 
 ## 5) Start CSPCLA daemons + sink
+
+On both terminals, replace `zmqhub` with `can` if you built for CAN instead of ZMQ.
 
 ### Terminal 4: CSPCLA node1
 
