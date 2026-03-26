@@ -30,12 +30,12 @@
 
 /** CSP port dedicated to Bundle Protocol traffic */
 #ifndef CSPCL_PORT_BP
-#define CSPCL_PORT_BP               10
+#define CSPCL_PORT_BP 10
 #endif
 
 /** CSP connection timeout in milliseconds */
 #ifndef CSPCL_CSP_TIMEOUT_MS
-#define CSPCL_CSP_TIMEOUT_MS        1000
+#define CSPCL_CSP_TIMEOUT_MS 1000
 #endif
 
 /*===========================================================================*/
@@ -50,22 +50,22 @@
  *   - TCP/IP: 1400 bytes
  */
 #ifndef CSPCL_CSP_MTU
-#define CSPCL_CSP_MTU               256
+#define CSPCL_CSP_MTU 256
 #endif
 
 /** Maximum bundle size supported (64KB) */
 #ifndef CSPCL_MAX_BUNDLE_SIZE
-#define CSPCL_MAX_BUNDLE_SIZE       65535
+#define CSPCL_MAX_BUNDLE_SIZE 65535
 #endif
 
 /** SFP header size (offset + totalsize = 8 bytes) */
 #ifndef CSPCL_SFP_HEADER_SIZE
-#define CSPCL_SFP_HEADER_SIZE       8
+#define CSPCL_SFP_HEADER_SIZE 8
 #endif
 
 /** CSP SFP receive timeout in milliseconds */
 #ifndef CSPCL_SFP_TIMEOUT_MS
-#define CSPCL_SFP_TIMEOUT_MS        5000
+#define CSPCL_SFP_TIMEOUT_MS 5000
 #endif
 
 /*===========================================================================*/
@@ -79,17 +79,16 @@
 /* #define CSPCL_DEBUG_VERBOSE */
 
 #ifdef CSPCL_DEBUG
-    #include <stdio.h>
-    #define CSPCL_LOG(fmt, ...) printf("[CSPCL] " fmt "\n", ##__VA_ARGS__)
+#include <stdio.h>
+#define CSPCL_LOG(fmt, ...) printf("[CSPCL] " fmt "\n", ##__VA_ARGS__)
 #else
-    #define CSPCL_LOG(fmt, ...)
+#define CSPCL_LOG(fmt, ...)
 #endif
 
 #ifdef CSPCL_DEBUG_VERBOSE
-    #define CSPCL_LOG_V(fmt, ...) printf("[CSPCL] " fmt "\n", ##__VA_ARGS__)
+#define CSPCL_LOG_V(fmt, ...) printf("[CSPCL] " fmt "\n", ##__VA_ARGS__)
 #else
-    #define CSPCL_LOG_V(fmt, ...)
+#define CSPCL_LOG_V(fmt, ...)
 #endif
 
 #endif /* CSPCL_CONFIG_H */
-
