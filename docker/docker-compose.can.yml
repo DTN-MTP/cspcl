@@ -1,0 +1,162 @@
+version: '3.8'
+
+services:
+  # vcan setup - Creates virtual CAN interface
+  vcan-setup:
+    image: cspcl-base:latest
+    container_name: cspcl-vcan-setup
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    command: >
+      sh -c "
+      modprobe vcan &&
+      ip link add dev vcan0 type vcan &&
+      ip link set up vcan0 &&
+      echo 'vcan0 interface created and ready' &&
+      ip link show vcan0 &&
+      tail -f /dev/null
+      "
+    networks:
+      - csp-can-net
+    healthcheck:
+      test: ["CMD", "sh", "-c", "ip link show vcan0 | grep -q UP"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  # uD3TN Node A (CSP address 1) - CAN transport
+  ud3tn-node-a:
+    image: cspcl-ud3tn:latest
+    container_name: cspcl-ud3tn-node-a-can
+    build:
+      context: ..
+      dockerfile: docker/ud3tn/Dockerfile
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      vcan-setup:
+        condition: service_healthy
+    environment:
+      - CSP_ADDR=1
+      - CSP_PORT=10
+      - TRANSPORT=can
+      - UD3TN_EID=dtn://a.dtn/
+    network_mode: "service:vcan-setup"
+    volumes:
+      - ud3tn-a-data:/var/run/ud3tn
+    healthcheck:
+      test: ["CMD", "sh", "-c", "pgrep -f ud3tn"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+
+  # uD3TN Node B (CSP address 2) - CAN transport
+  ud3tn-node-b:
+    image: cspcl-ud3tn:latest
+    container_name: cspcl-ud3tn-node-b-can
+    build:
+      context: ..
+      dockerfile: docker/ud3tn/Dockerfile
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      vcan-setup:
+        condition: service_healthy
+    environment:
+      - CSP_ADDR=2
+      - CSP_PORT=10
+      - TRANSPORT=can
+      - UD3TN_EID=dtn://b.dtn/
+    network_mode: "service:vcan-setup"
+    volumes:
+      - ud3tn-b-data:/var/run/ud3tn
+    healthcheck:
+      test: ["CMD", "sh", "-c", "pgrep -f ud3tn"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+
+  # Unibo-BP Node 1 (CSP address 3) - CAN transport
+  unibo-node-1:
+    image: cspcl-unibo:latest
+    container_name: cspcl-unibo-node-1-can
+    build:
+      context: ..
+      dockerfile: docker/unibo-bp/Dockerfile
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      vcan-setup:
+        condition: service_healthy
+    environment:
+      - CSP_ADDR=3
+      - CSP_PORT=10
+      - TRANSPORT=can
+      - UNIBO_SOCKET=2001
+      - UNIBO_NODE_DIR=/tmp/unibo-node1
+      - UNIBO_ADMIN_EID=ipn:3.0
+      - UNIBO_ADMIN_DTN_EID=dtn://c.dtn/
+    network_mode: "service:vcan-setup"
+    volumes:
+      - unibo-1-data:/tmp/unibo-node1
+      # Mount Unibo-BP binaries if available on host
+      # - /path/to/unibo-bp/bin:/opt/unibo-bp/bin:ro
+      # - /path/to/unibo-bp/lib:/opt/unibo-bp/lib:ro
+    healthcheck:
+      test: ["CMD", "sh", "-c", "pgrep -f 'unibo-bp-cspcl|unibo-bp'"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+
+  # Unibo-BP Node 2 (CSP address 4) - CAN transport
+  unibo-node-2:
+    image: cspcl-unibo:latest
+    container_name: cspcl-unibo-node-2-can
+    build:
+      context: ..
+      dockerfile: docker/unibo-bp/Dockerfile
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      vcan-setup:
+        condition: service_healthy
+    environment:
+      - CSP_ADDR=4
+      - CSP_PORT=10
+      - TRANSPORT=can
+      - UNIBO_SOCKET=2002
+      - UNIBO_NODE_DIR=/tmp/unibo-node2
+      - UNIBO_ADMIN_EID=ipn:4.0
+      - UNIBO_ADMIN_DTN_EID=dtn://d.dtn/
+    network_mode: "service:vcan-setup"
+    volumes:
+      - unibo-2-data:/tmp/unibo-node2
+      # Mount Unibo-BP binaries if available on host
+      # - /path/to/unibo-bp/bin:/opt/unibo-bp/bin:ro
+      # - /path/to/unibo-bp/lib:/opt/unibo-bp/lib:ro
+    healthcheck:
+      test: ["CMD", "sh", "-c", "pgrep -f 'unibo-bp-cspcl|unibo-bp'"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+
+networks:
+  csp-can-net:
+    driver: bridge
+    name: cspcl-can-network
+
+volumes:
+  ud3tn-a-data:
+  ud3tn-b-data:
+  unibo-1-data:
+  unibo-2-data:

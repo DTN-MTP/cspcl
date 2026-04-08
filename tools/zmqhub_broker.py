@@ -30,14 +30,26 @@ except ImportError:
 
 def main():
     parser = argparse.ArgumentParser(description="ZMQ Hub broker for CSP")
-    parser.add_argument("--sub-port", type=int, default=6000,
-                        help="Port for XSUB socket (receives from nodes, libcsp default)")
-    parser.add_argument("--pub-port", type=int, default=7000,
-                        help="Port for XPUB socket (sends to nodes, libcsp default)")
-    parser.add_argument("--bind-addr", default="*",
-                        help="Address to bind (default: * for all interfaces)")
-    parser.add_argument("-v", "--verbose", action="store_true",
-                        help="Enable verbose output")
+    parser.add_argument(
+        "--sub-port",
+        type=int,
+        default=6000,
+        help="Port for XSUB socket (receives from nodes, libcsp default)",
+    )
+    parser.add_argument(
+        "--pub-port",
+        type=int,
+        default=7000,
+        help="Port for XPUB socket (sends to nodes, libcsp default)",
+    )
+    parser.add_argument(
+        "--bind-addr",
+        default="*",
+        help="Address to bind (default: * for all interfaces)",
+    )
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Enable verbose output"
+    )
     args = parser.parse_args()
 
     context = zmq.Context()
@@ -55,8 +67,12 @@ def main():
     xpub.bind(xpub_addr)
 
     print(f"ZMQ Hub Broker started (libcsp zmqproxy compatible)")
-    print(f"  XSUB (receive from nodes): {xsub_addr} (libcsp CSP_ZMQPROXY_SUBSCRIBE_PORT)")
-    print(f"  XPUB (send to nodes):      {xpub_addr} (libcsp CSP_ZMQPROXY_PUBLISH_PORT)")
+    print(
+        f"  XSUB (receive from nodes): {xsub_addr} (libcsp CSP_ZMQPROXY_SUBSCRIBE_PORT)"
+    )
+    print(
+        f"  XPUB (send to nodes):      {xpub_addr} (libcsp CSP_ZMQPROXY_PUBLISH_PORT)"
+    )
     print()
     print("CSP nodes should connect to:")
     print(f"  PUB  -> tcp://localhost:{args.sub_port}  (publish endpoint)")
@@ -94,7 +110,9 @@ def main():
                     packet_count += 1
                     if len(msg) > 0:
                         topic = msg[0][:4] if len(msg[0]) >= 4 else msg[0]
-                        print(f"[{packet_count}] XSUB->XPUB: {len(msg)} parts, topic={topic.hex()}")
+                        print(
+                            f"[{packet_count}] XSUB->XPUB: {len(msg)} parts, topic={topic.hex()}"
+                        )
 
                 if xpub in socks:
                     msg = xpub.recv_multipart()
@@ -111,6 +129,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-

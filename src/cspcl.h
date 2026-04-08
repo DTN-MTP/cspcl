@@ -75,29 +75,29 @@ extern "C" {
 /*===========================================================================*/
 
 typedef enum {
-  CSPCL_OK = 0,                    /**< Success */
-  CSPCL_ERR_INVALID_PARAM,         /**< Invalid parameter */
-  CSPCL_ERR_NO_MEMORY,             /**< Memory allocation failed */
-  CSPCL_ERR_BUNDLE_TOO_LARGE,      /**< Bundle exceeds maximum size */
-  CSPCL_ERR_CSP_SEND,              /**< CSP send failed */
-  CSPCL_ERR_CSP_RECV,              /**< CSP receive failed */
-  CSPCL_ERR_TIMEOUT,               /**< Operation timed out */
-  CSPCL_ERR_SFP,                   /**< SFP fragmentation/reassembly error */
-  CSPCL_ERR_NOT_INITIALIZED,       /**< CSPCL not initialized */
-  CSPCL_ERR_CONNECTION,            /**< CSP connection error */
-  CSPCL_ERR_CSPINIT,               /**< CSP init error (generic) */
-  CSPCL_ERR_CSP_STACK_INIT,        /**< csp_init() failed */
-  CSPCL_ERR_CSP_ZMQHUB_INIT,       /**< ZMQ hub interface init failed */
-  CSPCL_ERR_CSP_CAN_INIT,          /**< CAN interface init failed */
-  CSPCL_ERR_CSP_CAN_NOT_SUPPORTED, /**< CAN support not compiled in */
-  CSPCL_ERR_CSP_ROUTER,            /**< CSP router task start failed */
-  CSPCL_ERR_POOL_FULL              /**< Connection pool full, LRU eviction was forced */
+    CSPCL_OK = 0,                    /**< Success */
+    CSPCL_ERR_INVALID_PARAM,         /**< Invalid parameter */
+    CSPCL_ERR_NO_MEMORY,             /**< Memory allocation failed */
+    CSPCL_ERR_BUNDLE_TOO_LARGE,      /**< Bundle exceeds maximum size */
+    CSPCL_ERR_CSP_SEND,              /**< CSP send failed */
+    CSPCL_ERR_CSP_RECV,              /**< CSP receive failed */
+    CSPCL_ERR_TIMEOUT,               /**< Operation timed out */
+    CSPCL_ERR_SFP,                   /**< SFP fragmentation/reassembly error */
+    CSPCL_ERR_NOT_INITIALIZED,       /**< CSPCL not initialized */
+    CSPCL_ERR_CONNECTION,            /**< CSP connection error */
+    CSPCL_ERR_CSPINIT,               /**< CSP init error (generic) */
+    CSPCL_ERR_CSP_STACK_INIT,        /**< csp_init() failed */
+    CSPCL_ERR_CSP_ZMQHUB_INIT,       /**< ZMQ hub interface init failed */
+    CSPCL_ERR_CSP_CAN_INIT,          /**< CAN interface init failed */
+    CSPCL_ERR_CSP_CAN_NOT_SUPPORTED, /**< CAN support not compiled in */
+    CSPCL_ERR_CSP_ROUTER,            /**< CSP router task start failed */
+    CSPCL_ERR_POOL_FULL              /**< Connection pool full, LRU eviction was forced */
 } cspcl_error_t;
 
 enum csp_iface_type {
-  CSP_IFACE_ZMQHUB,  /* ZeroMQ hub - for testing/ground segment */
-  CSP_IFACE_CAN,     /* CAN bus - for space segment */
-  CSP_IFACE_LOOPBACK /* Loopback - for local testing */
+    CSP_IFACE_ZMQHUB,  /* ZeroMQ hub - for testing/ground segment */
+    CSP_IFACE_CAN,     /* CAN bus - for space segment */
+    CSP_IFACE_LOOPBACK /* Loopback - for local testing */
 };
 
 /*===========================================================================*/
@@ -108,35 +108,35 @@ enum csp_iface_type {
  * @brief Pool operation statistics counters
  */
 typedef struct {
-  uint32_t hits;             /**< Cache hits: existing connection reused */
-  uint32_t misses;           /**< Cache misses: new connection created */
-  uint32_t evictions;        /**< LRU evictions due to pool full */
-  uint32_t connect_failures; /**< Failed csp_connect() calls */
-  uint32_t invalidations;    /**< Connections invalidated (send error or age) */
+    uint32_t hits;             /**< Cache hits: existing connection reused */
+    uint32_t misses;           /**< Cache misses: new connection created */
+    uint32_t evictions;        /**< LRU evictions due to pool full */
+    uint32_t connect_failures; /**< Failed csp_connect() calls */
+    uint32_t invalidations;    /**< Connections invalidated (send error or age) */
 } cspcl_conn_pool_stats_t;
 
 typedef struct {
-  bool used;
-  uint8_t dest_addr;
-  uint8_t dest_port;
-  csp_conn_t *conn;
-  uint32_t last_used; /**< Monotonic tick at last access, for LRU eviction */
+    bool used;
+    uint8_t dest_addr;
+    uint8_t dest_port;
+    csp_conn_t *conn;
+    uint32_t last_used; /**< Monotonic tick at last access, for LRU eviction */
 #ifndef FREERTOS
-  time_t connected_at; /**< Wall-clock time of connection creation */
+    time_t connected_at; /**< Wall-clock time of connection creation */
 #endif
 } cspcl_conn_pool_entry_t;
 
 typedef struct {
-  bool initialized;
+    bool initialized;
 #ifndef FREERTOS
-  pthread_mutex_t lock;
+    pthread_mutex_t lock;
 #else
-  SemaphoreHandle_t lock;
+    SemaphoreHandle_t lock;
 #endif
-  cspcl_conn_pool_entry_t entries[CSPCL_CONN_POOL_SIZE];
-  uint32_t tick;            /**< Monotonic counter incremented on each access */
-  uint32_t max_conn_age_ms; /**< Max connection age in ms (0 = disabled) */
-  cspcl_conn_pool_stats_t stats; /**< Pool operation counters */
+    cspcl_conn_pool_entry_t entries[CSPCL_CONN_POOL_SIZE];
+    uint32_t tick;                 /**< Monotonic counter incremented on each access */
+    uint32_t max_conn_age_ms;      /**< Max connection age in ms (0 = disabled) */
+    cspcl_conn_pool_stats_t stats; /**< Pool operation counters */
 } cspcl_conn_pool_t;
 
 /*===========================================================================*/
@@ -150,27 +150,26 @@ typedef struct {
  * fragmentation and reassembly of bundles.
  */
 typedef struct {
-  bool initialized;   /**< Instance is initialized */
-  uint8_t local_addr; /**< Local CSP address */
-  void *
-      rx_socket; /**< Server socket for accepting connections (csp_socket_t*) */
+    bool initialized;   /**< Instance is initialized */
+    uint8_t local_addr; /**< Local CSP address */
+    void *rx_socket;    /**< Server socket for accepting connections (csp_socket_t*) */
 
-  /* CSP port for BP traffic */
-  uint8_t csp_port;
+    /* CSP port for BP traffic */
+    uint8_t csp_port;
 
-  /* Interface selection */
-  enum csp_iface_type iface_type;
+    /* Interface selection */
+    enum csp_iface_type iface_type;
 
-  /* ZMQHUB: broker host (e.g. "localhost" or "192.168.1.10") */
-  char zmqhub_addr[CSP_IFACE_PARAM_MAX];
+    /* ZMQHUB: broker host (e.g. "localhost" or "192.168.1.10") */
+    char zmqhub_addr[CSP_IFACE_PARAM_MAX];
 
-  /* CAN: SocketCAN interface name (e.g. "vcan0" or "can0") */
-  char can_iface[CSP_IFACE_PARAM_MAX];
+    /* CAN: SocketCAN interface name (e.g. "vcan0" or "can0") */
+    char can_iface[CSP_IFACE_PARAM_MAX];
 
-  /* Internal outbound CSP connection pool */
-  cspcl_conn_pool_t conn_pool;
+    /* Internal outbound CSP connection pool */
+    cspcl_conn_pool_t conn_pool;
 
-  csp_iface_t *active_iface;
+    csp_iface_t *active_iface;
 } cspcl_t;
 
 /*===========================================================================*/
@@ -214,8 +213,7 @@ void cspcl_conn_pool_cleanup(cspcl_conn_pool_t *pool);
  * @param pool   Pointer to pool instance (may be NULL — safe no-op)
  * @param stats  Output buffer to fill
  */
-void cspcl_conn_pool_get_stats(const cspcl_conn_pool_t *pool,
-                               cspcl_conn_pool_stats_t *stats);
+void cspcl_conn_pool_get_stats(const cspcl_conn_pool_t *pool, cspcl_conn_pool_stats_t *stats);
 
 /*===========================================================================*/
 /* Bundle Transmission Functions                                              */
@@ -235,9 +233,8 @@ void cspcl_conn_pool_get_stats(const cspcl_conn_pool_t *pool,
  * @param dest_port Destination CSP port
  * @return CSPCL_OK on success, error code otherwise
  */
-cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle,
-                                size_t len, uint8_t dest_addr,
-                                uint8_t dest_port);
+cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle, size_t len,
+                                uint8_t dest_addr, uint8_t dest_port);
 
 /**
  * @brief Receive a BP7 bundle from CSP
@@ -254,9 +251,8 @@ cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle,
  * @param timeout_ms Timeout in milliseconds (0 = no timeout)
  * @return CSPCL_OK on success, error code otherwise
  */
-cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len,
-                                uint8_t *src_addr, uint8_t *src_port,
-                                uint32_t timeout_ms);
+cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len, uint8_t *src_addr,
+                                uint8_t *src_port, uint32_t timeout_ms);
 
 /**
  * @brief Open and bind server socket for incoming connections

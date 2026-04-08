@@ -1,5 +1,5 @@
 diff --git a/components/cla/cla.c b/components/cla/cla.c
-index 9db0a59..fc66eba 100644
+index d6f075b..b83ce2a 100644
 --- a/components/cla/cla.c
 +++ b/components/cla/cla.c
 @@ -7,6 +7,7 @@
@@ -19,7 +19,7 @@ index 9db0a59..fc66eba 100644
  	{ "sqlite", &sqlite_create },
  #endif // DISABLE_SQLITE_STORAGE
 diff --git a/mk/build.mk b/mk/build.mk
-index b109adb..55c108a 100644
+index b109adb..a33110c 100644
 --- a/mk/build.mk
 +++ b/mk/build.mk
 @@ -5,6 +5,9 @@ include mk/toolchain.mk
@@ -32,84 +32,29 @@ index b109adb..55c108a 100644
                       -Igenerated
  
  $(eval $(call addComponentWithRules,components/aap))
-@@ -50,6 +53,9 @@ TINYCBOR_SOURCES := \
+@@ -50,6 +53,11 @@ TINYCBOR_SOURCES := \
  $(eval $(call addComponentWithRules,external/tinycbor/src,$(TINYCBOR_SOURCES)))
  $(eval $(call addComponentWithRules,external/util/src))
  
-+CSPCL_SOURCES := cspcl.c
++CSPCL_SOURCES := \
++	cspcl.c
++
 +$(eval $(call addComponentWithRules,external/cspcl,$(CSPCL_SOURCES)))
 +
  $(eval $(call addComponentWithRules,generated/aap2))
  
  # LIB
 diff --git a/mk/posix.mk b/mk/posix.mk
-index 2adaa41..940a198 100644
+index 2adaa41..469dd6c 100644
 --- a/mk/posix.mk
 +++ b/mk/posix.mk
-@@ -38,6 +38,9 @@ endif
+@@ -38,6 +38,10 @@ endif
  
  LDFLAGS += -lpthread
  
 +# libcsp for CSP CLA
 +LDFLAGS += -L/home/mathias/libcsp-src/build -lcsp -lzmq -lsocketcan
 +
- ifndef DISABLE_SQLITE_STORAGE
-   LDFLAGS += -lsqlite3
- else
-diff --git a/components/cla/cla.c b/components/cla/cla.c
-index 9db0a59..fc66eba 100644
---- a/components/cla/cla.c
-+++ b/components/cla/cla.c
-@@ -7,6 +7,7 @@
- #include "cla/posix/cla_tcpclv3.h"
- #include "cla/posix/cla_tcpspp.h"
- #include "cla/posix/cla_bibe.h"
-+#include "cla/cla_csp.h"
- #include "cla/storage/cla_sqlite.h"
- 
- #include "platform/hal_io.h"
-@@ -41,6 +42,7 @@ const struct available_cla_list_entry AVAILABLE_CLAS[] = {
- 	{ "tcpclv3", &tcpclv3_create },
- 	{ "tcpspp", &tcpspp_create },
- 	{ "bibe", &bibe_create },
-+	{ "csp", &csp_cla_create },
- #ifndef DISABLE_SQLITE_STORAGE
- 	{ "sqlite", &sqlite_create },
- #endif // DISABLE_SQLITE_STORAGE
-diff --git a/mk/build.mk b/mk/build.mk
-index b109adb..55c108a 100644
---- a/mk/build.mk
-+++ b/mk/build.mk
-@@ -5,6 +5,9 @@ include mk/toolchain.mk
- EXTERNAL_INCLUDES += -Iexternal/nanopb \
-                      -Iexternal/tinycbor/src \
-                      -Iexternal/util/include \
-+                     -Iexternal/cspcl \
-+                     -I/home/mathias/libcsp-src/include \
-+                     -I/home/mathias/libcsp-src/build/include \
-                      -Igenerated
- 
- $(eval $(call addComponentWithRules,components/aap))
-@@ -50,6 +53,9 @@ TINYCBOR_SOURCES := \
- $(eval $(call addComponentWithRules,external/tinycbor/src,$(TINYCBOR_SOURCES)))
- $(eval $(call addComponentWithRules,external/util/src))
- 
-+CSPCL_SOURCES := cspcl.c
-+$(eval $(call addComponentWithRules,external/cspcl,$(CSPCL_SOURCES)))
-+
- $(eval $(call addComponentWithRules,generated/aap2))
- 
- # LIB
-diff --git a/mk/posix.mk b/mk/posix.mk
-index 2adaa41..940a198 100644
---- a/mk/posix.mk
-+++ b/mk/posix.mk
-@@ -38,6 +38,9 @@ endif
- 
- LDFLAGS += -lpthread
- 
-+# libcsp for CSP CLA
-+LDFLAGS += -L/home/mathias/libcsp-src/build -lcsp -lzmq -lsocketcan
 +
  ifndef DISABLE_SQLITE_STORAGE
    LDFLAGS += -lsqlite3

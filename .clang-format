@@ -1,0 +1,58 @@
+# CSPCL Code Style Configuration
+# Based on LLVM style with project-specific modifications
+
+BasedOnStyle: LLVM
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 100
+
+# Pointer and reference alignment
+PointerAlignment: Right
+ReferenceAlignment: Right
+
+# Braces
+BreakBeforeBraces: Linux
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+
+# Spacing
+SpaceAfterCStyleCast: true
+SpaceBeforeParens: ControlStatements
+SpaceInEmptyParentheses: false
+
+# Indentation
+IndentCaseLabels: false
+IndentPPDirectives: None
+
+# Line breaking
+AlwaysBreakAfterReturnType: None
+AlwaysBreakAfterDefinitionReturnType: None
+BinPackArguments: true
+BinPackParameters: true
+
+# Comments
+AlignTrailingComments: true
+ReflowComments: true
+
+# Includes
+SortIncludes: true
+IncludeBlocks: Regroup
+IncludeCategories:
+  # Project headers first
+  - Regex:           '"cspcl.*\.h"'
+    Priority:        1
+  # C standard library
+  - Regex:           '<[a-z_]+\.h>'
+    Priority:        2
+  # CSP library headers
+  - Regex:           '<csp/.*>'
+    Priority:        3
+  # Other system headers
+  - Regex:           '<.*>'
+    Priority:        4
+
+# Other
+MaxEmptyLinesToKeep: 2
+KeepEmptyLinesAtTheStartOfBlocks: false

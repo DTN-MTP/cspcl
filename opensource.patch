@@ -1,0 +1,469 @@
+diff --git a/.github/ISSUE_TEMPLATE/bug_report.yml b/.github/ISSUE_TEMPLATE/bug_report.yml
+new file mode 100644
+index 0000000..e689da0
+--- /dev/null
++++ b/.github/ISSUE_TEMPLATE/bug_report.yml
+@@ -0,0 +1,76 @@
++name: Bug Report
++description: Report a bug or unexpected behavior in CSPCL
++labels: ["bug"]
++body:
++  - type: markdown
++    attributes:
++      value: |
++        Thanks for taking the time to report a bug! Please fill in as much detail as possible.
++
++  - type: textarea
++    id: description
++    attributes:
++      label: Description
++      description: A clear and concise description of what the bug is.
++    validations:
++      required: true
++
++  - type: textarea
++    id: reproduce
++    attributes:
++      label: Steps to Reproduce
++      description: Minimal steps to reproduce the behavior.
++      placeholder: |
++        1. Initialize CSPCL with `cspcl_init(...)`
++        2. Call `cspcl_send(...)`
++        3. Observe crash / wrong behavior
++    validations:
++      required: true
++
++  - type: textarea
++    id: expected
++    attributes:
++      label: Expected Behavior
++      description: What did you expect to happen?
++    validations:
++      required: true
++
++  - type: textarea
++    id: actual
++    attributes:
++      label: Actual Behavior
++      description: What actually happened? Include any error messages or logs.
++    validations:
++      required: true
++
++  - type: input
++    id: cspcl-version
++    attributes:
++      label: CSPCL Version
++      placeholder: "e.g. 1.0.0 or commit SHA"
++    validations:
++      required: true
++
++  - type: input
++    id: libcsp-version
++    attributes:
++      label: libcsp Version
++      placeholder: "e.g. 1.6.x or 'stubs'"
++    validations:
++      required: false
++
++  - type: input
++    id: os
++    attributes:
++      label: Operating System
++      placeholder: "e.g. Ubuntu 24.04, FreeRTOS"
++    validations:
++      required: true
++
++  - type: textarea
++    id: cmake-version
++    attributes:
++      label: CMake / Compiler Version
++      description: Output of `cmake --version` and `gcc --version` (or equivalent).
++    validations:
++      required: false
+diff --git a/.github/ISSUE_TEMPLATE/config.yml b/.github/ISSUE_TEMPLATE/config.yml
+new file mode 100644
+index 0000000..a479087
+--- /dev/null
++++ b/.github/ISSUE_TEMPLATE/config.yml
+@@ -0,0 +1,5 @@
++blank_issues_enabled: false
++contact_links:
++  - name: Documentation
++    url: https://dtn-mtp.github.io/cspcl
++    about: Read the full documentation before opening an issue.
+diff --git a/.github/ISSUE_TEMPLATE/feature_request.yml b/.github/ISSUE_TEMPLATE/feature_request.yml
+new file mode 100644
+index 0000000..b128326
+--- /dev/null
++++ b/.github/ISSUE_TEMPLATE/feature_request.yml
+@@ -0,0 +1,40 @@
++name: Feature Request
++description: Suggest an idea or enhancement for CSPCL
++labels: ["enhancement"]
++body:
++  - type: markdown
++    attributes:
++      value: |
++        Thanks for suggesting an improvement! Please describe your use case and the desired behavior.
++
++  - type: textarea
++    id: problem
++    attributes:
++      label: Problem / Motivation
++      description: What problem does this feature solve? What is your use case?
++    validations:
++      required: true
++
++  - type: textarea
++    id: solution
++    attributes:
++      label: Proposed Solution
++      description: Describe the feature or change you would like to see.
++    validations:
++      required: true
++
++  - type: textarea
++    id: alternatives
++    attributes:
++      label: Alternatives Considered
++      description: Any alternative solutions or workarounds you've explored.
++    validations:
++      required: false
++
++  - type: textarea
++    id: context
++    attributes:
++      label: Additional Context
++      description: Any other context, links, or references.
++    validations:
++      required: false
+diff --git a/.github/PULL_REQUEST_TEMPLATE.md b/.github/PULL_REQUEST_TEMPLATE.md
+new file mode 100644
+index 0000000..839385c
+--- /dev/null
++++ b/.github/PULL_REQUEST_TEMPLATE.md
+@@ -0,0 +1,24 @@
++## Description
++
++<!-- Describe the changes in this PR. Why are they needed? -->
++
++## Related Issue
++
++<!-- Link any related issues: Closes #123 -->
++
++## Type of Change
++
++- [ ] Bug fix (non-breaking)
++- [ ] New feature (non-breaking)
++- [ ] Breaking change
++- [ ] Documentation update
++- [ ] Refactor / cleanup
++
++## Checklist
++
++- [ ] I have read [CONTRIBUTING.md](CONTRIBUTING.md).
++- [ ] The stub-mode build passes: `cmake -DCSPC_REPO_DIR=/path/to/libcsp .. && make && ctest --verbose`
++- [ ] New/changed C code is formatted with `clang-format`.
++- [ ] New/changed Rust code passes `cargo fmt` and `cargo clippy`.
++- [ ] Tests have been added or updated for the change.
++- [ ] `CHANGELOG.md` has been updated under `[Unreleased]`.
+diff --git a/.gitignore b/.gitignore
+index 603a46d..956379b 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,4 +1,5 @@
+ .idea
++.cache
+ */build
+ build
+ 
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+new file mode 100644
+index 0000000..1848c84
+--- /dev/null
++++ b/CHANGELOG.md
+@@ -0,0 +1,25 @@
++# Changelog
++
++All notable changes to this project will be documented in this file.
++
++The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
++and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
++
++## [Unreleased]
++
++## [1.0.0] - 2025-02-28
++
++### Added
++- Initial release of CSPCL — CubeSat Space Protocol Convergence Layer.
++- BP7 bundle transmission over CSP using SFP (Simple Fragmentation Protocol).
++- Support for ZMQHUB and SocketCAN physical interfaces.
++- Connection pool for managing CSP connections.
++- POSIX and FreeRTOS build targets.
++- CMake build system with optional system libcsp (v1.6) or built-in stubs.
++- Rust FFI bindings (`cspcl-sys`) and safe Rust wrapper (`cspcl`).
++- uD3TN integration patch.
++- UniBo (µPCN) integration.
++- Full documentation site at [dtn-mtp.github.io/cspcl](https://dtn-mtp.github.io/cspcl).
++
++[Unreleased]: https://github.com/DTN-MTP/cspcl/compare/v1.0.0...HEAD
++[1.0.0]: https://github.com/DTN-MTP/cspcl/releases/tag/v1.0.0
+diff --git a/CODE_OF_CONDUCT.md b/CODE_OF_CONDUCT.md
+new file mode 100644
+index 0000000..f7e105d
+--- /dev/null
++++ b/CODE_OF_CONDUCT.md
+@@ -0,0 +1,132 @@
++# Contributor Covenant Code of Conduct
++
++## Our Pledge
++
++We as members, contributors, and leaders pledge to make participation in our
++community a harassment-free experience for everyone, regardless of age, body
++size, visible or invisible disability, ethnicity, sex characteristics, gender
++identity and expression, level of experience, education, socio-economic status,
++nationality, personal appearance, race, caste, color, religion, or sexual
++identity and orientation.
++
++We pledge to act and interact in ways that contribute to an open, welcoming,
++diverse, inclusive, and healthy community.
++
++## Our Standards
++
++Examples of behavior that contributes to a positive environment for our
++community include:
++
++* Demonstrating empathy and kindness toward other people
++* Being respectful of differing opinions, viewpoints, and experiences
++* Giving and gracefully accepting constructive feedback
++* Accepting responsibility and apologizing to those affected by our mistakes,
++  and learning from the experience
++* Focusing on what is best not just for us as individuals, but for the overall
++  community
++
++Examples of unacceptable behavior include:
++
++* The use of sexualized language or imagery, and sexual attention or advances of
++  any kind
++* Trolling, insulting or derogatory comments, and personal or political attacks
++* Public or private harassment
++* Publishing others' private information, such as a physical or electronic
++  address, without their explicit permission
++* Other conduct which could reasonably be considered inappropriate in a
++  professional setting
++
++## Enforcement Responsibilities
++
++Community leaders are responsible for clarifying and enforcing our standards of
++acceptable behavior and will take appropriate and fair corrective action in
++response to any behavior that they deem inappropriate, threatening, offensive,
++or harmful.
++
++Community leaders have the right and responsibility to remove, edit, or reject
++comments, commits, code, wiki edits, issues, and other contributions that are
++not aligned to this Code of Conduct, and will communicate reasons for moderation
++decisions when appropriate.
++
++## Scope
++
++This Code of Conduct applies within all community spaces, and also applies when
++an individual is officially representing the community in public spaces.
++Examples of representing our community include using an official e-mail address,
++posting via an official social media account, or acting as an appointed
++representative at an online or offline event.
++
++## Enforcement
++
++Instances of abusive, harassing, or otherwise unacceptable behavior may be
++reported to the community leaders responsible for enforcement by opening a
++private security advisory or contacting the maintainers directly via GitHub.
++All complaints will be reviewed and investigated promptly and fairly.
++
++All community leaders are obligated to respect the privacy and security of the
++reporter of any incident.
++
++## Enforcement Guidelines
++
++Community leaders will follow these Community Impact Guidelines in determining
++the consequences for any action they deem in violation of this Code of Conduct:
++
++### 1. Correction
++
++**Community Impact**: Use of inappropriate language or other behavior deemed
++unprofessional or unwelcome in the community.
++
++**Consequence**: A private, written warning from community leaders, providing
++clarity around the nature of the violation and an explanation of why the
++behavior was inappropriate. A public apology may be requested.
++
++### 2. Warning
++
++**Community Impact**: A violation through a single incident or series of
++actions.
++
++**Consequence**: A warning with consequences for continued behavior. No
++interaction with the people involved, including unsolicited interaction with
++those enforcing the Code of Conduct, for a specified period of time. This
++includes avoiding interactions in community spaces as well as external channels
++like social media. Violating these terms may lead to a temporary or permanent
++ban.
++
++### 3. Temporary Ban
++
++**Community Impact**: A serious violation of community standards, including
++sustained inappropriate behavior.
++
++**Consequence**: A temporary ban from any sort of interaction or public
++communication with the community for a specified period of time. No public or
++private interaction with the people involved, including unsolicited interaction
++with those enforcing the Code of Conduct, is allowed during this period.
++Violating these terms may lead to a permanent ban.
++
++### 4. Permanent Ban
++
++**Community Impact**: Demonstrating a pattern of violation of community
++standards, including sustained inappropriate behavior, harassment of an
++individual, or aggression toward or disparagement of classes of individuals.
++
++**Consequence**: A permanent ban from any sort of public interaction within the
++community.
++
++## Attribution
++
++This Code of Conduct is adapted from the [Contributor Covenant][homepage],
++version 2.1, available at
++[https://www.contributor-covenant.org/version/2/1/code_of_conduct.html][v2.1].
++
++Community Impact Guidelines were inspired by
++[Mozilla's code of conduct enforcement ladder][Mozilla CoC].
++
++For answers to common questions about this code of conduct, see the FAQ at
++[https://www.contributor-covenant.org/faq][FAQ]. Translations are available at
++[https://www.contributor-covenant.org/translations][translations].
++
++[homepage]: https://www.contributor-covenant.org
++[v2.1]: https://www.contributor-covenant.org/version/2/1/code_of_conduct.html
++[Mozilla CoC]: https://github.com/mozilla/diversity
++[FAQ]: https://www.contributor-covenant.org/faq
++[translations]: https://www.contributor-covenant.org/translations
+diff --git a/CONTRIBUTING.md b/CONTRIBUTING.md
+new file mode 100644
+index 0000000..8ac20a2
+--- /dev/null
++++ b/CONTRIBUTING.md
+@@ -0,0 +1,51 @@
++# Contributing to CSPCL
++
++Thank you for your interest in contributing! This document explains how to get started.
++
++## Getting Started
++
++1. **Fork** the repository and clone your fork.
++2. Create a feature branch: `git checkout -b feat/your-feature`
++3. Build and run the tests to confirm a clean baseline (see [Getting Started](https://dtn-mtp.github.io/cspcl/getting-started/)).
++
++## Development Setup
++
++```bash
++git clone https://github.com/DTN-MTP/cspcl.git
++cd cspcl && mkdir build && cd build
++cmake -DCSP_REPO_DIR=/path/to/libcsp ..
++make
++ctest --verbose
++```
++
++## Coding Standards
++
++- **C**: Follow the existing style (C11, clang-format); run `clang-format -i src/*.c src/*.h` before committing.
++- **Rust**: `cargo fmt` and `cargo clippy` must pass with no warnings.
++- Keep public API changes minimal and backward-compatible within the same major version.
++- All new functionality must be accompanied by tests.
++
++## Commit Messages
++
++We use [Conventional Commits](https://www.conventionalcommits.org/):
++
++```
++feat(cspcl): add connection pool timeout option
++fix(cspcl): prevent double-free on init failure
++docs: update getting-started guide
++```
++
++## Submitting a Pull Request
++
++1. Make sure `ctest` passes with the stub build.
++2. Update `CHANGELOG.md` under `[Unreleased]`.
++3. Open a PR against the `main` branch.
++4. Fill in the pull request template.
++
++## Reporting Bugs
++
++Use the [bug report](.github/ISSUE_TEMPLATE/bug_report.yml) template. Include a minimal reproducer and the output of `cmake --version` and your libcsp version.
++
++## License
++
++By contributing you agree that your contributions will be licensed under the [MIT License](LICENSE).
+diff --git a/LICENSE b/LICENSE
+new file mode 100644
+index 0000000..838b29b
+--- /dev/null
++++ b/LICENSE
+@@ -0,0 +1,21 @@
++MIT License
++
++Copyright (c) 2025 DTN-MTP contributors
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in all
++copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++SOFTWARE.
+diff --git a/README.md b/README.md
+index 295fdea..2c83aa8 100644
+--- a/README.md
++++ b/README.md
+@@ -29,4 +29,5 @@ ctest --verbose
+ 
+ ## License
+ 
+-University of Montpellier Space Center
++This project is licensed under the [MIT License](LICENSE).  
++Copyright © 2025 DTN-MTP contributors.
+diff --git a/SECURITY.md b/SECURITY.md
+new file mode 100644
+index 0000000..5aa5865
+--- /dev/null
++++ b/SECURITY.md
+@@ -0,0 +1,20 @@
++# Security Policy
++
++## Supported Versions
++
++| Version | Supported          |
++| ------- | ------------------ |
++| 1.x     | :white_check_mark: |
++
++## Reporting a Vulnerability
++
++**Please do not open a public GitHub issue for security vulnerabilities.**
++
++Report vulnerabilities privately using [GitHub's private security advisory feature](https://github.com/DTN-MTP/cspcl/security/advisories/new).
++
++Include:
++- A description of the vulnerability and its potential impact.
++- Steps to reproduce or a proof-of-concept.
++- Any suggested mitigation.
++
++You can expect an acknowledgement within **5 business days** and a resolution timeline within **90 days** depending on severity.

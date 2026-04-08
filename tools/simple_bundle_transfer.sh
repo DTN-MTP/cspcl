@@ -72,7 +72,7 @@ echo -e "${YELLOW}[Check 2] uD3TN Processes${NC}"
 UD3TN_PROCS=$(pgrep -f "ud3tn" 2>/dev/null | wc -l)
 if [ "$UD3TN_PROCS" -ge 2 ]; then
     echo -e "${GREEN}✓ Found $UD3TN_PROCS uD3TN processes running${NC}"
-    ps -ALf | grep "[u]d3tn" | head -5
+    pgrep -a "ud3tn" | head -5
 else
     echo -e "${RED}✗ Need at least 2 uD3TN instances for transfer${NC}"
     echo ""
