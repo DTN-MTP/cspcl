@@ -81,8 +81,12 @@
 #ifdef CSPCL_DEBUG
 #include <stdio.h>
 #define CSPCL_LOG(fmt, ...) printf("[CSPCL] " fmt "\n", ##__VA_ARGS__)
+#define CSPCL_DEBUG(fmt, ...) printf("[CSPCL DEBUG] " fmt "\n", ##__VA_ARGS__)
+#define CSPCL_WARN(fmt, ...) printf("[CSPCL WARN] " fmt "\n", ##__VA_ARGS__)
 #else
 #define CSPCL_LOG(fmt, ...)
+#define CSPCL_DEBUG(fmt, ...)
+#define CSPCL_WARN(fmt, ...)
 #endif
 
 #ifdef CSPCL_DEBUG_VERBOSE

@@ -1,0 +1,50 @@
+# Build artifacts
+build/
+*.o
+*.a
+*.so
+*.exe
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# CI/CD (not needed in container)
+.github/
+
+# Documentation (copy selectively if needed)
+docs/
+*.md
+!docker/README.md
+
+# Test results
+Testing/
+test-results/
+test-logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Temporary files
+*.tmp
+*.log
+.cache/
+
+# Patches (applied during build)
+*.patch
+
+# Session state
+.ia/
+.copilot/

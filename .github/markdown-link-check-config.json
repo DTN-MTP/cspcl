@@ -1,0 +1,20 @@
+{
+  "ignorePatterns": [
+    {
+      "pattern": "^https://dtn-mtp.github.io/cspcl"
+    },
+    {
+      "pattern": "^https://gitlab.com/d3tn/ud3tn"
+    },
+    {
+      "pattern": "^https://github.com/libcsp/libcsp"
+    }
+  ],
+  "replacementPatterns": [],
+  "httpHeaders": [],
+  "timeout": "20s",
+  "retryOn429": true,
+  "retryCount": 3,
+  "fallbackRetryDelay": "30s",
+  "aliveStatusCodes": [200, 206]
+}
