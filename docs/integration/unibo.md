@@ -109,6 +109,29 @@ ls -la build/unibo-bp-cspcl
 file build/unibo-bp-cspcl
 ```
 
+### Step 3b: Build CSPCLA Daemon for CAN (SocketCAN)
+
+If you use CAN instead of ZMQHUB, compile the daemon with SocketCAN support:
+
+```bash
+cd /path/to/cspcl/unibo-integration
+mkdir -p build
+
+gcc -O2 -Wall -Wextra \
+  src/cspcl_daemon.c ../src/cspcl.c \
+  -o build/unibo-bp-cspcl \
+  -I../src \
+  -I/path/to/unibo-bp/include \
+  -I/path/to/libcsp/include \
+  -I/path/to/libcsp/build/include \
+  -L/path/to/unibo-bp/build/Unibo-BP/lib \
+  -Wl,-rpath,/path/to/unibo-bp/build/Unibo-BP/lib \
+  -lunibo-bp-api \
+  /path/to/libcsp/build/libcsp.a \
+  -lzmq -lpthread -lm \
+  -lsocketcan
+```
+
 ## Environment Setup
 
 Create environment variables for easy access to key paths:
@@ -162,6 +185,11 @@ unibo-bp-cspcl <node_id> <port> <broker_type> <broker_port> <node_workdir>
 | `broker_port`  | Broker connection port (ZMQ) | `2001` (for node1), `2002` (for node2) |
 | `node_workdir` | Unibo-BP working directory   | `/tmp/unibo-node1`                     |
 
+The `broker_type` is interface-dependent:
+
+- Use `zmqhub` for ZMQHUB transport.
+- Use `can` for CAN transport.
+
 **Example usage**:
 
 ```bash
@@ -170,6 +198,16 @@ unibo-bp-cspcl <node_id> <port> <broker_type> <broker_port> <node_workdir>
 
 # Node 2 (CSP addr 2)
 ./build/unibo-bp-cspcl 2 10 zmqhub 2002 /tmp/unibo-node2
+```
+
+For CAN, use the same command shape and switch `broker_type`:
+
+```bash
+# Node 1 (CAN)
+./build/unibo-bp-cspcl 1 10 can 2001 /tmp/unibo-node1
+
+# Node 2 (CAN)
+./build/unibo-bp-cspcl 2 10 can 2002 /tmp/unibo-node2
 ```
 
 ## Troubleshooting
