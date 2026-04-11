@@ -16,6 +16,7 @@ Full documentation is available at **[dtn-mtp.github.io/cspcl](https://dtn-mtp.g
 | [C API Reference](https://dtn-mtp.github.io/cspcl/api/c/) | Complete C function and type reference |
 | [Rust API Reference](https://dtn-mtp.github.io/cspcl/api/rust/) | Rust crate documentation |
 | [uD3TN Integration](https://dtn-mtp.github.io/cspcl/integration/ud3tn/) | Use CSPCL inside uD3TN |
+| [Unibo Integration](https://dtn-mtp.github.io/cspcl/integration/unibo/) | Use CSPCL inside Unibo |
 | [Architecture](https://dtn-mtp.github.io/cspcl/architecture/) | Design decisions, SFP fragmentation, protocol stack |
 
 ## Quick Start
