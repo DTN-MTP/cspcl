@@ -184,8 +184,12 @@ static int test_pool_concurrent_cleanup(void) {
 /*===========================================================================*/
 
 static int test_init_cleanup(void) {
-  cspcl_t cspcl;
+  cspcl_t cspcl = {0};
   cspcl_error_t err;
+
+  cspcl.local_addr = 1;
+  cspcl.iface_type = CSP_IFACE_LOOPBACK;
+  cspcl.csp_port = CSPCL_PORT_BP;
 
   /* Test init with valid parameters */
   err = cspcl_init(&cspcl);
@@ -373,7 +377,7 @@ static int test_send_bundle_invalid_params(void) {
 }
 
 static int test_send_bundle_too_large(void) {
-  cspcl_t cspcl;
+  cspcl_t cspcl = {0};
   uint8_t bundle[100];
   cspcl_error_t err;
 
@@ -391,7 +395,7 @@ static int test_send_bundle_too_large(void) {
 }
 
 static int test_send_small_bundle(void) {
-  cspcl_t cspcl;
+  cspcl_t cspcl = {0};
   uint8_t bundle[] = "Hello Bundle Protocol!";
   cspcl_error_t err;
 
@@ -408,7 +412,7 @@ static int test_send_small_bundle(void) {
 }
 
 static int test_send_large_bundle(void) {
-  cspcl_t cspcl;
+  cspcl_t cspcl = {0};
   cspcl_error_t err;
 
   /* Create bundle larger than MTU to test fragmentation */
