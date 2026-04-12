@@ -7,6 +7,7 @@ authors = ["cspcl contributors"]
 license = "MIT"
 repository = "https://github.com/d3tn/cspcl"
 build = "build.rs"
+links = "cspcl"
 include = [
   "build.rs",
   "src/**/*",
@@ -19,3 +20,4 @@ include = [
 
 [build-dependencies]
 bindgen = "0.72.1"
+cc = "1.2"
