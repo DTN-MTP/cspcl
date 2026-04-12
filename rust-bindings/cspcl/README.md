@@ -6,6 +6,7 @@ Minimal Rust bindings for the CubeSat Space Protocol Convergence Layer (CSPCL), 
 
 - **Operational sys crate** - The workspace builds the local C implementation instead of assuming prelinked symbols
 - **Hardy-facing runtime surface** - Explicit shutdown, connection stats, peer helpers, and split send/receive handles
+- **Optional Tokio async wrappers** - Feature-gated async sender and receiver handles layered over the sync runtime
 - **Automatic cleanup** - Resource management via RAII
 - **Cross-platform** - POSIX (Linux) and FreeRTOS support at the C layer
 
@@ -45,6 +46,39 @@ println!("pool hits={} misses={}", stats.hits, stats.misses);
 cspcl.shutdown()?;
 ```
 
+Enable the optional async API with:
+
+```toml
+[dependencies]
+cspcl = { version = "0.1", features = ["async-tokio"] }
+```
+
+```rust
+use cspcl::async_api::AsyncCspcl;
+use cspcl::{Cspcl, CspclConfig, Interface, InterfaceName};
+
+let cspcl = Cspcl::from_config(
+    CspclConfig::new(1)
+        .with_interface(Interface::Loopback(InterfaceName::new("loopback"))),
+)?;
+
+let async_cspcl = AsyncCspcl::from_sync(cspcl.clone());
+let (sender, receiver) = async_cspcl.split();
+
+sender.send_bundle(&[1, 2, 3], 2, 10).await?;
+
+let mut buffer = [0_u8; 256];
+let received = receiver.recv_bundle_into(&mut buffer, 5_000).await?;
+println!(
+    "Received {} bytes from {}:{}",
+    received.len,
+    received.src_addr,
+    received.src_port
+);
+
+async_cspcl.shutdown().await?;
+```
+
 ## Public Surface
 
 - `Cspcl`
@@ -57,6 +91,8 @@ cspcl.shutdown()?;
   Received metadata plus helpers to derive a `RemotePeer`.
 - `RemotePeer`
   Transport-native remote identity helper for CSP address and port handling.
+- `async_api::{AsyncCspcl, AsyncSender, AsyncReceiver}`
+  Optional Tokio wrappers that delegate to the sync runtime through `spawn_blocking`.
 
 ## Documentation
 
@@ -84,6 +120,14 @@ cargo test -p cspcl
 If `rust-bindings/.cargo/config.toml` already points at your local libcsp checkout,
 the explicit export is not required.
 
+Run the feature-gated async suite with:
+
+```bash
+cd rust-bindings
+export CSP_REPO_DIR=/path/to/libcsp
+cargo test -p cspcl --features async-tokio
+```
+
 ## Coverage
 
 Install the coverage tool once:
@@ -106,6 +150,12 @@ Optional report variants:
 ```bash
 cargo llvm-cov -p cspcl --html
 cargo llvm-cov -p cspcl --lcov --output-path lcov.info
+```
+
+To include the async wrappers in coverage:
+
+```bash
+cargo llvm-cov -p cspcl --features async-tokio --summary-only
 ```
 
 ## License

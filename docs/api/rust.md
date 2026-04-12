@@ -9,12 +9,21 @@ permalink: /api/rust/
 # Rust API Reference
 
 The `cspcl` crate provides minimal safe Rust bindings over the C library.
+The sync API remains the source of truth. Optional Tokio wrappers live in
+`cspcl::async_api` behind the `async-tokio` Cargo feature.
 
 ## Installation
 
 ```toml
 [dependencies]
 cspcl = "0.1"
+```
+
+Enable the optional async wrappers with:
+
+```toml
+[dependencies]
+cspcl = { version = "0.1", features = ["async-tokio"] }
 ```
 
 For production use with real libcsp set the `CSP_PATH` environment variable before building:
@@ -107,12 +116,96 @@ pub fn recv_bundle_into(&self, buffer: &mut [u8], timeout_ms: u32) -> Result<Rec
 Receive a complete bundle. `ReceivedBundle` contains the payload and source metadata.
 `ReceivedBundleView` reports the received length and source metadata for a caller-provided buffer.
 
+---
+
+## `async_api` — Optional Tokio Wrappers
+
+Available behind the `async-tokio` Cargo feature.
+
+### `AsyncCspcl`
+
+```rust
+pub struct AsyncCspcl { /* ... */ }
+```
+
+```rust
+pub fn from_sync(cspcl: Cspcl) -> Self
+pub fn sender(&self) -> AsyncSender
+pub fn receiver(&self) -> AsyncReceiver
+pub fn split(&self) -> (AsyncSender, AsyncReceiver)
+pub fn is_initialized(&self) -> bool
+pub fn local_addr(&self) -> u8
+pub fn connection_stats(&self) -> ConnectionStats
+pub async fn shutdown(&self) -> Result<(), Error>
+```
+
+Wraps the existing sync runtime and delegates blocking operations through Tokio's
+`spawn_blocking`. It does not introduce a second transport implementation.
+
+### `AsyncSender`
+
+```rust
+pub struct AsyncSender { /* ... */ }
+```
+
+```rust
+pub fn from_sync(sender: Sender) -> Self
+pub fn connection_stats(&self) -> ConnectionStats
+pub async fn send_bundle(&self, bundle: &[u8], dest_addr: u8, dest_port: u8) -> Result<(), Error>
+```
+
+### `AsyncReceiver`
+
+```rust
+pub struct AsyncReceiver { /* ... */ }
+```
+
+```rust
+pub fn from_sync(receiver: Receiver) -> Self
+pub async fn recv_bundle(&self, timeout_ms: u32) -> Result<ReceivedBundle, Error>
+pub async fn recv_bundle_into(&self, buffer: &mut [u8], timeout_ms: u32) -> Result<ReceivedBundleView, Error>
+```
+
+These wrappers preserve the sync API's validation and error mapping, including
+timeout and post-shutdown behavior.
+
 ### `RemotePeer`
 
 ```rust
 pub struct RemotePeer {
     pub addr: u8,
     pub port: u8,
+}
+```
+
+### Async Example
+
+```rust
+use cspcl::async_api::AsyncCspcl;
+use cspcl::{Cspcl, CspclConfig, Error, Interface, InterfaceName};
+
+async fn transfer_bundle(bundle: &[u8], dest: u8) -> Result<(), Error> {
+    let cspcl = Cspcl::from_config(
+        CspclConfig::new(1)
+            .with_interface(Interface::Loopback(InterfaceName::new("loopback"))),
+    )?;
+    let async_cspcl = AsyncCspcl::from_sync(cspcl);
+    let (sender, receiver) = async_cspcl.split();
+
+    sender.send_bundle(bundle, dest, 10).await?;
+
+    let mut buffer = [0_u8; 1024];
+    let received = receiver.recv_bundle_into(&mut buffer, 10_000).await?;
+
+    println!(
+        "Bundle from {}:{}: {} bytes",
+        received.src_addr,
+        received.src_port,
+        received.len
+    );
+    println!("pool hits={}", async_cspcl.connection_stats().hits);
+    async_cspcl.shutdown().await?;
+    Ok(())
 }
 ```
 
@@ -186,6 +279,14 @@ export CSP_REPO_DIR=/path/to/libcsp
 cargo test -p cspcl
 ```
 
+Run the optional Tokio async tests with:
+
+```bash
+cd rust-bindings
+export CSP_REPO_DIR=/path/to/libcsp
+cargo test -p cspcl --features async-tokio
+```
+
 Coverage is reported with `cargo-llvm-cov`:
 
 ```bash
@@ -194,6 +295,12 @@ cargo install cargo-llvm-cov
 cd rust-bindings
 export CSP_REPO_DIR=/path/to/libcsp
 cargo llvm-cov -p cspcl --summary-only
+```
+
+To include the async wrappers:
+
+```bash
+cargo llvm-cov -p cspcl --features async-tokio --summary-only
 ```
 
 Optional outputs:
