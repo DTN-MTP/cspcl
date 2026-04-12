@@ -1,4 +1,5 @@
 use std::cell::UnsafeCell;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::bundle::{Receiver, Sender};
@@ -9,6 +10,8 @@ use crate::interface::Interface;
 pub(crate) struct RawCspcl {
     inner: UnsafeCell<cspcl_sys::cspcl_t>,
     recv_lock: Mutex<()>,
+    lifecycle_lock: Mutex<()>,
+    closed: AtomicBool,
 }
 
 impl RawCspcl {
@@ -33,6 +36,8 @@ impl RawCspcl {
         Ok(Self {
             inner: UnsafeCell::new(cspcl),
             recv_lock: Mutex::new(()),
+            lifecycle_lock: Mutex::new(()),
+            closed: AtomicBool::new(false),
         })
     }
 
@@ -49,15 +54,33 @@ impl RawCspcl {
     }
 
     fn is_initialized(&self) -> bool {
-        unsafe { (*self.as_mut_ptr()).initialized }
+        !self.closed.load(Ordering::Acquire) && unsafe { (*self.as_mut_ptr()).initialized }
+    }
+
+    fn shutdown(&self) {
+        let _guard = self.lifecycle_lock.lock().expect("lifecycle lock poisoned");
+
+        if self.closed.swap(true, Ordering::AcqRel) {
+            return;
+        }
+
+        unsafe {
+            cspcl_sys::cspcl_cleanup(self.as_mut_ptr());
+        }
+    }
+
+    fn ensure_initialized(&self) -> Result<()> {
+        if self.is_initialized() {
+            Ok(())
+        } else {
+            Err(Error::from_code(cspcl_sys::cspcl_error_t_CSPCL_ERR_NOT_INITIALIZED).unwrap_err())
+        }
     }
 }
 
 impl Drop for RawCspcl {
     fn drop(&mut self) {
-        unsafe {
-            cspcl_sys::cspcl_cleanup(self.inner.get());
-        }
+        self.shutdown();
     }
 }
 
@@ -150,6 +173,11 @@ impl Cspcl {
         self.receiver().recv_bundle(timeout_ms)
     }
 
+    pub fn shutdown(&self) -> Result<()> {
+        self.raw.shutdown();
+        Ok(())
+    }
+
     pub fn local_addr(&self) -> u8 {
         self.raw.local_addr()
     }
@@ -165,6 +193,10 @@ impl Cspcl {
 
 pub(crate) fn recv_lock(raw: &Arc<RawCspcl>) -> &Mutex<()> {
     &raw.recv_lock
+}
+
+pub(crate) fn ensure_initialized(raw: &Arc<RawCspcl>) -> Result<()> {
+    raw.ensure_initialized()
 }
 
 pub(crate) fn raw_ptr(raw: &Arc<RawCspcl>) -> *mut cspcl_sys::cspcl_t {

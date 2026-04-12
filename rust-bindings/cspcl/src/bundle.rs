@@ -1,6 +1,6 @@
 use crate::cspcl_sys;
 use crate::error::{Error, Result};
-use crate::instance::{SharedRawCspcl, raw_ptr, recv_lock};
+use crate::instance::{SharedRawCspcl, ensure_initialized, raw_ptr, recv_lock};
 
 /// Metadata and payload for a bundle received from CSPCL.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,6 +28,7 @@ impl Sender {
                 Error::from_code(cspcl_sys::cspcl_error_t_CSPCL_ERR_INVALID_PARAM).unwrap_err(),
             );
         }
+        ensure_initialized(&self.raw)?;
 
         unsafe {
             Error::from_code(cspcl_sys::cspcl_send_bundle(
@@ -55,6 +56,7 @@ impl Receiver {
 
     /// Receive a bundle with the provided timeout in milliseconds.
     pub fn recv_bundle(&self, timeout_ms: u32) -> Result<ReceivedBundle> {
+        ensure_initialized(&self.raw)?;
         let _guard = recv_lock(&self.raw).lock().expect("receiver lock poisoned");
 
         let mut buffer = vec![0u8; cspcl_sys::CSPCL_MAX_BUNDLE_SIZE as usize];

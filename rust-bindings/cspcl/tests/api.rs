@@ -7,7 +7,9 @@ use cspcl::{
 static TEST_GUARD: Mutex<()> = Mutex::new(());
 
 fn test_lock() -> MutexGuard<'static, ()> {
-    TEST_GUARD.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    TEST_GUARD
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 fn loopback_interface() -> Interface {
@@ -23,6 +25,13 @@ fn assert_timeout(err: Error) {
     assert_eq!(
         err.code(),
         cspcl::cspcl_sys::cspcl_error_t_CSPCL_ERR_TIMEOUT
+    );
+}
+
+fn assert_not_initialized(err: Error) {
+    assert_eq!(
+        err.code(),
+        cspcl::cspcl_sys::cspcl_error_t_CSPCL_ERR_NOT_INITIALIZED
     );
 }
 
@@ -59,6 +68,32 @@ fn config_defaults_and_constructors_match() {
     assert!(from_config.is_initialized());
     assert_eq!(from_new.local_addr(), from_config.local_addr());
     assert_eq!(from_new.local_port(), from_config.local_port());
+}
+
+#[test]
+fn shutdown_is_explicit_and_idempotent() {
+    let _guard = test_lock();
+    let cspcl = test_instance();
+
+    cspcl.shutdown().unwrap();
+    cspcl.shutdown().unwrap();
+
+    assert!(!cspcl.is_initialized());
+}
+
+#[test]
+fn send_and_receive_fail_after_shutdown() {
+    let _guard = test_lock();
+    let cspcl = test_instance();
+    let sender = cspcl.sender();
+    let receiver = cspcl.receiver();
+
+    cspcl.shutdown().unwrap();
+
+    assert_not_initialized(cspcl.send_bundle(&[1, 2, 3], 12, 10).unwrap_err());
+    assert_not_initialized(sender.send_bundle(&[1, 2, 3], 12, 10).unwrap_err());
+    assert_not_initialized(cspcl.recv_bundle(5).unwrap_err());
+    assert_not_initialized(receiver.recv_bundle(5).unwrap_err());
 }
 
 #[test]
