@@ -1,7 +1,8 @@
 use std::sync::{Mutex, MutexGuard};
 
 use cspcl::{
-    Cspcl, CspclConfig, Error, Interface, InterfaceName, addr_to_endpoint, endpoint_to_addr,
+    Cspcl, CspclConfig, Error, Interface, InterfaceName, ReceivedBundle, ReceivedBundleView,
+    RemotePeer, addr_to_endpoint, endpoint_to_addr,
 };
 
 static TEST_GUARD: Mutex<()> = Mutex::new(());
@@ -213,4 +214,37 @@ fn connection_stats_reflect_send_activity() {
     let sender_stats = sender.connection_stats();
     assert_eq!(sender_stats.hits, stats.hits);
     assert_eq!(sender_stats.misses, stats.misses);
+}
+
+#[test]
+fn remote_peer_helpers_round_trip_transport_identity() {
+    let _guard = test_lock();
+
+    let peer = RemotePeer::new(17, 10);
+    assert_eq!(peer.addr, 17);
+    assert_eq!(peer.port, 10);
+    assert_eq!(peer.endpoint().unwrap(), "ipn:17.0");
+
+    let from_endpoint = RemotePeer::from_endpoint("ipn:17.42", 10).unwrap();
+    assert_eq!(from_endpoint, peer);
+    assert!(RemotePeer::from_endpoint("invalid", 10).is_none());
+}
+
+#[test]
+fn received_bundle_metadata_maps_to_remote_peer() {
+    let _guard = test_lock();
+
+    let received = ReceivedBundle {
+        data: vec![1, 2, 3],
+        src_addr: 23,
+        src_port: 11,
+    };
+    let view = ReceivedBundleView {
+        len: 3,
+        src_addr: 23,
+        src_port: 11,
+    };
+
+    assert_eq!(received.remote_peer(), RemotePeer::new(23, 11));
+    assert_eq!(view.remote_peer(), RemotePeer::new(23, 11));
 }

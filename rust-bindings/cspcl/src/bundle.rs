@@ -1,6 +1,7 @@
 use crate::cspcl_sys;
 use crate::error::{Error, Result};
 use crate::instance::{ConnectionStats, SharedRawCspcl, ensure_initialized, raw_ptr, recv_lock};
+use crate::peer::RemotePeer;
 
 /// Metadata and payload for a bundle received from CSPCL.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,6 +17,18 @@ pub struct ReceivedBundleView {
     pub len: usize,
     pub src_addr: u8,
     pub src_port: u8,
+}
+
+impl ReceivedBundle {
+    pub fn remote_peer(&self) -> RemotePeer {
+        RemotePeer::new(self.src_addr, self.src_port)
+    }
+}
+
+impl ReceivedBundleView {
+    pub fn remote_peer(&self) -> RemotePeer {
+        RemotePeer::new(self.src_addr, self.src_port)
+    }
 }
 
 /// Shared outbound handle backed by the native CSPCL connection pool.

@@ -12,6 +12,7 @@ mod bundle;
 mod error;
 mod instance;
 mod interface;
+mod peer;
 
 // Public exports
 pub use address::{addr_to_endpoint, endpoint_to_addr};
@@ -19,3 +20,4 @@ pub use bundle::{ReceivedBundle, ReceivedBundleView, Receiver, Sender};
 pub use error::{Error, Result};
 pub use instance::{ConnectionStats, Cspcl, CspclConfig};
 pub use interface::{Interface, InterfaceName};
+pub use peer::RemotePeer;
