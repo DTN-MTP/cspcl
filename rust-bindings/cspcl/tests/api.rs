@@ -182,3 +182,35 @@ fn cloned_receivers_time_out_sequentially() {
     assert_timeout(receiver.recv_bundle(5).unwrap_err());
     assert_timeout(receiver_clone.recv_bundle(5).unwrap_err());
 }
+
+#[test]
+fn connection_stats_start_zeroed() {
+    let _guard = test_lock();
+    let cspcl = test_instance();
+    let stats = cspcl.connection_stats();
+
+    assert_eq!(stats.hits, 0);
+    assert_eq!(stats.misses, 0);
+    assert_eq!(stats.evictions, 0);
+    assert_eq!(stats.connect_failures, 0);
+    assert_eq!(stats.invalidations, 0);
+}
+
+#[test]
+fn connection_stats_reflect_send_activity() {
+    let _guard = test_lock();
+    let cspcl = test_instance();
+    let sender = cspcl.sender();
+    let sender_clone = sender.clone();
+
+    sender.send_bundle(&[1, 2, 3], 42, 10).unwrap();
+    sender_clone.send_bundle(&[4, 5, 6], 42, 10).unwrap();
+
+    let stats = cspcl.connection_stats();
+    assert!(stats.misses >= 1);
+    assert!(stats.hits >= 1);
+
+    let sender_stats = sender.connection_stats();
+    assert_eq!(sender_stats.hits, stats.hits);
+    assert_eq!(sender_stats.misses, stats.misses);
+}

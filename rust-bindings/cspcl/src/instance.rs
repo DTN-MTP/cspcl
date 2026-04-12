@@ -14,6 +14,16 @@ pub(crate) struct RawCspcl {
     closed: AtomicBool,
 }
 
+/// Read-only connection pool counters exposed by the native CSPCL runtime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConnectionStats {
+    pub hits: u32,
+    pub misses: u32,
+    pub evictions: u32,
+    pub connect_failures: u32,
+    pub invalidations: u32,
+}
+
 impl RawCspcl {
     fn new(local_addr: u8, local_port: u8, interface: Interface) -> Result<Self> {
         let mut cspcl = cspcl_sys::cspcl_t {
@@ -74,6 +84,20 @@ impl RawCspcl {
             Ok(())
         } else {
             Err(Error::from_code(cspcl_sys::cspcl_error_t_CSPCL_ERR_NOT_INITIALIZED).unwrap_err())
+        }
+    }
+
+    pub(crate) fn connection_stats(&self) -> ConnectionStats {
+        let mut stats = cspcl_sys::cspcl_conn_pool_stats_t::default();
+        unsafe {
+            cspcl_sys::cspcl_conn_pool_get_stats(&(*self.as_mut_ptr()).conn_pool, &mut stats);
+        }
+        ConnectionStats {
+            hits: stats.hits,
+            misses: stats.misses,
+            evictions: stats.evictions,
+            connect_failures: stats.connect_failures,
+            invalidations: stats.invalidations,
         }
     }
 }
@@ -185,6 +209,10 @@ impl Cspcl {
     pub fn shutdown(&self) -> Result<()> {
         self.raw.shutdown();
         Ok(())
+    }
+
+    pub fn connection_stats(&self) -> ConnectionStats {
+        self.raw.connection_stats()
     }
 
     pub fn local_addr(&self) -> u8 {

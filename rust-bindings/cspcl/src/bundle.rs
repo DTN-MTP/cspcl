@@ -1,6 +1,6 @@
 use crate::cspcl_sys;
 use crate::error::{Error, Result};
-use crate::instance::{SharedRawCspcl, ensure_initialized, raw_ptr, recv_lock};
+use crate::instance::{ConnectionStats, SharedRawCspcl, ensure_initialized, raw_ptr, recv_lock};
 
 /// Metadata and payload for a bundle received from CSPCL.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +48,10 @@ impl Sender {
             ))?;
         }
         Ok(())
+    }
+
+    pub fn connection_stats(&self) -> ConnectionStats {
+        self.raw.connection_stats()
     }
 }
 
