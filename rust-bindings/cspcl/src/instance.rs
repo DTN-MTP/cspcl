@@ -173,6 +173,15 @@ impl Cspcl {
         self.receiver().recv_bundle(timeout_ms)
     }
 
+    /// Convenience method for receiving into a caller-provided buffer.
+    pub fn recv_bundle_into(
+        &self,
+        buffer: &mut [u8],
+        timeout_ms: u32,
+    ) -> Result<crate::bundle::ReceivedBundleView> {
+        self.receiver().recv_bundle_into(buffer, timeout_ms)
+    }
+
     pub fn shutdown(&self) -> Result<()> {
         self.raw.shutdown();
         Ok(())

@@ -139,6 +139,29 @@ fn recv_times_out_when_no_bundle_is_pending() {
 }
 
 #[test]
+fn recv_bundle_into_times_out_when_no_bundle_is_pending() {
+    let _guard = test_lock();
+    let cspcl = test_instance();
+    let mut buffer = [0_u8; 64];
+    let err = cspcl.recv_bundle_into(&mut buffer, 5).unwrap_err();
+
+    assert_timeout(err);
+}
+
+#[test]
+fn recv_bundle_into_fails_after_shutdown() {
+    let _guard = test_lock();
+    let cspcl = test_instance();
+    let receiver = cspcl.receiver();
+    let mut buffer = [0_u8; 64];
+
+    cspcl.shutdown().unwrap();
+
+    assert_not_initialized(cspcl.recv_bundle_into(&mut buffer, 5).unwrap_err());
+    assert_not_initialized(receiver.recv_bundle_into(&mut buffer, 5).unwrap_err());
+}
+
+#[test]
 fn cloned_sender_handles_can_send_sequentially() {
     let _guard = test_lock();
     let cspcl = test_instance();

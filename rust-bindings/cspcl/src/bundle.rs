@@ -10,6 +10,14 @@ pub struct ReceivedBundle {
     pub src_port: u8,
 }
 
+/// Metadata for a bundle written into a caller-provided buffer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReceivedBundleView {
+    pub len: usize,
+    pub src_addr: u8,
+    pub src_port: u8,
+}
+
 /// Shared outbound handle backed by the native CSPCL connection pool.
 #[derive(Clone)]
 pub struct Sender {
@@ -56,10 +64,25 @@ impl Receiver {
 
     /// Receive a bundle with the provided timeout in milliseconds.
     pub fn recv_bundle(&self, timeout_ms: u32) -> Result<ReceivedBundle> {
+        let mut buffer = vec![0u8; cspcl_sys::CSPCL_MAX_BUNDLE_SIZE as usize];
+        let received = self.recv_bundle_into(&mut buffer, timeout_ms)?;
+        buffer.truncate(received.len);
+        Ok(ReceivedBundle {
+            data: buffer,
+            src_addr: received.src_addr,
+            src_port: received.src_port,
+        })
+    }
+
+    /// Receive a bundle into a caller-provided buffer.
+    pub fn recv_bundle_into(
+        &self,
+        buffer: &mut [u8],
+        timeout_ms: u32,
+    ) -> Result<ReceivedBundleView> {
         ensure_initialized(&self.raw)?;
         let _guard = recv_lock(&self.raw).lock().expect("receiver lock poisoned");
 
-        let mut buffer = vec![0u8; cspcl_sys::CSPCL_MAX_BUNDLE_SIZE as usize];
         let mut len = buffer.len();
         let mut src_addr: u8 = 0;
         let mut src_port: u8 = 0;
@@ -75,9 +98,8 @@ impl Receiver {
             ))?;
         }
 
-        buffer.truncate(len);
-        Ok(ReceivedBundle {
-            data: buffer,
+        Ok(ReceivedBundleView {
+            len,
             src_addr,
             src_port,
         })
