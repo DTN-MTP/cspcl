@@ -8,6 +8,8 @@ pub use cspcl_sys;
 
 // Module declarations
 mod address;
+#[cfg(feature = "async-tokio")]
+pub mod async_api;
 mod bundle;
 mod error;
 mod instance;

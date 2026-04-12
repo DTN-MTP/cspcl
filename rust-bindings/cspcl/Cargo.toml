@@ -9,5 +9,10 @@ repository = "https://github.com/d3tn/cspcl"
 readme = "README.md"
 keywords = ["cspcl"]
 
+[features]
+default = []
+async-tokio = ["dep:tokio"]
+
 [dependencies]
 cspcl-sys = { version = "0.3.0", path = "../cspcl-sys" }
+tokio = { version = "1", optional = true, features = ["rt-multi-thread", "macros", "sync"] }
