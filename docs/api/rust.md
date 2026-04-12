@@ -8,7 +8,7 @@ permalink: /api/rust/
 
 # Rust API Reference
 
-The `cspcl` crate provides safe, idiomatic Rust bindings over the C library.
+The `cspcl` crate provides minimal safe Rust bindings over the C library.
 
 ## Installation
 
@@ -26,47 +26,66 @@ cargo build --release
 
 ---
 
-## `Cspcl` — Main Handle
+## `Cspcl` — Bootstrap Handle
 
 ```rust
 pub struct Cspcl { /* ... */ }
 ```
 
-Owns the underlying `cspcl_t` instance. Resources are released automatically when
-the value is dropped.
+Owns the underlying `cspcl_t` instance. It can be split into dedicated outbound
+and inbound handles without exposing the raw C struct.
 
-### `Cspcl::init`
-
-```rust
-pub fn init(local_addr: u8) -> Result<Self, CspclerError>
-```
-
-Initialize CSPCL with the given local CSP node address.
-
-### `open_rx_socket`
+### `CspclConfig`
 
 ```rust
-pub fn open_rx_socket(&mut self) -> Result<(), CspclerError>
+pub struct CspclConfig { /* ... */ }
 ```
-
-Bind the receive socket to the Bundle Protocol port. Call once before `recv_bundle`.
-
-### `send_bundle`
 
 ```rust
-pub fn send_bundle(&self, bundle: &[u8], dest_addr: u8) -> Result<(), CspclerError>
+pub fn new(local_addr: u8) -> Self
+pub fn with_port(self, local_port: u8) -> Self
+pub fn with_interface(self, interface: Interface) -> Self
 ```
 
-Send a serialized BP7 bundle to `dest_addr`. Fragmentation via SFP is handled internally.
-
-### `recv_bundle`
+### `Cspcl::from_config`
 
 ```rust
-pub fn recv_bundle(&self, timeout_ms: u32) -> Result<(Vec<u8>, u8), CspclerError>
+pub fn from_config(config: CspclConfig) -> Result<Cspcl, Error>
 ```
 
-Receive a complete bundle. Returns `(bundle_bytes, src_addr)`. Blocks until data
-arrives or `timeout_ms` elapses.
+Initialize CSPCL with explicit port/interface settings.
+
+### `Cspcl::split`
+
+```rust
+pub fn split(&self) -> (Sender, Receiver)
+```
+
+Create dedicated sender and receiver handles that share the same native instance.
+
+### `Sender`
+
+```rust
+pub struct Sender { /* ... */ }
+```
+
+```rust
+pub fn send_bundle(&self, bundle: &[u8], dest_addr: u8, dest_port: u8) -> Result<(), Error>
+```
+
+Send a serialized BP7 bundle to `dest_addr:dest_port`. Fragmentation via SFP is handled internally.
+
+### `Receiver`
+
+```rust
+pub struct Receiver { /* ... */ }
+```
+
+```rust
+pub fn recv_bundle(&self, timeout_ms: u32) -> Result<ReceivedBundle, Error>
+```
+
+Receive a complete bundle. `ReceivedBundle` contains the payload and source metadata.
 
 ---
 
@@ -82,21 +101,10 @@ pub fn addr_to_endpoint(addr: u8) -> Result<String, CspclerError>
 
 ---
 
-## `CspclerError`
+## `Error`
 
 ```rust
-pub enum CspclerError {
-    InvalidParam,
-    NoMemory,
-    BundleTooLarge,
-    CspSend,
-    CspRecv,
-    Timeout,
-    Sfp,
-    NotInitialized,
-    Connection,
-    Unknown(i32),
-}
+pub struct Error(/* raw cspcl_error_t */);
 ```
 
 Implements `std::error::Error` and `std::fmt::Display`.
@@ -106,24 +114,52 @@ Implements `std::error::Error` and `std::fmt::Display`.
 ## Example
 
 ```rust
-use cspcl::{Cspcl, CspclerError};
+use cspcl::{Cspcl, CspclConfig, Error, Interface, InterfaceName};
 
-fn transfer_bundle(bundle: &[u8], dest: u8) -> Result<(), CspclerError> {
-    let cspcl = Cspcl::init(1)?;
-    cspcl.send_bundle(bundle, dest)?;
+fn transfer_bundle(bundle: &[u8], dest: u8) -> Result<(), Error> {
+    let cspcl = Cspcl::from_config(
+        CspclConfig::new(1)
+            .with_interface(Interface::Loopback(InterfaceName::new("loopback"))),
+    )?;
+    let (sender, receiver) = cspcl.split();
+
+    sender.send_bundle(bundle, dest, 10)?;
+    let received = receiver.recv_bundle(10_000)?;
+
+    println!(
+        "Bundle from {}:{}: {} bytes",
+        received.src_addr,
+        received.src_port,
+        received.data.len()
+    );
     Ok(())
 }
+```
 
-fn receive_loop() -> Result<(), CspclerError> {
-    let mut cspcl = Cspcl::init(1)?;
-    cspcl.open_rx_socket()?;
+## Testing And Coverage
 
-    loop {
-        match cspcl.recv_bundle(10_000) {
-            Ok((data, src)) => println!("Bundle from {}: {} bytes", src, data.len()),
-            Err(CspclerError::Timeout) => continue,
-            Err(e) => return Err(e),
-        }
-    }
-}
+The Rust tests target the safe crate against a built `libcsp` v1.6 checkout.
+Point `CSP_REPO_DIR` at that checkout before running the commands below.
+
+```bash
+cd rust-bindings
+export CSP_REPO_DIR=/path/to/libcsp
+cargo test -p cspcl
+```
+
+Coverage is reported with `cargo-llvm-cov`:
+
+```bash
+rustup component add llvm-tools-preview
+cargo install cargo-llvm-cov
+cd rust-bindings
+export CSP_REPO_DIR=/path/to/libcsp
+cargo llvm-cov -p cspcl --summary-only
+```
+
+Optional outputs:
+
+```bash
+cargo llvm-cov -p cspcl --html
+cargo llvm-cov -p cspcl --lcov --output-path lcov.info
 ```

@@ -18,6 +18,24 @@ make
 ctest --verbose
 ```
 
+Rust bindings are tested against a built `libcsp` checkout:
+
+```bash
+cd rust-bindings
+export CSP_REPO_DIR=/path/to/libcsp
+cargo test -p cspcl
+```
+
+Coverage for the safe Rust crate uses `cargo-llvm-cov`:
+
+```bash
+rustup component add llvm-tools-preview
+cargo install cargo-llvm-cov
+cd rust-bindings
+export CSP_REPO_DIR=/path/to/libcsp
+cargo llvm-cov -p cspcl --summary-only
+```
+
 ## Coding Standards
 
 - **C**: Follow the existing style (C11, clang-format); run `clang-format -i src/*.c src/*.h` before committing.
