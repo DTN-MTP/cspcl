@@ -26,6 +26,13 @@ export CSP_REPO_DIR=/path/to/libcsp
 cargo test -p cspcl
 ```
 
+The Rust binding crate is expected to preserve a small Hardy-facing transport surface:
+
+- explicit lifecycle via `shutdown()`
+- blocking receive plus `recv_bundle_into()`
+- connection observability via `connection_stats()`
+- transport peer helpers via `RemotePeer`
+
 Coverage for the safe Rust crate uses `cargo-llvm-cov`:
 
 ```bash

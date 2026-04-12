@@ -5,7 +5,7 @@ Minimal Rust bindings for the CubeSat Space Protocol Convergence Layer (CSPCL), 
 ## Features
 
 - **Operational sys crate** - The workspace builds the local C implementation instead of assuming prelinked symbols
-- **Minimal safe API** - Bootstrap with `Cspcl`, then split into `Sender` and `Receiver`
+- **Hardy-facing runtime surface** - Explicit shutdown, connection stats, peer helpers, and split send/receive handles
 - **Automatic cleanup** - Resource management via RAII
 - **Cross-platform** - POSIX (Linux) and FreeRTOS support at the C layer
 
@@ -38,7 +38,25 @@ println!(
     bundle.src_addr,
     bundle.src_port
 );
+
+let stats = cspcl.connection_stats();
+println!("pool hits={} misses={}", stats.hits, stats.misses);
+
+cspcl.shutdown()?;
 ```
+
+## Public Surface
+
+- `Cspcl`
+  Bootstrap handle with `split()`, `shutdown()`, `connection_stats()`, and convenience send/receive methods.
+- `Sender`
+  Shared outbound handle with `send_bundle()` and `connection_stats()`.
+- `Receiver`
+  Blocking inbound handle with `recv_bundle()` and `recv_bundle_into()`.
+- `ReceivedBundle` and `ReceivedBundleView`
+  Received metadata plus helpers to derive a `RemotePeer`.
+- `RemotePeer`
+  Transport-native remote identity helper for CSP address and port handling.
 
 ## Documentation
 

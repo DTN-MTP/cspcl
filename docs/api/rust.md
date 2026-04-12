@@ -63,6 +63,23 @@ pub fn split(&self) -> (Sender, Receiver)
 
 Create dedicated sender and receiver handles that share the same native instance.
 
+### `Cspcl::shutdown`
+
+```rust
+pub fn shutdown(&self) -> Result<(), Error>
+```
+
+Explicitly tear down the native runtime. After shutdown, send and receive calls
+return `CSPCL_ERR_NOT_INITIALIZED`.
+
+### `Cspcl::connection_stats`
+
+```rust
+pub fn connection_stats(&self) -> ConnectionStats
+```
+
+Read the native outbound connection-pool counters.
+
 ### `Sender`
 
 ```rust
@@ -71,6 +88,7 @@ pub struct Sender { /* ... */ }
 
 ```rust
 pub fn send_bundle(&self, bundle: &[u8], dest_addr: u8, dest_port: u8) -> Result<(), Error>
+pub fn connection_stats(&self) -> ConnectionStats
 ```
 
 Send a serialized BP7 bundle to `dest_addr:dest_port`. Fragmentation via SFP is handled internally.
@@ -83,9 +101,28 @@ pub struct Receiver { /* ... */ }
 
 ```rust
 pub fn recv_bundle(&self, timeout_ms: u32) -> Result<ReceivedBundle, Error>
+pub fn recv_bundle_into(&self, buffer: &mut [u8], timeout_ms: u32) -> Result<ReceivedBundleView, Error>
 ```
 
 Receive a complete bundle. `ReceivedBundle` contains the payload and source metadata.
+`ReceivedBundleView` reports the received length and source metadata for a caller-provided buffer.
+
+### `RemotePeer`
+
+```rust
+pub struct RemotePeer {
+    pub addr: u8,
+    pub port: u8,
+}
+```
+
+```rust
+pub fn new(addr: u8, port: u8) -> Self
+pub fn from_endpoint(endpoint: &str, port: u8) -> Option<Self>
+pub fn endpoint(&self) -> Result<String, Error>
+```
+
+Minimal transport-native identity helper for Hardy-side peer tracking.
 
 ---
 
@@ -132,6 +169,8 @@ fn transfer_bundle(bundle: &[u8], dest: u8) -> Result<(), Error> {
         received.src_port,
         received.data.len()
     );
+    println!("pool hits={}", cspcl.connection_stats().hits);
+    cspcl.shutdown()?;
     Ok(())
 }
 ```
