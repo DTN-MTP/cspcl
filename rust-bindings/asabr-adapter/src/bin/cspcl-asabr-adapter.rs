@@ -1,7 +1,8 @@
 use std::env;
 
 use cspcl_asabr_adapter::{
-    cspcl_route_decision_status_t, cspcl_route_mode_t, cspcl_route_request_t, query_route,
+    RouteRequest, cspcl_route_decision_status_t, cspcl_route_mode_t, query_route,
+    set_contact_plan_path,
 };
 
 fn parse_list(value: Option<String>) -> Vec<u16> {
@@ -110,8 +111,9 @@ fn main() {
         eprintln!("missing contact plan path");
         std::process::exit(2);
     }
-    unsafe {
-        env::set_var("CSPCL_ASABR_CONTACT_PLAN_PATH", &contact_plan_path);
+    if let Err(err) = set_contact_plan_path(Some(contact_plan_path)) {
+        eprintln!("failed to configure contact plan path: {}", err as i32);
+        std::process::exit(2);
     }
 
     let source_node_id = source_node_id.unwrap_or_else(|| {
@@ -125,22 +127,14 @@ fn main() {
     }
     let excluded = parse_list(excluded_nodes);
 
-    let destination_storage = destinations;
-    let excluded_storage = excluded;
-    let request = cspcl_route_request_t {
+    let request = RouteRequest {
         source_node_id,
-        destination_node_ids: destination_storage.as_ptr(),
-        destination_count: destination_storage.len(),
+        destinations,
         bundle_priority,
         bundle_size,
         bundle_expiration,
         current_time,
-        excluded_node_ids: if excluded_storage.is_empty() {
-            std::ptr::null()
-        } else {
-            excluded_storage.as_ptr()
-        },
-        excluded_node_count: excluded_storage.len(),
+        excluded,
         timeout_ms,
     };
 

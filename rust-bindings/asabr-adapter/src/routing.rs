@@ -5,8 +5,18 @@ use a_sabr::bundle::Bundle;
 use crate::state::AdapterState;
 use crate::types::{
     cspcl_route_decision_status_t, cspcl_route_error_t, cspcl_route_mode_t, cspcl_route_next_hop_t,
-    cspcl_route_request_t,
 };
+
+pub struct RouteRequest {
+    pub source_node_id: u16,
+    pub destinations: Vec<u16>,
+    pub bundle_priority: i8,
+    pub bundle_size: f64,
+    pub bundle_expiration: f64,
+    pub current_time: f64,
+    pub excluded: Vec<u16>,
+    pub timeout_ms: u32,
+}
 
 pub struct RouteDecision {
     pub decision_status: cspcl_route_decision_status_t,
@@ -38,27 +48,15 @@ pub(crate) fn contact_identifier(tx_node: u16, rx_node: u16, start: f64, end: f6
 
 pub(crate) fn decide_route(
     state: &mut AdapterState,
-    request: &cspcl_route_request_t,
+    request: &RouteRequest,
 ) -> Result<RouteDecision, cspcl_route_error_t> {
-    if request.destination_count == 0 || request.destination_node_ids.is_null() {
+    if request.destinations.is_empty() {
         return Err(cspcl_route_error_t::CSPCL_ROUTE_ERR_INVALID_PARAM);
     }
 
-    let destinations = unsafe {
-        std::slice::from_raw_parts(request.destination_node_ids, request.destination_count)
-    };
-    let excluded = if request.excluded_node_count == 0 || request.excluded_node_ids.is_null() {
-        Vec::new()
-    } else {
-        unsafe {
-            std::slice::from_raw_parts(request.excluded_node_ids, request.excluded_node_count)
-        }
-        .to_vec()
-    };
-
     let bundle = Bundle {
         source: request.source_node_id,
-        destinations: destinations.to_vec(),
+        destinations: request.destinations.clone(),
         priority: request.bundle_priority,
         size: request.bundle_size,
         expiration: request.bundle_expiration,
@@ -68,7 +66,7 @@ pub(crate) fn decide_route(
         request.source_node_id,
         &bundle,
         request.current_time,
-        &excluded,
+        &request.excluded,
     );
 
     let maybe_output = match routing_result {
@@ -119,7 +117,7 @@ pub(crate) fn decide_route(
         });
     }
 
-    let decision_mode = if next_hops.len() > 1 || request.destination_count > 1 {
+    let decision_mode = if next_hops.len() > 1 || request.destinations.len() > 1 {
         cspcl_route_mode_t::CSPCL_ROUTE_MODE_MULTICAST
     } else {
         cspcl_route_mode_t::CSPCL_ROUTE_MODE_UNICAST

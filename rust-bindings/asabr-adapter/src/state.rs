@@ -24,6 +24,7 @@ pub(crate) struct AdapterState {
 
 thread_local! {
     static STATE: RefCell<Option<AdapterState>> = const { RefCell::new(None) };
+    static CONTACT_PLAN_PATH_OVERRIDE: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
 fn get_env_string(name: &str) -> Option<String> {
@@ -34,8 +35,27 @@ fn get_env_string(name: &str) -> Option<String> {
 }
 
 fn get_default_contact_plan_path() -> Result<String, cspcl_route_error_t> {
+    let override_path = CONTACT_PLAN_PATH_OVERRIDE.with(|path_cell| path_cell.borrow().clone());
+    if let Some(path) = override_path {
+        if !path.trim().is_empty() {
+            return Ok(path);
+        }
+    }
+
     get_env_string("CSPCL_ASABR_CONTACT_PLAN_PATH")
         .ok_or(cspcl_route_error_t::CSPCL_ROUTE_ERR_PROVIDER_FAILED)
+}
+
+pub(crate) fn set_contact_plan_path(path: Option<String>) -> Result<(), cspcl_route_error_t> {
+    if matches!(path.as_deref(), Some(raw) if raw.trim().is_empty()) {
+        return Err(cspcl_route_error_t::CSPCL_ROUTE_ERR_INVALID_PARAM);
+    }
+
+    CONTACT_PLAN_PATH_OVERRIDE.with(|path_cell| {
+        *path_cell.borrow_mut() = path;
+    });
+    reset_state();
+    Ok(())
 }
 
 fn build_contact_dispatch() -> ContactMarkerMap<'static> {
