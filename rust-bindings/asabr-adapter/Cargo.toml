@@ -1,0 +1,15 @@
+[package]
+name = "cspcl-asabr-adapter"
+version = "0.1.0"
+edition = "2024"
+description = "C ABI adapter that routes CSPCL requests through A-SABR"
+authors = ["cspcl contributors"]
+license = "MIT"
+repository = "https://github.com/d3tn/cspcl"
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+name = "cspcl_asabr_adapter"
+
+[dependencies]
+a_sabr = { path = "../../../A-SABR" }

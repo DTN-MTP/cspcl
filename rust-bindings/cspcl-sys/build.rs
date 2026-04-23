@@ -5,23 +5,15 @@ fn main() {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let manifest_path = PathBuf::from(&manifest_dir);
 
-    // When published to crates.io, the C source files are included in the crate root
-    // Check cspcl-sys/src first (where they'll be when published)
+    // Canonical C sources for cspcl-sys are vendored in c_src.
     let src_in_crate = manifest_path.join("c_src");
-
-    // Otherwise look in workspace (local development)
-    let workspace_root = manifest_path.parent().unwrap().parent().unwrap();
-    let src_in_workspace = workspace_root.join("src");
 
     let src_dir = if src_in_crate.exists() {
         src_in_crate
-    } else if src_in_workspace.exists() {
-        src_in_workspace
     } else {
         panic!(
-            "C source directory not found. Looked in:\n  {}\n  {}",
-            src_in_crate.display(),
-            src_in_workspace.display()
+            "C source directory not found. Expected:\n  {}",
+            src_in_crate.display()
         );
     };
 
