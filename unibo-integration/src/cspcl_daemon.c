@@ -34,7 +34,9 @@
 #include "cspcl_route_bridge.h"
 #include <csp/csp.h>
 #include <csp/csp_rtable.h>
+#ifdef CSP_HAVE_LIBZMQ
 #include <csp/interfaces/csp_if_zmqhub.h>
+#endif
 
 #ifdef CSP_USE_CAN
 #include <csp/drivers/can_socketcan.h>

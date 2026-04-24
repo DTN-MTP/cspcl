@@ -23,7 +23,9 @@
 #include <csp/csp.h>
 /* libcsp headers for direct CSP stack control */
 #include <csp/csp_rtable.h>
+#ifdef CSP_HAVE_LIBZMQ
 #include <csp/interfaces/csp_if_zmqhub.h>
+#endif
 /* CAN interface support - requires libcsp built with CAN driver */
 #ifdef CSP_HAVE_LIBSOCKETCAN
 #include <csp/drivers/can_socketcan.h>
@@ -197,12 +199,17 @@ cspcl_error_t cspcl_init(cspcl_t *cspcl) {
     /* Initialize the selected interface */
     switch (cspcl->iface_type) {
     case CSP_IFACE_ZMQHUB:
+#ifdef CSP_HAVE_LIBZMQ
       ret = csp_zmqhub_init(cspcl->local_addr, cspcl->zmqhub_addr, 0,
                             &cspcl->active_iface);
       if (ret != CSP_ERR_NONE) {
         cspcl_release_conn_pool(cspcl);
         return CSPCL_ERR_CSP_ZMQHUB_INIT;
       }
+#else
+      cspcl_release_conn_pool(cspcl);
+      return CSPCL_ERR_CSP_ZMQHUB_INIT;
+#endif
       break;
 
     case CSP_IFACE_CAN:
