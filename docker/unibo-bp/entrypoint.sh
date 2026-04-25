@@ -29,6 +29,7 @@ echo "=================================================="
 
 # Ensure node directory exists and is clean
 mkdir -p "${UNIBO_NODE_DIR}"
+find "${UNIBO_NODE_DIR}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 cd "${UNIBO_NODE_DIR}"
 
 # Clean up any previous state

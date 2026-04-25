@@ -126,7 +126,7 @@ docker pull ghcr.io/dtn-mtp/cspcl/cspcl-unibo:latest
 docker build -t cspcl-unibo:latest -f docker/unibo-bp/Dockerfile .
 ```
 
-**Note:** Unibo-BP binaries are not included. Mount them at runtime or build from source if you have access.
+**Note:** The Docker build now compiles Unibo-BP from source, so runtime binary mounts are not required.
 
 ## Docker Compose Configurations
 
@@ -243,7 +243,7 @@ docker exec -it cspcl-ud3tn-node-a /bin/bash
 # Send a bundle (uD3TN)
 docker exec cspcl-ud3tn-node-a \
   /opt/ud3tn-src/build/posix/aap2/aap2_send \
-  --tcp localhost 4242 \
+  --socket /var/run/ud3tn/ud3tn.aap2.socket \
   dtn://b.dtn/bundlesink \
   "Hello World"
 
@@ -296,6 +296,22 @@ cd tests/interop
 
 # Keep services running after tests
 ./run-tests.sh --keep-running
+```
+
+### Manual stack bring-up and message flows
+
+```bash
+cd tests/interop
+
+# Bring up stack only (without running tests)
+./stack-up.sh --transport zmqhub
+./stack-up.sh --transport can --prepare-host-vcan
+
+# Run message scenarios on an already running stack
+./send-message.sh --scenario ud3tn
+./send-message.sh --scenario unibo
+./send-message.sh --scenario cross
+./send-message.sh --scenario all
 ```
 
 ### Interactive Mode
@@ -383,7 +399,7 @@ docker exec cspcl-ud3tn-node-a nc -zv zmq-broker 6000
 
 ### Image Build Fails
 
-**Error:** `libcsp build failed` or `Cannot find Unibo-BP libraries`
+**Error:** `libcsp build failed` or `Unibo-BP source build failed`
 
 **For libcsp:**
 ```bash
@@ -393,11 +409,11 @@ docker exec cspcl-ud3tn-node-a nc -zv zmq-broker 6000
 
 **For Unibo-BP:**
 ```bash
-# Unibo-BP may require pre-built binaries or source access
-# Mount binaries as volumes in docker-compose.yml:
-# volumes:
-#   - /path/to/unibo-bp/bin:/opt/unibo-bp/bin:ro
-#   - /path/to/unibo-bp/lib:/opt/unibo-bp/lib:ro
+# Validate that the upstream source is reachable from your environment
+git ls-remote https://gitlab.com/unibo-dtn/unibo-bp.git
+
+# Rebuild the image without cache to inspect full build logs
+docker build --no-cache -t cspcl-unibo:latest -f docker/unibo-bp/Dockerfile .
 ```
 
 ### CAN Transport Not Working
@@ -481,10 +497,14 @@ jobs:
         run: |
           docker build -t cspcl-base:latest -f docker/base/Dockerfile .
           
-      - name: Run ZMQHUB tests
+      - name: Prepare VCAN
+        run: ./tests/interop/setup-vcan-host.sh
+
+      - name: Run full-stack tests (both transports)
         run: |
           cd tests/interop
-          ./run-tests.sh --transport zmqhub
+          ./run-tests.sh --transport zmqhub --no-build
+          ./run-tests.sh --transport can --no-build
           
       - name: Upload logs on failure
         if: failure()

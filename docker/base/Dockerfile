@@ -21,6 +21,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     python3-dev \
     libzmq3-dev \
+    netcat-openbsd \
+    iproute2 \
+    kmod \
     libsocketcan-dev \
     pkg-config \
     wget \
@@ -64,6 +67,7 @@ COPY tools/zmqhub_broker.py /opt/tools/
 ENV LD_LIBRARY_PATH=/opt/libcsp/build:/opt/cspcl/build:$LD_LIBRARY_PATH
 ENV CSP_REPO_DIR=/opt/libcsp
 ENV CSPCL_DIR=/opt/cspcl
+ENV PYTHONUNBUFFERED=1
 
 # Default working directory
 WORKDIR /opt

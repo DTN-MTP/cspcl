@@ -17,6 +17,8 @@ WORKDIR /opt
 RUN git clone --depth 1 --branch v0.14.5 --recurse-submodules --shallow-submodules \
     https://gitlab.com/d3tn/ud3tn.git ud3tn-src
 
+RUN pip3 install --no-cache-dir -r /opt/ud3tn-src/python-ud3tn-utils/requirements.txt
+
 # Copy CSPCL integration files
 COPY ud3tn-integration/src/cla_csp.c /opt/ud3tn-src/components/cla/posix/
 COPY ud3tn-integration/src/cla_csp.h /opt/ud3tn-src/include/cla/
@@ -35,6 +37,15 @@ RUN sed -i 's|/home/mathias/libcsp-src|/opt/libcsp|g' /tmp/ud3tn-cla-csp.patch &
 
 # Build uD3TN
 RUN make posix
+
+# Provide compatibility wrappers at paths used by interop scripts
+RUN mkdir -p /opt/ud3tn-src/build/posix/aap2
+COPY docker/ud3tn/aap2-send-wrapper.sh /opt/ud3tn-src/build/posix/aap2/aap2_send
+COPY docker/ud3tn/aap2-receive-wrapper.sh /opt/ud3tn-src/build/posix/aap2/aap2_receive
+COPY docker/ud3tn/aap2-config-wrapper.sh /opt/ud3tn-src/build/posix/aap2/aap2_config
+RUN chmod +x /opt/ud3tn-src/build/posix/aap2/aap2_send \
+    /opt/ud3tn-src/build/posix/aap2/aap2_receive \
+    /opt/ud3tn-src/build/posix/aap2/aap2_config
 
 # Create runtime directory
 RUN mkdir -p /var/run/ud3tn

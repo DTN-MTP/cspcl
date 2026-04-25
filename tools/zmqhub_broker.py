@@ -51,9 +51,7 @@ def main():
         "-v", "--verbose", action="store_true", help="Enable verbose output"
     )
     args = parser.parse_args()
-
     context = zmq.Context()
-
     # XSUB socket receives messages from publishers (CSP nodes sending)
     # Clients connect their PUB socket to this port
     xsub = context.socket(zmq.XSUB)

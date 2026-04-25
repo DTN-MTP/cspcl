@@ -45,6 +45,10 @@ cd tests/interop
 
 # Interactive mode (manual testing)
 ./run-tests.sh --interactive
+
+# Bring up only the stack and run message scenarios manually
+./stack-up.sh --transport zmqhub
+./send-message.sh --scenario all
 ```
 
 ## Test Scenarios
@@ -259,6 +263,8 @@ Options:
 ./run-tests.sh --no-build
 ```
 
+> `run-tests.sh` now enforces a clean stack state between suites (`docker compose down --volumes --remove-orphans`), so sequential `--test all` runs stay deterministic across ZMQHUB and CAN.
+
 ## Interactive Mode
 
 Interactive mode starts all services but doesn't run automated tests. Use this for manual exploration and debugging.
@@ -275,7 +281,7 @@ Interactive mode starts all services but doesn't run automated tests. Use this f
 ```bash
 docker exec cspcl-ud3tn-node-a \
   /opt/ud3tn-src/build/posix/aap2/aap2_send \
-  --tcp localhost 4242 \
+  --socket /var/run/ud3tn/ud3tn.aap2.socket \
   dtn://b.dtn/bundlesink \
   "Manual test message"
 ```
@@ -298,7 +304,7 @@ docker exec cspcl-unibo-node-1 bash -c "
 ```bash
 docker exec cspcl-ud3tn-node-b \
   /opt/ud3tn-src/build/posix/aap2/aap2_receive \
-  --tcp localhost 4242 \
+  --socket /var/run/ud3tn/ud3tn.aap2.socket \
   --agentid bundlesink \
   --count 1
 ```
@@ -325,6 +331,22 @@ docker logs -f cspcl-unibo-node-1
 docker exec -it cspcl-ud3tn-node-a /bin/bash
 docker exec -it cspcl-unibo-node-1 /bin/bash
 ```
+
+## Helper scripts for manual workflows
+
+```bash
+# Start stack only
+./stack-up.sh --transport zmqhub
+./stack-up.sh --transport can --prepare-host-vcan
+
+# Send messages through CSPCL without running the full test runner
+./send-message.sh --scenario ud3tn
+./send-message.sh --scenario unibo
+./send-message.sh --scenario cross
+./send-message.sh --scenario all
+```
+
+`send-message.sh` reuses the validated scenario scripts (`test-ud3tn-basic.sh`, `test-unibo-basic.sh`, `test-cross-integration.sh`) so manual and CI flows stay aligned.
 
 ## Troubleshooting Tests
 
@@ -432,10 +454,14 @@ Tests are designed for CI/CD pipelines. Exit codes indicate success/failure.
 ### Example GitHub Actions
 
 ```yaml
-- name: Run CSPCL tests
+- name: Prepare VCAN for CAN transport
+  run: ./tests/interop/setup-vcan-host.sh
+
+- name: Run CSPCL tests (full stack, both transports)
   run: |
     cd tests/interop
     ./run-tests.sh --transport zmqhub
+    ./run-tests.sh --transport can
 ```
 
 ### Example GitLab CI
@@ -443,8 +469,10 @@ Tests are designed for CI/CD pipelines. Exit codes indicate success/failure.
 ```yaml
 test:
   script:
+    - ./tests/interop/setup-vcan-host.sh
     - cd tests/interop
     - ./run-tests.sh --transport zmqhub
+    - ./run-tests.sh --transport can
   artifacts:
     when: on_failure
     paths:

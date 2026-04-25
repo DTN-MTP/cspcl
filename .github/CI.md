@@ -25,7 +25,7 @@ The CI pipeline consists of 7 jobs that run in parallel (where dependencies allo
         └───────────────────┼───────────────────┘
                             ▼
                     Docker Integration Tests
-                    - ZMQHUB transport
+                    - ZMQHUB + CAN transport
                     - Test execution
                     - Log collection
                             │
@@ -83,7 +83,7 @@ The CI pipeline consists of 7 jobs that run in parallel (where dependencies allo
 **Images Built:**
 - `cspcl-base` - Base image with libcsp + CSPCL
 - `cspcl-ud3tn` - uD3TN integration
-- `cspcl-unibo` - Unibo-BP integration (may fail without binaries)
+- `cspcl-unibo` - Unibo-BP integration (built from source)
 
 **Optimizations:**
 - Uses GitHub Actions cache for layer caching
@@ -91,7 +91,7 @@ The CI pipeline consists of 7 jobs that run in parallel (where dependencies allo
 
 **Duration:** ~10-15 minutes (first run), ~3-5 minutes (cached)
 
-**Failure Impact:** Blocks merge (critical for base/ud3tn)
+**Failure Impact:** Blocks merge (critical)
 
 ### 4. Docker Integration Tests
 
@@ -99,18 +99,18 @@ The CI pipeline consists of 7 jobs that run in parallel (where dependencies allo
 
 **Tests:**
 - uD3TN basic: Two-node bundle transfer
-- Unibo-BP basic: Two-node bundle transfer (if available)
-- Cross-integration: uD3TN ↔ Unibo-BP (if available)
+- Unibo-BP basic: Two-node bundle transfer
+- Cross-integration: uD3TN ↔ Unibo-BP
 
-**Transport:** ZMQHUB (virtual, works in CI)
+**Transport:** ZMQHUB and CAN
 
-**Timeout:** 5 minutes per test suite
+**Timeout:** 15 minutes per test suite
 
 **Artifacts:** Container logs uploaded on failure
 
 **Duration:** ~5-10 minutes
 
-**Failure Impact:** Warning (some tests may not run without full setup)
+**Failure Impact:** Blocks merge (critical)
 
 ### 5. Documentation Check
 
@@ -194,9 +194,13 @@ ctest --output-on-failure --verbose
 # Build base image
 docker build -t cspcl-base:latest -f docker/base/Dockerfile .
 
+# Prepare VCAN for CAN tests
+./tests/interop/setup-vcan-host.sh
+
 # Run integration tests
 cd tests/interop
 ./run-tests.sh --transport zmqhub
+./run-tests.sh --transport can
 ```
 
 ## CI Configuration Files

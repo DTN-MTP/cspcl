@@ -45,6 +45,11 @@ cd cspcl
 docker build -t cspcl-base:latest -f docker/base/Dockerfile .
 cd tests/interop
 ./run-tests.sh
+./run-tests.sh --transport can
+
+# Manual stack/message workflow helpers
+./stack-up.sh --transport zmqhub
+./send-message.sh --scenario all
 
 # Or use Docker Compose directly
 cd docker

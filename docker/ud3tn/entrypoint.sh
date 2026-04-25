@@ -11,6 +11,7 @@ CSP_ADDR=${CSP_ADDR:-1}
 CSP_PORT=${CSP_PORT:-10}
 TRANSPORT=${TRANSPORT:-zmqhub}
 UD3TN_EID=${UD3TN_EID:-dtn://node.dtn/}
+UD3TN_LOG_LEVEL=${UD3TN_LOG_LEVEL:-}
 
 echo "=================================================="
 echo "  uD3TN with CSPCL - Docker Container"
@@ -46,7 +47,18 @@ fi
 echo "Starting uD3TN..."
 cd /var/run/ud3tn
 
+CLA_SPEC="csp:${CSP_ADDR},${CSP_PORT}"
+if [ "$TRANSPORT" = "zmqhub" ] && [ -n "$ZMQ_BROKER_HOST" ]; then
+    CLA_SPEC="csp:${CSP_ADDR},${CSP_PORT},zmqhub:${ZMQ_BROKER_HOST}"
+elif [ "$TRANSPORT" = "can" ]; then
+    CLA_SPEC="csp:${CSP_ADDR},${CSP_PORT},can:vcan0"
+fi
+
+UD3TN_ARGS=(--eid "${UD3TN_EID}" --cla "${CLA_SPEC}")
+if [ -n "${UD3TN_LOG_LEVEL}" ]; then
+    UD3TN_ARGS+=(-L "${UD3TN_LOG_LEVEL}")
+fi
+
 exec /opt/ud3tn-src/build/posix/ud3tn \
-    --eid "${UD3TN_EID}" \
-    --cla "csp:${CSP_ADDR},${CSP_PORT}" \
+    "${UD3TN_ARGS[@]}" \
     "$@"
