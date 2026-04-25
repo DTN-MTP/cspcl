@@ -35,34 +35,30 @@ for ((i=1; i<=TIMEOUT; i++)); do
     sleep 1
 done
 
-# Get reference time for contact planning
 echo "[2/5] Configuring routes..."
-REFERENCE_TIME=$(docker exec "$NODE_A_CONTAINER" \
-    /opt/ud3tn-src/build/posix/aap2/aap2_config \
-    --tcp localhost 4242 \
-    --get-time 2>/dev/null | grep -o '[0-9]*' | head -1 || true)
-
-if [ -z "$REFERENCE_TIME" ]; then
-    REFERENCE_TIME=0
-fi
 
 # Configure route from Node A to Node B (CSP address 2)
 docker exec "$NODE_A_CONTAINER" \
     /opt/ud3tn-src/build/posix/aap2/aap2_config \
-    --tcp localhost 4242 \
-    --schedule 1 3600 100000 dtn://b.dtn/ "csp:2" \
+    --socket /var/run/ud3tn/ud3tn.aap2.socket \
+    --schedule 1 3600 100000 \
+    --reaches dtn://b.dtn/bundlesink \
+    dtn://b.dtn/ "csp:2,10" \
     > /dev/null 2>&1 || echo "Route may already exist"
 
 echo "✓ Routes configured"
 
 # Start receiver on Node B
 echo "[3/5] Starting bundle receiver on Node B..."
-docker exec -d "$NODE_B_CONTAINER" \
+docker exec "$NODE_B_CONTAINER" sh -c "rm -f /var/run/ud3tn/ud3tn-recv.log"
+docker exec -d "$NODE_B_CONTAINER" bash -c "
     /opt/ud3tn-src/build/posix/aap2/aap2_receive \
-    --tcp localhost 4242 \
-    --agentid bundlesink \
-    --count 1 \
-    --newline
+        --socket /var/run/ud3tn/ud3tn.aap2.socket \
+        --agentid bundlesink \
+        --count 1 \
+        --newline \
+        > /var/run/ud3tn/ud3tn-recv.log 2>&1
+"
 
 sleep 2
 echo "✓ Receiver started"
@@ -71,7 +67,7 @@ echo "✓ Receiver started"
 echo "[4/5] Sending bundle from Node A..."
 docker exec "$NODE_A_CONTAINER" \
     /opt/ud3tn-src/build/posix/aap2/aap2_send \
-    --tcp localhost 4242 \
+    --socket /var/run/ud3tn/ud3tn.aap2.socket \
     dtn://b.dtn/bundlesink \
     "$TEST_MESSAGE" \
     > /dev/null 2>&1
@@ -82,10 +78,10 @@ echo "✓ Bundle sent"
 echo "[5/5] Verifying bundle reception..."
 sleep 3
 
-# Check if bundle was received (look for the message in logs or receiver output)
+# Check if bundle was received in receiver output
 RECEIVED=0
 for ((i=1; i<=10; i++)); do
-    if docker logs "$NODE_B_CONTAINER" 2>&1 | grep -q "bundlesink"; then
+    if docker exec "$NODE_B_CONTAINER" sh -c "grep -q '${TEST_MESSAGE}' /var/run/ud3tn/ud3tn-recv.log" 2>/dev/null; then
         RECEIVED=1
         break
     fi

@@ -12,8 +12,8 @@
 #ifndef CSP_CSP_H
 #define CSP_CSP_H
 
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 
 #ifdef __cplusplus
@@ -26,19 +26,19 @@ extern "C" {
 
 /** CSP packet identifier - contains routing information */
 typedef struct {
-    uint8_t pri;        /**< Priority */
-    uint8_t flags;      /**< Flags */
-    uint8_t src;        /**< Source address */
-    uint8_t dst;        /**< Destination address */
-    uint8_t dport;      /**< Destination port */
-    uint8_t sport;      /**< Source port */
+  uint8_t pri;   /**< Priority */
+  uint8_t flags; /**< Flags */
+  uint8_t src;   /**< Source address */
+  uint8_t dst;   /**< Destination address */
+  uint8_t dport; /**< Destination port */
+  uint8_t sport; /**< Source port */
 } csp_id_t;
 
 /** CSP packet structure */
 typedef struct {
-    uint16_t length;
-    csp_id_t id;        /**< Packet identifier with routing info */
-    uint8_t data[256];
+  uint16_t length;
+  csp_id_t id; /**< Packet identifier with routing info */
+  uint8_t data[256];
 } csp_packet_t;
 
 /** CSP socket handle */
@@ -52,35 +52,35 @@ typedef struct csp_conn_s csp_conn_t;
 /*===========================================================================*/
 
 /** CSP error codes */
-#define CSP_ERR_NONE        0
-#define CSP_ERR_NOMEM       -1
-#define CSP_ERR_INVAL       -2
-#define CSP_ERR_TIMEDOUT    -3
+#define CSP_ERR_NONE 0
+#define CSP_ERR_NOMEM -1
+#define CSP_ERR_INVAL -2
+#define CSP_ERR_TIMEDOUT -3
 
 /** CSP priorities */
-#define CSP_PRIO_CRITICAL   0
-#define CSP_PRIO_HIGH       1
-#define CSP_PRIO_NORM       2
-#define CSP_PRIO_LOW        3
+#define CSP_PRIO_CRITICAL 0
+#define CSP_PRIO_HIGH 1
+#define CSP_PRIO_NORM 2
+#define CSP_PRIO_LOW 3
 
 /** CSP socket options */
-#define CSP_SO_NONE         0x0000
-#define CSP_SO_RDPREQ       0x0001
-#define CSP_SO_RDPPROHIB    0x0002
-#define CSP_SO_HMACREQ      0x0004
-#define CSP_SO_HMACPROHIB   0x0008
-#define CSP_SO_XTEAREQ      0x0010
-#define CSP_SO_XTEAPROHIB   0x0020
-#define CSP_SO_CRC32REQ     0x0040
-#define CSP_SO_CRC32PROHIB  0x0080
-#define CSP_SO_CONN_LESS    0x0100
+#define CSP_SO_NONE 0x0000
+#define CSP_SO_RDPREQ 0x0001
+#define CSP_SO_RDPPROHIB 0x0002
+#define CSP_SO_HMACREQ 0x0004
+#define CSP_SO_HMACPROHIB 0x0008
+#define CSP_SO_XTEAREQ 0x0010
+#define CSP_SO_XTEAPROHIB 0x0020
+#define CSP_SO_CRC32REQ 0x0040
+#define CSP_SO_CRC32PROHIB 0x0080
+#define CSP_SO_CONN_LESS 0x0100
 
 /** CSP connection options */
-#define CSP_O_NONE          0x0000
-#define CSP_O_RDP           0x0001
-#define CSP_O_HMAC          0x0002
-#define CSP_O_XTEA          0x0004
-#define CSP_O_CRC32         0x0008
+#define CSP_O_NONE 0x0000
+#define CSP_O_RDP 0x0001
+#define CSP_O_HMAC 0x0002
+#define CSP_O_XTEA 0x0004
+#define CSP_O_CRC32 0x0008
 
 /*===========================================================================*/
 /* CSP Buffer API                                                             */
@@ -154,8 +154,7 @@ int csp_close(void *conn);
  * @param opts Connection options
  * @return Connection handle, or NULL on error
  */
-csp_conn_t *csp_connect(uint8_t prio, uint8_t dest, uint8_t dport,
-                        uint32_t timeout, uint32_t opts);
+csp_conn_t *csp_connect(uint8_t prio, uint8_t dest, uint8_t dport, uint32_t timeout, uint32_t opts);
 
 /**
  * Send packet on connection
@@ -189,8 +188,8 @@ csp_packet_t *csp_read(csp_conn_t *conn, uint32_t timeout);
  * @param timeout Timeout in ms
  * @return CSP_ERR_NONE on success
  */
-int csp_sendto(uint8_t prio, uint8_t dest, uint8_t dport, uint8_t sport,
-               uint32_t opts, csp_packet_t *packet, uint32_t timeout);
+int csp_sendto(uint8_t prio, uint8_t dest, uint8_t dport, uint8_t sport, uint32_t opts,
+               csp_packet_t *packet, uint32_t timeout);
 
 /**
  * Receive packet without connection (UDP-like)
@@ -250,9 +249,8 @@ typedef void *(*csp_memcpy_fnc_t)(csp_memptr_t dst, csp_memptr_t src, size_t len
  * @param memcpyfcn Memory copy function
  * @return CSP_ERR_NONE on success
  */
-int csp_sfp_send_own_memcpy(csp_conn_t *conn, const void *data,
-                            unsigned int datasize, unsigned int mtu,
-                            uint32_t timeout, csp_memcpy_fnc_t memcpyfcn);
+int csp_sfp_send_own_memcpy(csp_conn_t *conn, const void *data, unsigned int datasize,
+                            unsigned int mtu, uint32_t timeout, csp_memcpy_fnc_t memcpyfcn);
 
 /**
  * Send data using SFP with standard memcpy
@@ -263,11 +261,10 @@ int csp_sfp_send_own_memcpy(csp_conn_t *conn, const void *data,
  * @param timeout Timeout in ms (unused in CSP 1.6)
  * @return CSP_ERR_NONE on success
  */
-static inline int csp_sfp_send(csp_conn_t *conn, const void *data,
-                               unsigned int datasize, unsigned int mtu,
-                               uint32_t timeout) {
-    return csp_sfp_send_own_memcpy(conn, data, datasize, mtu, timeout,
-                                   (csp_memcpy_fnc_t)&memcpy);
+static inline int csp_sfp_send(csp_conn_t *conn, const void *data, unsigned int datasize,
+                               unsigned int mtu, uint32_t timeout)
+{
+  return csp_sfp_send_own_memcpy(conn, data, datasize, mtu, timeout, (csp_memcpy_fnc_t) &memcpy);
 }
 
 /**
@@ -279,8 +276,8 @@ static inline int csp_sfp_send(csp_conn_t *conn, const void *data,
  * @param first_packet First packet if already received, or NULL
  * @return CSP_ERR_NONE on success
  */
-int csp_sfp_recv_fp(csp_conn_t *conn, void **dataout, int *datasize,
-                    uint32_t timeout, csp_packet_t *first_packet);
+int csp_sfp_recv_fp(csp_conn_t *conn, void **dataout, int *datasize, uint32_t timeout,
+                    csp_packet_t *first_packet);
 
 /**
  * Receive data using SFP (convenience wrapper)
@@ -290,9 +287,9 @@ int csp_sfp_recv_fp(csp_conn_t *conn, void **dataout, int *datasize,
  * @param timeout Timeout in ms
  * @return CSP_ERR_NONE on success
  */
-static inline int csp_sfp_recv(csp_conn_t *conn, void **dataout,
-                               int *datasize, uint32_t timeout) {
-    return csp_sfp_recv_fp(conn, dataout, datasize, timeout, NULL);
+static inline int csp_sfp_recv(csp_conn_t *conn, void **dataout, int *datasize, uint32_t timeout)
+{
+  return csp_sfp_recv_fp(conn, dataout, datasize, timeout, NULL);
 }
 
 /**
@@ -306,4 +303,3 @@ void csp_free(void *ptr);
 #endif
 
 #endif /* CSP_CSP_H */
-

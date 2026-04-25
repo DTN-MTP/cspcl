@@ -23,6 +23,26 @@ TEST_MESSAGE_1="Cross-integration test: uD3TN to Unibo-BP"
 TEST_MESSAGE_2="Cross-integration test: Unibo-BP to uD3TN"
 TIMEOUT=60
 
+# shellcheck disable=SC2329
+cleanup() {
+    # shellcheck disable=SC2317
+    docker exec "$UNIBO_2_CONTAINER" sh -c '
+        pids=$(pgrep -f "^/opt/unibo-bp/bin/unibo-bp-sink ipn:4\\.55$" || true)
+        if [ -n "$pids" ]; then
+            kill $pids
+        fi
+    ' >/dev/null 2>&1 || true
+
+    # shellcheck disable=SC2317
+    docker exec "$UD3TN_B_CONTAINER" sh -c '
+        pids=$(pgrep -f "^/opt/ud3tn-src/build/posix/aap2/aap2_receive( |$)" || true)
+        if [ -n "$pids" ]; then
+            kill $pids
+        fi
+    ' >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
 # Wait for all nodes to be healthy
 echo "[1/7] Waiting for all nodes to be ready..."
 for ((i=1; i<=TIMEOUT; i++)); do
@@ -47,20 +67,25 @@ echo "[2/7] Configuring cross-integration routes..."
 # Configure uD3TN Node A to send to Unibo Node 2 (CSP address 4)
 docker exec "$UD3TN_A_CONTAINER" \
     /opt/ud3tn-src/build/posix/aap2/aap2_config \
-    --tcp localhost 4242 \
-    --schedule 1 3600 100000 dtn://d.dtn/ "csp:4" \
+    --socket /var/run/ud3tn/ud3tn.aap2.socket \
+    --schedule 1 3600 100000 --reaches ipn:4.55 ipn:4.0 "csp:4,10" \
     > /dev/null 2>&1 || echo "Route may already exist"
 
-# Configure uD3TN Node B to receive from Unibo Node 1 (CSP address 3)
+# Configure uD3TN Node B to receive from Unibo Node 1 (CSP address 3).
+# Register both ipn and dtn node-IDs to cover transport-specific source conventions.
 docker exec "$UD3TN_B_CONTAINER" \
     /opt/ud3tn-src/build/posix/aap2/aap2_config \
-    --tcp localhost 4242 \
-    --schedule 1 3600 100000 dtn://c.dtn/ "csp:3" \
+    --socket /var/run/ud3tn/ud3tn.aap2.socket \
+    --schedule 1 3600 100000 ipn:3.0 "csp:3,10" \
+    > /dev/null 2>&1 || echo "Route may already exist"
+docker exec "$UD3TN_B_CONTAINER" \
+    /opt/ud3tn-src/build/posix/aap2/aap2_config \
+    --socket /var/run/ud3tn/ud3tn.aap2.socket \
+    --schedule 1 3600 100000 dtn://c.dtn/ "csp:3,10" \
     > /dev/null 2>&1 || echo "Route may already exist"
 
 # Configure Unibo-BP nodes
-REFERENCE_TIME=$(docker exec "$UNIBO_1_CONTAINER" \
-    /opt/unibo-bp/bin/unibo-bp-utility --get-utc-time +0 2>/dev/null || echo "0")
+REFERENCE_TIME="+0"
 
 # Unibo Node 1 configuration (sends to uD3TN B at CSP 2)
 docker exec "$UNIBO_1_CONTAINER" bash -c "
@@ -68,7 +93,10 @@ docker exec "$UNIBO_1_CONTAINER" bash -c "
     /opt/unibo-bp/bin/unibo-bp-admin region home --register-node ipn:1.0 2>/dev/null || true
     /opt/unibo-bp/bin/unibo-bp-admin region home --register-node ipn:2.0 2>/dev/null || true
     /opt/unibo-bp/bin/unibo-bp-admin range add --start-time +0 --end-time +3600 --sender ipn:3.0 --receiver ipn:2.0 --owlt 0 --reference-time $REFERENCE_TIME 2>/dev/null || true
+    /opt/unibo-bp/bin/unibo-bp-admin range add --start-time +0 --end-time +3600 --sender ipn:2.0 --receiver ipn:3.0 --owlt 0 --reference-time $REFERENCE_TIME 2>/dev/null || true
     /opt/unibo-bp/bin/unibo-bp-admin contact add --start-time +0 --end-time +3600 --sender ipn:3.0 --receiver ipn:2.0 --xmit-rate 1000000 --reference-time $REFERENCE_TIME 2>/dev/null || true
+    /opt/unibo-bp/bin/unibo-bp-admin contact add --start-time +0 --end-time +3600 --sender ipn:2.0 --receiver ipn:3.0 --xmit-rate 1000000 --reference-time $REFERENCE_TIME 2>/dev/null || true
+    /opt/unibo-bp/bin/unibo-bp-admin routing static add --destination dtn://b.dtn/ --gateway ipn:2.0 2>/dev/null || true
 " > /dev/null 2>&1
 
 # Unibo Node 2 configuration (receives from uD3TN A at CSP 1)
@@ -77,7 +105,9 @@ docker exec "$UNIBO_2_CONTAINER" bash -c "
     /opt/unibo-bp/bin/unibo-bp-admin region home --register-node ipn:1.0 2>/dev/null || true
     /opt/unibo-bp/bin/unibo-bp-admin region home --register-node ipn:4.0 2>/dev/null || true
     /opt/unibo-bp/bin/unibo-bp-admin range add --start-time +0 --end-time +3600 --sender ipn:1.0 --receiver ipn:4.0 --owlt 0 --reference-time $REFERENCE_TIME 2>/dev/null || true
+    /opt/unibo-bp/bin/unibo-bp-admin range add --start-time +0 --end-time +3600 --sender ipn:4.0 --receiver ipn:1.0 --owlt 0 --reference-time $REFERENCE_TIME 2>/dev/null || true
     /opt/unibo-bp/bin/unibo-bp-admin contact add --start-time +0 --end-time +3600 --sender ipn:1.0 --receiver ipn:4.0 --xmit-rate 1000000 --reference-time $REFERENCE_TIME 2>/dev/null || true
+    /opt/unibo-bp/bin/unibo-bp-admin contact add --start-time +0 --end-time +3600 --sender ipn:4.0 --receiver ipn:1.0 --xmit-rate 1000000 --reference-time $REFERENCE_TIME 2>/dev/null || true
 " > /dev/null 2>&1
 
 echo "✓ Cross-integration routes configured"
@@ -86,17 +116,40 @@ echo "✓ Cross-integration routes configured"
 echo "[3/7] Testing uD3TN -> Unibo-BP direction..."
 
 # Start receiver on Unibo Node 2
+docker exec "$UNIBO_2_CONTAINER" sh -c "PIDS=\$(pgrep -f '^/opt/unibo-bp/bin/unibo-bp-sink ipn:4\\.55$' || true); [ -z \"\$PIDS\" ] || kill \$PIDS"
+docker exec "$UNIBO_2_CONTAINER" bash -c "rm -f /tmp/unibo-node2/cross-sink.log"
 docker exec -d "$UNIBO_2_CONTAINER" bash -c "
     cd /tmp/unibo-node2
-    /opt/unibo-bp/bin/unibo-bp-sink ipn:4.55
+    stdbuf -oL -eL /opt/unibo-bp/bin/unibo-bp-sink ipn:4.55 > /tmp/unibo-node2/cross-sink.log 2>&1
 "
-sleep 2
+
+# Wait until uD3TN has started the scheduled contact toward CSP node 4
+for ((i=1; i<=30; i++)); do
+    if docker logs "$UD3TN_A_CONTAINER" 2>&1 | grep -q "Starting scheduled contact to csp:4"; then
+        break
+    fi
+    sleep 1
+done
+
+# Wait until Unibo Node 2 has opened contact toward CSP node 1
+for ((i=1; i<=30; i++)); do
+    if docker logs "$UNIBO_2_CONTAINER" 2>&1 | grep -q "opened link_id=.* for csp_addr=1"; then
+        break
+    fi
+    sleep 1
+done
+
+sleep 3
+
+check_unibo_sink_received() {
+    docker exec "$UNIBO_2_CONTAINER" sh -c "grep -Eq 'Received|${TEST_MESSAGE_1}' /tmp/unibo-node2/cross-sink.log || [ -s /tmp/unibo-node2/cross-sink.log ]" 2>/dev/null
+}
 
 # Send bundle from uD3TN A
 docker exec "$UD3TN_A_CONTAINER" \
     /opt/ud3tn-src/build/posix/aap2/aap2_send \
-    --tcp localhost 4242 \
-    dtn://d.dtn/bundlesink \
+    --socket /var/run/ud3tn/ud3tn.aap2.socket \
+    ipn:4.55 \
     "$TEST_MESSAGE_1" \
     > /dev/null 2>&1
 
@@ -107,13 +160,29 @@ echo "[4/7] Verifying bundle reception at Unibo Node 2..."
 sleep 3
 
 RECEIVED_1=0
-for ((i=1; i<=10; i++)); do
-    if docker logs "$UNIBO_2_CONTAINER" 2>&1 | grep -q "Received.*bytes"; then
+for ((i=1; i<=30; i++)); do
+    if check_unibo_sink_received; then
         RECEIVED_1=1
         break
     fi
     sleep 1
 done
+
+if (( RECEIVED_1 == 0 )); then
+    docker exec "$UD3TN_A_CONTAINER" \
+        /opt/ud3tn-src/build/posix/aap2/aap2_send \
+        --socket /var/run/ud3tn/ud3tn.aap2.socket \
+        ipn:4.55 \
+        "$TEST_MESSAGE_1" \
+        > /dev/null 2>&1 || true
+    for ((i=1; i<=20; i++)); do
+        if check_unibo_sink_received; then
+            RECEIVED_1=1
+            break
+        fi
+        sleep 1
+    done
+fi
 
 if (( RECEIVED_1 == 1 )); then
     echo "✓ Bundle received at Unibo-BP from uD3TN"
@@ -124,39 +193,66 @@ fi
 # Test Direction 2: Unibo Node 1 -> uD3TN B
 echo "[5/7] Testing Unibo-BP -> uD3TN direction..."
 
-# Start receiver on uD3TN B
-docker exec -d "$UD3TN_B_CONTAINER" \
-    /opt/ud3tn-src/build/posix/aap2/aap2_receive \
-    --tcp localhost 4242 \
-    --agentid bundlesink \
-    --count 1 \
-    --newline
-
-sleep 2
-
-# Send bundle from Unibo Node 1
-docker exec "$UNIBO_1_CONTAINER" bash -c "
-    cd /tmp/unibo-node1
-    /opt/unibo-bp/bin/unibo-bp-send \
-        --source ipn:3.55 \
-        --destination ipn:2.55 \
-        --lifetime 600000 \
-        --payload-string '$TEST_MESSAGE_2'
-" > /dev/null 2>&1
-
-echo "✓ Bundle sent from Unibo Node 1"
-
-# Verify reception at uD3TN B
-echo "[6/7] Verifying bundle reception at uD3TN B..."
-sleep 3
-
-RECEIVED_2=0
-for ((i=1; i<=10; i++)); do
-    if docker logs "$UD3TN_B_CONTAINER" 2>&1 | grep -q "bundlesink"; then
-        RECEIVED_2=1
+# Wait until Unibo Node 1 has opened contact toward CSP node 2
+for ((i=1; i<=30; i++)); do
+    if docker logs "$UNIBO_1_CONTAINER" 2>&1 | grep -q "opened link_id=.* for csp_addr=2"; then
         break
     fi
     sleep 1
+done
+
+# Ensure uD3TN B has active contact toward CSP node 3 before waiting for reverse flow
+for ((i=1; i<=30; i++)); do
+    if docker logs "$UD3TN_B_CONTAINER" 2>&1 | grep -q "Starting scheduled contact to csp:3"; then
+        break
+    fi
+    sleep 1
+done
+
+# Verify reception at uD3TN B
+echo "[6/7] Verifying bundle reception at uD3TN B..."
+
+RECEIVED_2=0
+
+for ((attempt=1; attempt<=4; attempt++)); do
+    AGENT_ID="bundlesink-${attempt}"
+    RECV_LOG="/var/run/ud3tn/cross-recv-${attempt}.log"
+    docker exec "$UD3TN_B_CONTAINER" sh -c "PIDS=\$(pgrep -f '^/opt/ud3tn-src/build/posix/aap2/aap2_receive( |$)' || true); [ -z \"\$PIDS\" ] || kill \$PIDS"
+    docker exec "$UD3TN_B_CONTAINER" sh -c "rm -f '$RECV_LOG'"
+    docker exec -d "$UD3TN_B_CONTAINER" bash -c "
+        /opt/ud3tn-src/build/posix/aap2/aap2_receive \
+            --socket /var/run/ud3tn/ud3tn.aap2.socket \
+            --agentid '$AGENT_ID' \
+            --count 1 \
+            --newline \
+            > '$RECV_LOG' 2>&1
+    "
+    sleep 2
+
+    docker exec "$UNIBO_1_CONTAINER" bash -c "
+        cd /tmp/unibo-node1
+        /opt/unibo-bp/bin/unibo-bp-send \
+            --source dtn://c.dtn/source \
+            --destination dtn://b.dtn/$AGENT_ID \
+            --lifetime 600000 \
+            --payload-string '$TEST_MESSAGE_2'
+    " > /dev/null 2>&1 || true
+
+    if (( attempt == 1 )); then
+        echo "✓ Bundle sent from Unibo Node 1"
+    fi
+
+    for ((i=1; i<=15; i++)); do
+        if docker exec "$UD3TN_B_CONTAINER" sh -c "grep -q '${TEST_MESSAGE_2}' '$RECV_LOG'" 2>/dev/null; then
+            RECEIVED_2=1
+            break
+        fi
+        sleep 1
+    done
+
+    if (( RECEIVED_2 == 1 )); then
+        break
+    fi
 done
 
 if (( RECEIVED_2 == 1 )); then

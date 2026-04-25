@@ -23,13 +23,12 @@
 #ifndef CLA_CSP_H
 #define CLA_CSP_H
 
-#include "cla/cla.h"
-
-#include "ud3tn/bundle.h"
-#include "ud3tn/bundle_processor.h"
-
 #include <stddef.h>
 #include <stdint.h>
+
+#include "cla/cla.h"
+#include "ud3tn/bundle.h"
+#include "ud3tn/bundle_processor.h"
 
 /**
  * @brief Create a CSP CLA instance
@@ -39,10 +38,8 @@
  * @param bundle_agent_interface  Bundle agent interface
  * @return Pointer to CLA config, or NULL on failure
  */
-struct cla_config *csp_cla_create(
-    const char *const options[],
-    const size_t option_count,
-    const struct bundle_agent_interface *bundle_agent_interface);
+struct cla_config *csp_cla_create(const char *const options[], const size_t option_count,
+                                  const struct bundle_agent_interface *bundle_agent_interface);
 
 /* INTERNAL API */
 
@@ -61,18 +58,15 @@ void csp_cla_reset_parsers(struct cla_link *link);
 /**
  * @brief Forward data to bundle parser
  */
-size_t csp_cla_forward_to_specific_parser(struct cla_link *link,
-                                          const uint8_t *buffer,
+size_t csp_cla_forward_to_specific_parser(struct cla_link *link, const uint8_t *buffer,
                                           size_t length);
 
 /**
  * @brief Begin sending a packet
  */
-enum cla_begin_packet_result csp_cla_begin_packet(
-    struct cla_link *link,
-    const struct bundle *const bundle,
-    size_t length,
-    char *cla_addr);
+enum cla_begin_packet_result csp_cla_begin_packet(struct cla_link *link,
+                                                  const struct bundle *const bundle, size_t length,
+                                                  char *cla_addr);
 
 /**
  * @brief End sending a packet
@@ -82,18 +76,13 @@ enum ud3tn_result csp_cla_end_packet(struct cla_link *link);
 /**
  * @brief Send packet data
  */
-enum ud3tn_result csp_cla_send_packet_data(
-    struct cla_link *link,
-    const void *data,
-    const size_t length);
+enum ud3tn_result csp_cla_send_packet_data(struct cla_link *link, const void *data,
+                                           const size_t length);
 
 /**
  * @brief Read data from CSP
  */
-enum ud3tn_result csp_cla_read(struct cla_link *link,
-                               uint8_t *buffer,
-                               size_t length,
+enum ud3tn_result csp_cla_read(struct cla_link *link, uint8_t *buffer, size_t length,
                                size_t *bytes_read);
 
 #endif /* CLA_CSP_H */
-

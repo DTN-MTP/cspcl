@@ -1,11 +1,9 @@
-version: '3.8'
-
 services:
   # ZMQ Hub Broker - Routes CSP packets between nodes
   zmq-broker:
     image: cspcl-base:latest
     container_name: cspcl-zmq-broker
-    command: python3 /opt/tools/zmqhub_broker.py -v
+    command: python3 /opt/tools/zmqhub_broker.py
     ports:
       - "6000:6000"
       - "7000:7000"
@@ -34,6 +32,7 @@ services:
       - TRANSPORT=zmqhub
       - UD3TN_EID=dtn://a.dtn/
       - ZMQ_BROKER_HOST=zmq-broker
+      - UD3TN_LOG_LEVEL=${UD3TN_LOG_LEVEL:-}
     networks:
       - csp-zmq-net
     volumes:
@@ -61,6 +60,7 @@ services:
       - TRANSPORT=zmqhub
       - UD3TN_EID=dtn://b.dtn/
       - ZMQ_BROKER_HOST=zmq-broker
+      - UD3TN_LOG_LEVEL=${UD3TN_LOG_LEVEL:-}
     networks:
       - csp-zmq-net
     volumes:
@@ -95,9 +95,6 @@ services:
       - csp-zmq-net
     volumes:
       - unibo-1-data:/tmp/unibo-node1
-      # Mount Unibo-BP binaries if available on host
-      # - /path/to/unibo-bp/bin:/opt/unibo-bp/bin:ro
-      # - /path/to/unibo-bp/lib:/opt/unibo-bp/lib:ro
     healthcheck:
       test: ["CMD", "sh", "-c", "pgrep -f 'unibo-bp-cspcl|unibo-bp'"]
       interval: 5s
@@ -128,9 +125,6 @@ services:
       - csp-zmq-net
     volumes:
       - unibo-2-data:/tmp/unibo-node2
-      # Mount Unibo-BP binaries if available on host
-      # - /path/to/unibo-bp/bin:/opt/unibo-bp/bin:ro
-      # - /path/to/unibo-bp/lib:/opt/unibo-bp/lib:ro
     healthcheck:
       test: ["CMD", "sh", "-c", "pgrep -f 'unibo-bp-cspcl|unibo-bp'"]
       interval: 5s

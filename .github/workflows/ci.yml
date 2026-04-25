@@ -257,7 +257,6 @@ jobs:
           cache-to: type=gha,mode=max
           build-args: |
             BASE_IMAGE=${{ fromJSON(steps.meta-base.outputs.json).tags[0] }}
-        continue-on-error: true  # May fail without Unibo-BP binaries
 
   # Job 4: Docker integration tests
   docker-integration-tests:
@@ -267,7 +266,7 @@ jobs:
     
     strategy:
       matrix:
-        transport: [zmqhub]  # CAN requires privileged mode, may not work in all CI
+        transport: [zmqhub, can]
     
     steps:
       - name: Checkout code
@@ -276,19 +275,39 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Check VCAN availability
+        id: can-support
+        if: matrix.transport == 'can'
+        run: |
+          if sudo modprobe vcan 2>/dev/null; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::VCAN kernel module is unavailable on this runner; skipping CAN integration tests."
+          fi
+
+      - name: Prepare host VCAN interface
+        if: matrix.transport == 'can' && steps.can-support.outputs.available == 'true'
+        run: |
+          chmod +x tests/interop/setup-vcan-host.sh
+          ./tests/interop/setup-vcan-host.sh
+
 
       - name: Build Docker images
+        if: matrix.transport != 'can' || steps.can-support.outputs.available == 'true'
         run: |
           docker build -t cspcl-base:latest -f docker/base/Dockerfile .
-          docker build -t cspcl-ud3tn:latest -f docker/ud3tn/Dockerfile . || echo "uD3TN build skipped"
+          docker build -t cspcl-ud3tn:latest -f docker/ud3tn/Dockerfile .
+          docker build -t cspcl-unibo:latest -f docker/unibo-bp/Dockerfile .
 
-      - name: Run uD3TN integration tests
-        id: ud3tn-tests
+      - name: Run full-stack integration tests
+        id: integration-tests
+        if: matrix.transport != 'can' || steps.can-support.outputs.available == 'true'
         run: |
+          chmod +x tests/interop/run-tests.sh
           cd tests/interop
           # Run with timeout to prevent hanging
-          timeout 300 ./run-tests.sh --transport ${{ matrix.transport }} --test ud3tn || true
-        continue-on-error: true
+          timeout 900 ./run-tests.sh --transport ${{ matrix.transport }} --test all --no-build
 
       - name: Collect test logs
         if: always()

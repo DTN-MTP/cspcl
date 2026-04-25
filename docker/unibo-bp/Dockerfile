@@ -6,20 +6,25 @@ LABEL maintainer="DTN-MTP contributors"
 LABEL description="Unibo-BP with CSPCL daemon for CSP transport"
 
 # Install additional dependencies for Unibo-BP
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     default-jdk \
     ant \
     libssl-dev \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Note: This Dockerfile assumes Unibo-BP binaries are provided
-# You can either:
-# 1. Build from source if you have access to the repository
-# 2. Copy pre-built binaries
-# 3. Mount them at runtime
+# Build Unibo-BP from source for reproducible CI/local images
+ARG UNIBO_BP_REF=main
+RUN git clone --depth 1 --branch ${UNIBO_BP_REF} --recurse-submodules --shallow-submodules \
+    https://gitlab.com/unibo-dtn/unibo-bp.git /opt/unibo-bp-src
 
-# For this example, we'll set up the environment expecting binaries in /opt/unibo-bp
-RUN mkdir -p /opt/unibo-bp/bin /opt/unibo-bp/lib
+WORKDIR /opt/unibo-bp-src
+RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && \
+    cmake --build build --parallel "$(nproc)"
+
+RUN mkdir -p /opt/unibo-bp/bin /opt/unibo-bp/lib && \
+    cp -a /opt/unibo-bp-src/build/Unibo-BP/bin/. /opt/unibo-bp/bin/ && \
+    cp -a /opt/unibo-bp-src/build/Unibo-BP/lib/. /opt/unibo-bp/lib/
 
 # Build CSPCL daemon for Unibo-BP integration
 COPY unibo-integration/src/cspcl_daemon.c /opt/build/
@@ -28,18 +33,21 @@ COPY src/cspcl.h /opt/build/
 COPY src/cspcl_config.h /opt/build/
 
 # Compile cspcl_daemon
-# Note: This assumes Unibo-BP headers and libraries will be available
-# Adjust paths based on your Unibo-BP installation
 WORKDIR /opt/build
 RUN gcc -O2 -Wall -Wextra \
     cspcl_daemon.c cspcl.c \
     -o /opt/unibo-bp/bin/unibo-bp-cspcl \
     -I. \
+    -I/opt/unibo-bp-src/include \
+    -I/opt/unibo-bp-src/export/include \
+    -I/opt/unibo-bp-src/build/Unibo-BP/include \
     -I/opt/libcsp/include \
     -I/opt/libcsp/build/include \
+    -L/opt/unibo-bp/lib \
+    -Wl,-rpath,/opt/unibo-bp/lib \
+    -lunibo-bp-api \
     /opt/libcsp/build/libcsp.a \
-    -lzmq -lpthread -lm -lsocketcan || \
-    echo "Warning: Build may fail without Unibo-BP libraries. See README for setup."
+    -lzmq -lpthread -lm -lsocketcan
 
 # Copy entrypoint script
 COPY docker/unibo-bp/entrypoint.sh /opt/entrypoint.sh

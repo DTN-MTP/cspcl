@@ -137,6 +137,9 @@ else
     echo ""
 fi
 
+# Ensure clean state from prior runs (containers, networks, and named volumes)
+compose -f "${COMPOSE_FILE}" down --volumes --remove-orphans > /dev/null 2>&1 || true
+
 # Start services
 echo -e "${BLUE}[2/4] Starting Docker Compose services...${NC}"
 compose -f "${COMPOSE_FILE}" up -d
@@ -217,12 +220,20 @@ run_test() {
     fi
 }
 
+restart_services() {
+    compose -f "${COMPOSE_FILE}" down --volumes --remove-orphans > /dev/null
+    compose -f "${COMPOSE_FILE}" up -d > /dev/null
+    sleep 10
+}
+
 # Execute test suite
 case "$TEST_SUITE" in
     all)
-        run_test "uD3TN Basic" "${TESTS_DIR}/test-ud3tn-basic.sh" || true
-        run_test "Unibo-BP Basic" "${TESTS_DIR}/test-unibo-basic.sh" || true
         run_test "Cross-Integration" "${TESTS_DIR}/test-cross-integration.sh" || true
+        restart_services
+        run_test "uD3TN Basic" "${TESTS_DIR}/test-ud3tn-basic.sh" || true
+        restart_services
+        run_test "Unibo-BP Basic" "${TESTS_DIR}/test-unibo-basic.sh" || true
         ;;
     ud3tn)
         run_test "uD3TN Basic" "${TESTS_DIR}/test-ud3tn-basic.sh" || true
@@ -245,13 +256,13 @@ PASSED=0
 FAILED=0
 for result in "${TEST_RESULTS[@]}"; do
     if [ "$result" == "PASS" ]; then
-        ((PASSED++))
+        PASSED=$((PASSED + 1))
     else
-        ((FAILED++))
+        FAILED=$((FAILED + 1))
     fi
 done
 
-echo -e "Total Tests: ${PASSED + FAILED}"
+echo -e "Total Tests: $((PASSED + FAILED))"
 echo -e "${GREEN}Passed: ${PASSED}${NC}"
 echo -e "${RED}Failed: ${FAILED}${NC}"
 
@@ -272,7 +283,7 @@ if [ $KEEP_RUNNING -eq 1 ]; then
     echo "  ${COMPOSE_CMD[*]} -f ${COMPOSE_FILE} down"
 else
     echo -e "${BLUE}Stopping services...${NC}"
-    compose -f "${COMPOSE_FILE}" down
+    compose -f "${COMPOSE_FILE}" down --volumes --remove-orphans
     echo -e "${GREEN}✓ Cleanup complete${NC}"
 fi
 
