@@ -14,7 +14,7 @@ default = []
 async-tokio = ["dep:tokio"]
 
 [dependencies]
-cspcl-sys = { version = "0.4.0" }
+cspcl-sys = { path = "../cspcl-sys", version = "0.4.0" }
 tokio = { version = "1", optional = true, features = [
   "rt-multi-thread",
   "macros",

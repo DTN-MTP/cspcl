@@ -83,6 +83,7 @@ static csp_conn_t *cspcl_pool_get_or_create_locked(cspcl_conn_pool_t *pool, uint
 {
   pool->tick++;
   size_t free_slot = CSPCL_CONN_POOL_SIZE;
+  bool force_fresh = cspcl_force_fresh_connect_enabled();
 
   for (size_t i = 0; i < CSPCL_CONN_POOL_SIZE; i++) {
     if (!pool->entries[i].used) {
@@ -94,6 +95,18 @@ static csp_conn_t *cspcl_pool_get_or_create_locked(cspcl_conn_pool_t *pool, uint
 
     if (pool->entries[i].dest_addr == dest_addr && pool->entries[i].dest_port == dest_port &&
         pool->entries[i].conn != NULL) {
+      if (force_fresh) {
+        cspcl_debug_send_log("dest=%u:%u force_fresh=1 invalidating cached connection slot=%zu",
+                             (unsigned) dest_addr, (unsigned) dest_port, i);
+        csp_close(pool->entries[i].conn);
+        pool->entries[i].conn = NULL;
+        pool->entries[i].used = false;
+        pool->stats.invalidations++;
+        if (free_slot == CSPCL_CONN_POOL_SIZE) {
+          free_slot = i;
+        }
+        break;
+      }
 #ifndef FREERTOS
       /* Age-based invalidation (disabled when max_conn_age_ms == 0) */
       if (pool->max_conn_age_ms > 0) {
@@ -113,6 +126,8 @@ static csp_conn_t *cspcl_pool_get_or_create_locked(cspcl_conn_pool_t *pool, uint
       /* Cache hit */
       pool->entries[i].last_used = pool->tick;
       pool->stats.hits++;
+      cspcl_debug_send_log("dest=%u:%u pool_hit=1 force_fresh=0 conn=%p", (unsigned) dest_addr,
+                           (unsigned) dest_port, (void *) pool->entries[i].conn);
       return pool->entries[i].conn;
     }
   }
@@ -455,6 +470,9 @@ cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle, size_t le
 
   if (ret != CSP_ERR_NONE) {
     cspcl_pool_invalidate_locked(pool, dest_addr, dest_port);
+    cspcl_debug_send_log("dest=%u:%u invalidated pooled connection after send "
+                         "failure",
+                         (unsigned) dest_addr, (unsigned) dest_port);
   }
 
   if (cspcl_pool_unlock(pool) != 0) {
@@ -599,7 +617,7 @@ cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len, ui
   int ret = csp_sfp_recv(conn, &data, &datasize, CSPCL_SFP_TIMEOUT_MS);
 
   /* Close connection */
-  csp_close(conn);
+  // csp_close(conn);
 
   if (ret != CSP_ERR_NONE) {
     if (data != NULL) {
