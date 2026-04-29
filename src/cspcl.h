@@ -29,7 +29,9 @@
 #include <csp/csp_types.h>
 /* libcsp headers for direct CSP stack control */
 #include <csp/csp_rtable.h>
+#ifdef CSP_HAVE_LIBZMQ
 #include <csp/interfaces/csp_if_zmqhub.h>
+#endif
 /* CAN interface support - requires libcsp built with CAN driver */
 #ifdef CSP_HAVE_LIBSOCKETCAN
 #include <csp/drivers/can_socketcan.h>
@@ -91,7 +93,7 @@ typedef enum {
   CSPCL_ERR_CSP_CAN_INIT,          /**< CAN interface init failed */
   CSPCL_ERR_CSP_CAN_NOT_SUPPORTED, /**< CAN support not compiled in */
   CSPCL_ERR_CSP_ROUTER,            /**< CSP router task start failed */
-  CSPCL_ERR_POOL_FULL              /**< Connection pool full, LRU eviction was forced */
+  CSPCL_ERR_POOL_FULL /**< Connection pool full, LRU eviction was forced */
 } cspcl_error_t;
 
 enum csp_iface_type {

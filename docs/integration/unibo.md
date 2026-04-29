@@ -10,6 +10,10 @@ permalink: /integration/unibo/
 
 This guide explains how to integrate CSPCL (CubeSat Space Protocol Convergence Layer) with Unibo-BP to enable Bundle Protocol communication over CSP using the ZMQHUB interface.
 
+## ASABR Adapter
+
+The Unibo integration supports ASABR-backed route selection through the CSPCL adapter process provider.
+
 ## Architecture
 
 ```bash
@@ -88,21 +92,22 @@ ls -la build/
 The CSPCLA daemon is a standalone executable that bridges Unibo-BP with libcsp over ZMQHUB.
 
 ```bash
-cd /path/to/cspcl/unibo-integration
+cd "$INTEG_DIR"
 mkdir -p build
 
 gcc -O2 -Wall -Wextra \
-  src/cspcl_daemon.c ../src/cspcl.c \
+  src/cspcl_daemon.c $CSPCL_C_SRC/cspcl.c \
+  $CSPCL_C_SRC/cspcl_route_bridge.c $CSPCL_C_SRC/cspcl_asabr_process_provider.c \
   -o build/unibo-bp-cspcl \
-  -I../src \
-  -I/path/to/unibo-bp/include \
-  -I/path/to/libcsp/include \
-  -I/path/to/libcsp/build/include \
-  -L/path/to/unibo-bp/build/Unibo-BP/lib \
-  -Wl,-rpath,/path/to/unibo-bp/build/Unibo-BP/lib \
+  -I$CSPCL_C_SRC \
+  -I$DTN_ROOT/unibo-dtn/unibo-bp/include \
+  -I$DTN_ROOT/libcsp/include \
+  -I$DTN_ROOT/libcsp/build/include \
+  -L$UNIBO_BP_LIB \
+  -Wl,-rpath,$UNIBO_BP_LIB \
   -lunibo-bp-api \
-  /path/to/libcsp/build/libcsp.a \
-  -lzmq -lpthread -lm
+  $LIBCSP_BUILD/libcsp.a \
+  -lzmq -lpthread -lm -lsocketcan
 
 # Verify build
 ls -la build/unibo-bp-cspcl
@@ -114,20 +119,21 @@ file build/unibo-bp-cspcl
 If you use CAN instead of ZMQHUB, compile the daemon with SocketCAN support:
 
 ```bash
-cd /path/to/cspcl/unibo-integration
+cd "$INTEG_DIR"
 mkdir -p build
 
 gcc -O2 -Wall -Wextra \
-  src/cspcl_daemon.c ../src/cspcl.c \
+  src/cspcl_daemon.c $CSPCL_C_SRC/cspcl.c \
+  $CSPCL_C_SRC/cspcl_route_bridge.c $CSPCL_C_SRC/cspcl_asabr_process_provider.c \
   -o build/unibo-bp-cspcl \
-  -I../src \
-  -I/path/to/unibo-bp/include \
-  -I/path/to/libcsp/include \
-  -I/path/to/libcsp/build/include \
-  -L/path/to/unibo-bp/build/Unibo-BP/lib \
-  -Wl,-rpath,/path/to/unibo-bp/build/Unibo-BP/lib \
+  -I$CSPCL_C_SRC \
+  -I$DTN_ROOT/unibo-dtn/unibo-bp/include \
+  -I$DTN_ROOT/libcsp/include \
+  -I$DTN_ROOT/libcsp/build/include \
+  -L$UNIBO_BP_LIB \
+  -Wl,-rpath,$UNIBO_BP_LIB \
   -lunibo-bp-api \
-  /path/to/libcsp/build/libcsp.a \
+  $LIBCSP_BUILD/libcsp.a \
   -lzmq -lpthread -lm \
   -lsocketcan
 ```
@@ -148,10 +154,27 @@ export LIBCSP_BUILD=$DTN_ROOT/libcsp/build
 EOF
 
 source ~/.bashrc
+export CSPCL_C_SRC=$CSPCL_DIR/rust-bindings/cspcl-sys/c_src
 
 # Optional: Enable CSPCL tracing (recommended for debugging)
 export CSPCLA_TRACE_PAYLOAD=1
 export CSPCLA_TRACE_BYTES=64
+
+# Required to enable ASABR route provider in unibo-bp-cspcl
+export CSPCL_ASABR_ADAPTER_BIN=$CSPCL_DIR/rust-bindings/target/release/cspcl-asabr-adapter
+
+# Use an epoch-time-compatible contact plan for live tests
+cat > /tmp/asabr-dtn-dynamic3.cp <<'EOF'
+node 0 n0
+node 1 n1
+node 2 n2
+contact 1 2 0 4000000000 evl 1000000 1
+EOF
+export CSPCL_ASABR_CONTACT_PLAN_PATH=/tmp/asabr-dtn-dynamic3.cp
+
+# Build adapter binary if not already built
+cd "$CSPCL_DIR/rust-bindings"
+cargo build --release -p cspcl-asabr-adapter
 ```
 
 ## Testing Bundle Transfer
@@ -194,20 +217,32 @@ The `broker_type` is interface-dependent:
 
 ```bash
 # Node 1 (CSP addr 1)
-./build/unibo-bp-cspcl 1 10 zmqhub 2001 /tmp/unibo-node1
+stdbuf -oL -eL env \
+  CSPCL_ASABR_ADAPTER_BIN="$CSPCL_ASABR_ADAPTER_BIN" \
+  CSPCL_ASABR_CONTACT_PLAN_PATH="$CSPCL_ASABR_CONTACT_PLAN_PATH" \
+  ./build/unibo-bp-cspcl 1 10 zmqhub 2001 /tmp/unibo-node1
 
 # Node 2 (CSP addr 2)
-./build/unibo-bp-cspcl 2 10 zmqhub 2002 /tmp/unibo-node2
+stdbuf -oL -eL env \
+  CSPCL_ASABR_ADAPTER_BIN="$CSPCL_ASABR_ADAPTER_BIN" \
+  CSPCL_ASABR_CONTACT_PLAN_PATH="$CSPCL_ASABR_CONTACT_PLAN_PATH" \
+  ./build/unibo-bp-cspcl 2 10 zmqhub 2002 /tmp/unibo-node2
 ```
 
 For CAN, use the same command shape and switch `broker_type`:
 
 ```bash
 # Node 1 (CAN)
-./build/unibo-bp-cspcl 1 10 can 2001 /tmp/unibo-node1
+stdbuf -oL -eL env \
+  CSPCL_ASABR_ADAPTER_BIN="$CSPCL_ASABR_ADAPTER_BIN" \
+  CSPCL_ASABR_CONTACT_PLAN_PATH="$CSPCL_ASABR_CONTACT_PLAN_PATH" \
+  ./build/unibo-bp-cspcl 1 10 can 2001 /tmp/unibo-node1
 
 # Node 2 (CAN)
-./build/unibo-bp-cspcl 2 10 can 2002 /tmp/unibo-node2
+stdbuf -oL -eL env \
+  CSPCL_ASABR_ADAPTER_BIN="$CSPCL_ASABR_ADAPTER_BIN" \
+  CSPCL_ASABR_CONTACT_PLAN_PATH="$CSPCL_ASABR_CONTACT_PLAN_PATH" \
+  ./build/unibo-bp-cspcl 2 10 can 2002 /tmp/unibo-node2
 ```
 
 ## Troubleshooting
@@ -238,8 +273,14 @@ ldd ./build/unibo-bp-cspcl | grep unibo-bp-api
 pkill -9 -f 'unibo-bp-cspcl'
 
 # Restart daemons
-nohup stdbuf -oL -eL ./build/unibo-bp-cspcl 1 10 zmqhub 2001 /tmp/unibo-node1 > /tmp/cspcl-node1.log 2>&1 &
-nohup stdbuf -oL -eL ./build/unibo-bp-cspcl 2 10 zmqhub 2002 /tmp/unibo-node2 > /tmp/cspcl-node2.log 2>&1 &
+nohup stdbuf -oL -eL env \
+  CSPCL_ASABR_ADAPTER_BIN="$CSPCL_ASABR_ADAPTER_BIN" \
+  CSPCL_ASABR_CONTACT_PLAN_PATH="$CSPCL_ASABR_CONTACT_PLAN_PATH" \
+  ./build/unibo-bp-cspcl 1 10 zmqhub 2001 /tmp/unibo-node1 > /tmp/cspcl-node1.log 2>&1 &
+nohup stdbuf -oL -eL env \
+  CSPCL_ASABR_ADAPTER_BIN="$CSPCL_ASABR_ADAPTER_BIN" \
+  CSPCL_ASABR_CONTACT_PLAN_PATH="$CSPCL_ASABR_CONTACT_PLAN_PATH" \
+  ./build/unibo-bp-cspcl 2 10 zmqhub 2002 /tmp/unibo-node2 > /tmp/cspcl-node2.log 2>&1 &
 
 sleep 1
 pgrep -fa 'unibo-bp-cspcl'
@@ -296,7 +337,7 @@ tail -f .uD3TN/unibo-bp.log
 | Start ZMQ broker     | `python3 $CSPCL_DIR/tools/zmqhub_broker.py -v`                                                  |
 | Start Unibo-BP node  | `$UNIBO_BP_BIN/unibo-bp start --daemon --dtn-admin dtn://X.dtn/ --ipn-admin ipn:X.0`            |
 | Configure DTN routes | `$UNIBO_BP_BIN/unibo-bp-admin routing static add --destination ipn:Y.Z --gateway ipn:Y.0`       |
-| Start CSPCL daemon   | `./build/unibo-bp-cspcl 1 10 zmqhub 2001 /tmp/unibo-node1`                                      |
+| Start CSPCL daemon   | `env CSPCL_ASABR_ADAPTER_BIN="$CSPCL_ASABR_ADAPTER_BIN" CSPCL_ASABR_CONTACT_PLAN_PATH="$CSPCL_ASABR_CONTACT_PLAN_PATH" ./build/unibo-bp-cspcl 1 10 zmqhub 2001 /tmp/unibo-node1` |
 | Send test bundle     | `$UNIBO_BP_BIN/unibo-bp-send --source ipn:1.55 --destination ipn:2.55 --payload-string 'Hello'` |
 | Receive bundle       | `$UNIBO_BP_BIN/unibo-bp-sink ipn:2.55`                                                          |
 | Check processes      | `pgrep -fa 'unibo-bp\|cspcl\|zmqhub'`                                                           |

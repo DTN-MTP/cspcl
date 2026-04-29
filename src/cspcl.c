@@ -23,7 +23,9 @@
 #include <csp/csp.h>
 /* libcsp headers for direct CSP stack control */
 #include <csp/csp_rtable.h>
+#ifdef CSP_HAVE_LIBZMQ
 #include <csp/interfaces/csp_if_zmqhub.h>
+#endif
 /* CAN interface support - requires libcsp built with CAN driver */
 #ifdef CSP_HAVE_LIBSOCKETCAN
 #include <csp/drivers/can_socketcan.h>
@@ -70,8 +72,7 @@ static csp_conn_t *cspcl_pool_get_or_create_locked(cspcl_conn_pool_t *pool,
 #ifndef FREERTOS
       /* Age-based invalidation (disabled when max_conn_age_ms == 0) */
       if (pool->max_conn_age_ms > 0) {
-        uint32_t age_s =
-            (uint32_t)(time(NULL) - pool->entries[i].connected_at);
+        uint32_t age_s = (uint32_t)(time(NULL) - pool->entries[i].connected_at);
         if (age_s > pool->max_conn_age_ms / 1000u) {
           csp_close(pool->entries[i].conn);
           pool->entries[i].conn = NULL;
@@ -198,12 +199,17 @@ cspcl_error_t cspcl_init(cspcl_t *cspcl) {
     /* Initialize the selected interface */
     switch (cspcl->iface_type) {
     case CSP_IFACE_ZMQHUB:
+#ifdef CSP_HAVE_LIBZMQ
       ret = csp_zmqhub_init(cspcl->local_addr, cspcl->zmqhub_addr, 0,
                             &cspcl->active_iface);
       if (ret != CSP_ERR_NONE) {
         cspcl_release_conn_pool(cspcl);
         return CSPCL_ERR_CSP_ZMQHUB_INIT;
       }
+#else
+      cspcl_release_conn_pool(cspcl);
+      return CSPCL_ERR_CSP_ZMQHUB_INIT;
+#endif
       break;
 
     case CSP_IFACE_CAN:
@@ -289,15 +295,18 @@ cspcl_error_t cspcl_conn_pool_init(cspcl_conn_pool_t *pool) {
   if (max_age_env != NULL) {
     char *endptr;
     long max_age_val = strtol(max_age_env, &endptr, 10);
-    
-    /* Validate that the entire string was consumed and value is in valid range */
-    if (*endptr == '\0' && max_age_val >= 0 && max_age_val <= (long)UINT32_MAX) {
+    /* Validate that the entire string was consumed and value is in valid range
+     */
+    if (*endptr == '\0' && max_age_val >= 0 &&
+        max_age_val <= (long)UINT32_MAX) {
       pool->max_conn_age_ms = (uint32_t)max_age_val;
-      CSPCL_DEBUG("Connection pool max age set to %u ms from CSPCL_MAX_CONN_AGE_MS", 
-                  pool->max_conn_age_ms);
+      CSPCL_LOG(
+          "Connection pool max age set to %u ms from CSPCL_MAX_CONN_AGE_MS",
+          pool->max_conn_age_ms);
     } else {
-      CSPCL_WARN("Invalid CSPCL_MAX_CONN_AGE_MS value '%s', ignoring (must be 0-%u)", 
-                 max_age_env, UINT32_MAX);
+      CSPCL_LOG(
+          "Invalid CSPCL_MAX_CONN_AGE_MS value '%s', ignoring (must be 0-%u)",
+          max_age_env, UINT32_MAX);
     }
   }
 

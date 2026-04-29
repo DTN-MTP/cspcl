@@ -255,8 +255,15 @@ else()
     set(USING_CSP_STUBS TRUE)
 endif()
 
+# Canonical C sources shared with cspcl-sys
+set(CSPCL_C_SOURCE_DIR ${CMAKE_SOURCE_DIR}/rust-bindings/cspcl-sys/c_src)
+
 # CSPCL library
-set(CSPCL_SOURCES src/cspcl.c)
+set(CSPCL_SOURCES
+    ${CSPCL_C_SOURCE_DIR}/cspcl.c
+    ${CSPCL_C_SOURCE_DIR}/cspcl_route_bridge.c
+    ${CSPCL_C_SOURCE_DIR}/cspcl_asabr_process_provider.c
+)
 
 # Add stub implementation when not using system CSP
 if(USING_CSP_STUBS)
@@ -267,7 +274,7 @@ add_library(cspcl ${CSPCL_SOURCES})
 
 target_include_directories(cspcl
     PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
+        $<BUILD_INTERFACE:${CSPCL_C_SOURCE_DIR}>
         $<INSTALL_INTERFACE:include>
     PRIVATE
         ${CSP_ALL_INCLUDE_DIRS}
@@ -310,7 +317,11 @@ install(TARGETS cspcl
     ARCHIVE DESTINATION lib
 )
 
-install(FILES src/cspcl.h src/cspcl_config.h
+install(FILES
+    ${CSPCL_C_SOURCE_DIR}/cspcl.h
+    ${CSPCL_C_SOURCE_DIR}/cspcl_config.h
+    ${CSPCL_C_SOURCE_DIR}/cspcl_route_bridge.h
+    ${CSPCL_C_SOURCE_DIR}/cspcl_asabr_process_provider.h
     DESTINATION include
 )
 

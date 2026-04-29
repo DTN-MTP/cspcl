@@ -6,7 +6,7 @@ add_executable(test_cspcl
 )
 
 target_include_directories(test_cspcl PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
+    ${CSPCL_C_SOURCE_DIR}
     ${CSP_ALL_INCLUDE_DIRS}
 )
 
@@ -26,7 +26,7 @@ add_executable(test_cspcl_pool_integration
     test_cspcl_pool_integration.c
 )
 target_include_directories(test_cspcl_pool_integration PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
+    ${CSPCL_C_SOURCE_DIR}
     ${CSP_ALL_INCLUDE_DIRS}
 )
 target_link_libraries(test_cspcl_pool_integration PRIVATE cspcl)

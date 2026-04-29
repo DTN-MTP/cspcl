@@ -47,6 +47,7 @@ CSP's small MTU without requiring changes to either stack.
 - [Rust API Reference]({% link api/rust.md %}) — Rust crate documentation
 - [uD3TN Integration]({% link integration/ud3tn.md %}) — use CSPCL inside uD3TN
 - [Unibo Integration]({% link integration/unibo.md %}) — use CSPCL with Unibo-BP
+- [A-SABR Adapter]({% link integration/asabr.md %}) — use CSPCL with A-SABR
 - [Architecture]({% link architecture.md %}) — design decisions and protocol stack
 
 ---

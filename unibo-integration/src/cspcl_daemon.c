@@ -30,9 +30,13 @@
 /* ------------------------------------------------------------------------- */
 
 #include "cspcl.h"
+#include "cspcl_asabr_process_provider.h"
+#include "cspcl_route_bridge.h"
 #include <csp/csp.h>
 #include <csp/csp_rtable.h>
+#ifdef CSP_HAVE_LIBZMQ
 #include <csp/interfaces/csp_if_zmqhub.h>
+#endif
 
 #ifdef CSP_USE_CAN
 #include <csp/drivers/can_socketcan.h>
@@ -68,8 +72,7 @@
 
 #define DEFAULT_CSP_CLA_ID 2001
 
-struct csp_peer
-{
+struct csp_peer {
   bool used;
   uint8_t csp_addr;
   uint64_t link_id;
@@ -77,8 +80,7 @@ struct csp_peer
   bool link_open;
 };
 
-struct csp_cla_config
-{
+struct csp_cla_config {
   UniboBPCLAHandle handle;
   uint64_t cla_id;
 
@@ -91,6 +93,10 @@ struct csp_cla_config
 
   pthread_mutex_t lock;
   struct csp_peer peers[CSP_MAX_LINKS];
+
+  bool asabr_enabled;
+  cspcl_route_bridge_t route_bridge;
+  cspcl_asabr_process_provider_t asabr_provider;
 };
 
 static enum csp_iface_type g_iface_type = CSP_IFACE_ZMQHUB;
@@ -102,8 +108,7 @@ static struct csp_cla_config *g_active_cfg = NULL;
 #endif
 
 #ifdef CSPCLA_STANDALONE_MAIN
-struct cspcl_daemon_config
-{
+struct cspcl_daemon_config {
   uint8_t local_addr;
   uint8_t csp_port;
   uint64_t cla_id;
@@ -116,15 +121,13 @@ struct cspcl_daemon_config
 /* Helpers                                                                    */
 /* ------------------------------------------------------------------------- */
 
-static void log_bp_error(const char *what, UniboBPError err)
-{
+static void log_bp_error(const char *what, UniboBPError err) {
   fprintf(stderr, "[cspcla] %s failed: %s (%d)\n", what,
           unibo_bp_error_to_string(err), (int)err);
   fflush(stderr);
 }
 
-static void log_info(const char *fmt, ...)
-{
+static void log_info(const char *fmt, ...) {
   time_t now = time(NULL);
   struct tm tm_now;
   localtime_r(&now, &tm_now);
@@ -140,13 +143,11 @@ static void log_info(const char *fmt, ...)
   va_end(args);
 }
 
-static bool trace_payload_enabled(void)
-{
+static bool trace_payload_enabled(void) {
   static int initialized = 0;
   static bool enabled = false;
 
-  if (!initialized)
-  {
+  if (!initialized) {
     const char *env = getenv("CSPCLA_TRACE_PAYLOAD");
     enabled = (env != NULL && env[0] != '\0' && env[0] != '0');
     initialized = 1;
@@ -155,16 +156,13 @@ static bool trace_payload_enabled(void)
   return enabled;
 }
 
-static size_t trace_payload_max_bytes(void)
-{
+static size_t trace_payload_max_bytes(void) {
   static int initialized = 0;
   static size_t max_bytes = 64;
 
-  if (!initialized)
-  {
+  if (!initialized) {
     const char *env = getenv("CSPCLA_TRACE_BYTES");
-    if (env && env[0] != '\0')
-    {
+    if (env && env[0] != '\0') {
       char *end = NULL;
       unsigned long parsed = strtoul(env, &end, 10);
       if (end != env && *end == '\0' && parsed > 0)
@@ -177,8 +175,7 @@ static size_t trace_payload_max_bytes(void)
 }
 
 static void log_payload_preview(const char *tag, const uint8_t *buffer,
-                                size_t len)
-{
+                                size_t len) {
   if (!trace_payload_enabled() || !buffer || len == 0)
     return;
 
@@ -188,8 +185,7 @@ static void log_payload_preview(const char *tag, const uint8_t *buffer,
   char hexbuf[(3 * 64) + 1];
 
   size_t pos = 0;
-  for (size_t i = 0; i < rendered_len; ++i)
-  {
+  for (size_t i = 0; i < rendered_len; ++i) {
     pos +=
         (size_t)snprintf(&hexbuf[pos], sizeof(hexbuf) - pos, "%02x", buffer[i]);
     if (i + 1 < rendered_len)
@@ -201,14 +197,12 @@ static void log_payload_preview(const char *tag, const uint8_t *buffer,
            (rendered_len < len) ? " ..." : "");
 }
 
-static void log_bp_call_error(const char *what, UniboBPError err)
-{
+static void log_bp_call_error(const char *what, UniboBPError err) {
   if (err != UniboBP_NoError)
     log_bp_error(what, err);
 }
 
-static uint8_t parse_csp_addr(const char *cla_addr)
-{
+static uint8_t parse_csp_addr(const char *cla_addr) {
   if (!cla_addr)
     return 0;
 
@@ -223,8 +217,7 @@ static uint8_t parse_csp_addr(const char *cla_addr)
   return (uint8_t)addr;
 }
 
-static int parse_uint8_arg(const char *value, uint8_t *out)
-{
+static int parse_uint8_arg(const char *value, uint8_t *out) {
   char *end = NULL;
   errno = 0;
   unsigned long parsed = strtoul(value, &end, 10);
@@ -235,8 +228,7 @@ static int parse_uint8_arg(const char *value, uint8_t *out)
   return 0;
 }
 
-static int parse_uint64_arg(const char *value, uint64_t *out)
-{
+static int parse_uint64_arg(const char *value, uint64_t *out) {
   char *end = NULL;
   errno = 0;
   unsigned long long parsed = strtoull(value, &end, 10);
@@ -247,8 +239,7 @@ static int parse_uint64_arg(const char *value, uint64_t *out)
   return 0;
 }
 
-static int copy_iface_param(char *dst, size_t dst_len, const char *src)
-{
+static int copy_iface_param(char *dst, size_t dst_len, const char *src) {
   if (!dst || !src || dst_len == 0)
     return -1;
 
@@ -262,43 +253,37 @@ static int copy_iface_param(char *dst, size_t dst_len, const char *src)
 
 static int parse_iface_spec(const char *value, enum csp_iface_type *iface_type,
                             char *zmqhub_addr, size_t zmqhub_addr_len,
-                            char *can_iface, size_t can_iface_len)
-{
+                            char *can_iface, size_t can_iface_len) {
   if (!value || !iface_type || !zmqhub_addr || !can_iface)
     return -1;
 
-  if (strncmp(value, "zmqhub:", 7) == 0)
-  {
+  if (strncmp(value, "zmqhub:", 7) == 0) {
     if (copy_iface_param(zmqhub_addr, zmqhub_addr_len, value + 7) != 0)
       return -1;
     *iface_type = CSP_IFACE_ZMQHUB;
     return 0;
   }
 
-  if (strcmp(value, "zmqhub") == 0)
-  {
+  if (strcmp(value, "zmqhub") == 0) {
     *iface_type = CSP_IFACE_ZMQHUB;
     return 0;
   }
 
-  if (strncmp(value, "can:", 4) == 0)
-  {
+  if (strncmp(value, "can:", 4) == 0) {
     if (copy_iface_param(can_iface, can_iface_len, value + 4) != 0)
       return -1;
     *iface_type = CSP_IFACE_CAN;
     return 0;
   }
 
-  if (strcmp(value, "can") == 0)
-  {
+  if (strcmp(value, "can") == 0) {
     if (copy_iface_param(can_iface, can_iface_len, CSP_CAN_IFACE) != 0)
       return -1;
     *iface_type = CSP_IFACE_CAN;
     return 0;
   }
 
-  if (strcmp(value, "loopback") == 0)
-  {
+  if (strcmp(value, "loopback") == 0) {
     *iface_type = CSP_IFACE_LOOPBACK;
     return 0;
   }
@@ -307,8 +292,7 @@ static int parse_iface_spec(const char *value, enum csp_iface_type *iface_type,
 }
 
 #ifdef CSPCLA_STANDALONE_MAIN
-static void print_usage(const char *prog)
-{
+static void print_usage(const char *prog) {
   fprintf(stderr,
           "Usage (positional): %s <local_addr> <csp_port> [iface] [cla_id] "
           "[bp_directory]\n"
@@ -322,8 +306,7 @@ static void print_usage(const char *prog)
           prog, prog);
 }
 
-static void daemon_signal_handler(int sig)
-{
+static void daemon_signal_handler(int sig) {
   (void)sig;
   log_info("signal received, requesting shutdown");
   g_shutdown_requested = 1;
@@ -331,8 +314,7 @@ static void daemon_signal_handler(int sig)
     g_active_cfg->rx_running = false;
 }
 
-static int install_signal_handlers(void)
-{
+static int install_signal_handlers(void) {
   struct sigaction sa;
   memset(&sa, 0, sizeof(sa));
   sa.sa_handler = daemon_signal_handler;
@@ -347,8 +329,7 @@ static int install_signal_handlers(void)
 }
 
 static int parse_daemon_args(int argc, char **argv,
-                             struct cspcl_daemon_config *cfg)
-{
+                             struct cspcl_daemon_config *cfg) {
   bool has_local_addr = false;
   bool has_csp_port = false;
 
@@ -363,8 +344,7 @@ static int parse_daemon_args(int argc, char **argv,
   if (copy_iface_param(g_can_iface, sizeof(g_can_iface), CSP_CAN_IFACE) != 0)
     return -1;
 
-  if (argc >= 3 && argv[1][0] != '-')
-  {
+  if (argc >= 3 && argv[1][0] != '-') {
     if (parse_uint8_arg(argv[1], &cfg->local_addr) != 0)
       return -1;
     has_local_addr = true;
@@ -385,10 +365,8 @@ static int parse_daemon_args(int argc, char **argv,
   }
 
   int opt;
-  while ((opt = getopt(argc, argv, "hl:p:i:c:d:")) != -1)
-  {
-    switch (opt)
-    {
+  while ((opt = getopt(argc, argv, "hl:p:i:c:d:")) != -1) {
+    switch (opt) {
     case 'l':
       if (parse_uint8_arg(optarg, &cfg->local_addr) != 0)
         return -1;
@@ -427,8 +405,7 @@ static int parse_daemon_args(int argc, char **argv,
 }
 #endif
 
-static uint8_t csp_addr_from_eid(ConstUniboBPEID eid)
-{
+static uint8_t csp_addr_from_eid(ConstUniboBPEID eid) {
   if (!eid)
     return 0;
 
@@ -444,10 +421,8 @@ static uint8_t csp_addr_from_eid(ConstUniboBPEID eid)
 }
 
 static struct csp_peer *find_peer_by_link_id(struct csp_cla_config *cfg,
-                                             uint64_t link_id)
-{
-  for (size_t i = 0; i < CSP_MAX_LINKS; ++i)
-  {
+                                             uint64_t link_id) {
+  for (size_t i = 0; i < CSP_MAX_LINKS; ++i) {
     if (cfg->peers[i].used && cfg->peers[i].link_id == link_id)
       return &cfg->peers[i];
   }
@@ -455,21 +430,17 @@ static struct csp_peer *find_peer_by_link_id(struct csp_cla_config *cfg,
 }
 
 static struct csp_peer *find_peer_by_addr(struct csp_cla_config *cfg,
-                                          uint8_t addr)
-{
-  for (size_t i = 0; i < CSP_MAX_LINKS; ++i)
-  {
+                                          uint8_t addr) {
+  for (size_t i = 0; i < CSP_MAX_LINKS; ++i) {
     if (cfg->peers[i].used && cfg->peers[i].csp_addr == addr)
       return &cfg->peers[i];
   }
   return NULL;
 }
 
-static int ensure_link_for_addr(struct csp_cla_config *cfg, uint8_t csp_addr)
-{
+static int ensure_link_for_addr(struct csp_cla_config *cfg, uint8_t csp_addr) {
   struct csp_peer *peer = find_peer_by_addr(cfg, csp_addr);
-  if (peer)
-  {
+  if (peer) {
     log_info("link already exists for csp_addr=%u link_id=%" PRIu64, csp_addr,
              peer->link_id);
     return 0;
@@ -478,25 +449,21 @@ static int ensure_link_for_addr(struct csp_cla_config *cfg, uint8_t csp_addr)
   log_info("creating new link for csp_addr=%u", csp_addr);
 
   size_t free_idx = CSP_MAX_LINKS;
-  for (size_t i = 0; i < CSP_MAX_LINKS; ++i)
-  {
-    if (!cfg->peers[i].used)
-    {
+  for (size_t i = 0; i < CSP_MAX_LINKS; ++i) {
+    if (!cfg->peers[i].used) {
       free_idx = i;
       break;
     }
   }
 
-  if (free_idx == CSP_MAX_LINKS)
-  {
+  if (free_idx == CSP_MAX_LINKS) {
     log_info("no free peer slots available (max=%u)", CSP_MAX_LINKS);
     return -1;
   }
 
   UniboBPIPN ipn = NULL;
   UniboBPError err = unibo_bp_eid_ipn_create(csp_addr, 0, &ipn);
-  if (err != UniboBP_NoError)
-  {
+  if (err != UniboBP_NoError) {
     log_bp_error("unibo_bp_eid_ipn_create", err);
     return -1;
   }
@@ -504,8 +471,7 @@ static int ensure_link_for_addr(struct csp_cla_config *cfg, uint8_t csp_addr)
   uint64_t link_id = 0;
   err = unibo_bp_cla_create_link(cfg->handle, unibo_bp_const_cast_eid(ipn),
                                  true, true, &link_id);
-  if (err != UniboBP_NoError)
-  {
+  if (err != UniboBP_NoError) {
     log_bp_error("unibo_bp_cla_create_link", err);
     unibo_bp_eid_destroy((UniboBPEID *)&ipn);
     return -1;
@@ -513,8 +479,7 @@ static int ensure_link_for_addr(struct csp_cla_config *cfg, uint8_t csp_addr)
 
   err = unibo_bp_cla_set_link_param(cfg->handle, link_id, false,
                                     CSPCL_MAX_BUNDLE_SIZE);
-  if (err != UniboBP_NoError)
-  {
+  if (err != UniboBP_NoError) {
     log_bp_error("unibo_bp_cla_set_link_param", err);
     unibo_bp_cla_destroy_link(cfg->handle, link_id);
     unibo_bp_eid_destroy((UniboBPEID *)&ipn);
@@ -523,14 +488,12 @@ static int ensure_link_for_addr(struct csp_cla_config *cfg, uint8_t csp_addr)
 
   err = unibo_bp_cla_start_observation_planned_neighbor(
       cfg->handle, unibo_bp_const_cast_eid(ipn));
-  if (err != UniboBP_NoError)
-  {
+  if (err != UniboBP_NoError) {
     log_bp_error("unibo_bp_cla_start_observation_planned_neighbor", err);
   }
 
   err = unibo_bp_cla_open_link(cfg->handle, link_id);
-  if (err != UniboBP_NoError)
-  {
+  if (err != UniboBP_NoError) {
     log_bp_error("unibo_bp_cla_open_link", err);
     unibo_bp_cla_destroy_link(cfg->handle, link_id);
     unibo_bp_eid_destroy((UniboBPEID *)&ipn);
@@ -549,11 +512,9 @@ static int ensure_link_for_addr(struct csp_cla_config *cfg, uint8_t csp_addr)
   return 0;
 }
 
-static void observe_default_peers(struct csp_cla_config *cfg)
-{
+static void observe_default_peers(struct csp_cla_config *cfg) {
   unsigned observed = 0;
-  for (uint8_t node = 1; node <= CSP_OBSERVE_MAX_NODE; ++node)
-  {
+  for (uint8_t node = 1; node <= CSP_OBSERVE_MAX_NODE; ++node) {
     if (node == cfg->local_addr)
       continue;
 
@@ -579,8 +540,7 @@ static void observe_default_peers(struct csp_cla_config *cfg)
  * Derived from Unibo-LTP bridge behavior: reliable-forward ECOS flag can be
  * used as one input to transmission policy decisions.
  */
-static bool pdu_prefers_reliable_ltp(ConstUniboBPCLAOutboundPDU pdu)
-{
+static bool pdu_prefers_reliable_ltp(ConstUniboBPCLAOutboundPDU pdu) {
   ConstUniboBPECOS ecos = unibo_bp_cla_outbound_pdu_get_ecos(pdu);
   if (!ecos)
     return false;
@@ -588,13 +548,66 @@ static bool pdu_prefers_reliable_ltp(ConstUniboBPCLAOutboundPDU pdu)
   return unibo_bp_ecos_get_flag(ecos, UniboBPECOSFlag_reliableForward);
 }
 
+static uint8_t resolve_tx_destination(struct csp_cla_config *cfg,
+                                      uint8_t fallback_addr, uint64_t tx_id,
+                                      size_t bundle_len) {
+  uint16_t destination = fallback_addr;
+  cspcl_route_request_t request;
+  const double now_s = (double)time(NULL);
+  cspcl_route_result_t result;
+
+  if (!cfg->asabr_enabled)
+    return fallback_addr;
+
+  memset(&request, 0, sizeof(request));
+  memset(&result, 0, sizeof(result));
+
+  request.source_node_id = cfg->local_addr;
+  request.destination_node_ids = &destination;
+  request.destination_count = 1;
+  request.bundle_priority = 0;
+  request.bundle_size = (double)bundle_len;
+  request.bundle_expiration = now_s + 3600.0;
+  request.current_time = now_s;
+  request.timeout_ms = 5000;
+
+  cspcl_route_error_t rc =
+      cspcl_route_bridge_route(&cfg->route_bridge, &request, &result);
+  if (rc != CSPCL_ROUTE_OK) {
+    log_info("asabr route failed tx_id=%" PRIu64 " fallback=%u err=%s", tx_id,
+             fallback_addr, cspcl_route_strerror(rc));
+    return fallback_addr;
+  }
+
+  if (result.decision_status == CSPCL_ROUTE_DECISION_FOUND &&
+      result.next_hop_count > 0) {
+    const uint16_t next_hop = result.next_hops[0].next_hop_node_id;
+    if (next_hop <= UINT8_MAX) {
+      const uint8_t selected = (uint8_t)next_hop;
+      log_info("asabr route tx_id=%" PRIu64
+               " diag=%s mode=%d next_hop=%u (fallback=%u)",
+               tx_id,
+               result.diagnostic[0] != '\0' ? result.diagnostic : "(none)",
+               (int)result.mode, selected, fallback_addr);
+      cspcl_route_result_cleanup(&result);
+      return selected;
+    }
+  }
+
+  log_info("asabr no-route tx_id=%" PRIu64 " status=%d diag=%s fallback=%u",
+           tx_id, (int)result.decision_status,
+           result.diagnostic[0] != '\0' ? result.diagnostic : "(none)",
+           fallback_addr);
+  cspcl_route_result_cleanup(&result);
+  return fallback_addr;
+}
+
 /* ------------------------------------------------------------------------- */
 /* BP callbacks                                                              */
 /* ------------------------------------------------------------------------- */
 
 static bool on_outbound_pdu(uint64_t link_id, ConstUniboBPCLAOutboundPDU pdu,
-                            void *user_arg)
-{
+                            void *user_arg) {
   struct csp_cla_config *cfg = user_arg;
   if (!cfg || !pdu)
     return false;
@@ -609,10 +622,10 @@ static bool on_outbound_pdu(uint64_t link_id, ConstUniboBPCLAOutboundPDU pdu,
 
   pthread_mutex_lock(&cfg->lock);
   struct csp_peer *peer = find_peer_by_link_id(cfg, link_id);
+  const uint8_t fallback_addr = peer ? peer->csp_addr : 0;
   pthread_mutex_unlock(&cfg->lock);
 
-  if (!peer)
-  {
+  if (!peer) {
     log_info("outbound_pdu: no peer for link_id=%" PRIu64 " tx_id=%" PRIu64,
              link_id, tx_id);
     (void)unibo_bp_cla_transmission_failure(cfg->handle, link_id, tx_id);
@@ -620,8 +633,7 @@ static bool on_outbound_pdu(uint64_t link_id, ConstUniboBPCLAOutboundPDU pdu,
   }
 
   uint8_t *buffer = malloc((size_t)len);
-  if (!buffer)
-  {
+  if (!buffer) {
     log_info("outbound_pdu: malloc failed len=%" PRIu64, len);
     (void)unibo_bp_cla_transmission_failure(cfg->handle, link_id, tx_id);
     return false;
@@ -629,12 +641,10 @@ static bool on_outbound_pdu(uint64_t link_id, ConstUniboBPCLAOutboundPDU pdu,
 
   uint64_t remaining = len;
   uint8_t *cursor = buffer;
-  while (remaining > 0)
-  {
+  while (remaining > 0) {
     const size_t chunk = (remaining > 4096U) ? 4096U : (size_t)remaining;
     const ssize_t n = read(fd, cursor, chunk);
-    if (n <= 0)
-    {
+    if (n <= 0) {
       log_info("outbound_pdu: read failed fd=%d errno=%d (%s)", fd, errno,
                strerror(errno));
       free(buffer);
@@ -649,16 +659,18 @@ static bool on_outbound_pdu(uint64_t link_id, ConstUniboBPCLAOutboundPDU pdu,
 
   (void)pdu_prefers_reliable_ltp(pdu);
 
+  const uint8_t dest_addr =
+      resolve_tx_destination(cfg, fallback_addr, tx_id, (size_t)len);
+
   log_payload_preview("tx", buffer, (size_t)len);
 
   cspcl_error_t cerr = cspcl_send_bundle(&cfg->cspcl, buffer, (size_t)len,
-                                         peer->csp_addr, cfg->csp_port);
+                                         dest_addr, cfg->csp_port);
   free(buffer);
 
-  if (cerr == CSPCL_OK)
-  {
+  if (cerr == CSPCL_OK) {
     log_info("tx success tx_id=%" PRIu64 " dst_csp=%u bytes=%" PRIu64, tx_id,
-             peer->csp_addr, len);
+             dest_addr, len);
     log_bp_call_error(
         "unibo_bp_cla_transmission_success",
         unibo_bp_cla_transmission_success(cfg->handle, link_id, tx_id));
@@ -666,15 +678,14 @@ static bool on_outbound_pdu(uint64_t link_id, ConstUniboBPCLAOutboundPDU pdu,
   }
 
   log_info("tx failure tx_id=%" PRIu64 " dst_csp=%u cspcl_err=%d", tx_id,
-           peer->csp_addr, (int)cerr);
+           dest_addr, (int)cerr);
   log_bp_call_error(
       "unibo_bp_cla_transmission_failure",
       unibo_bp_cla_transmission_failure(cfg->handle, link_id, tx_id));
   return false;
 }
 
-static void on_stop(void *user_arg)
-{
+static void on_stop(void *user_arg) {
   struct csp_cla_config *cfg = user_arg;
   log_info("stop callback received");
   if (cfg)
@@ -682,8 +693,7 @@ static void on_stop(void *user_arg)
 }
 
 static void on_update_config_flags(uint64_t enabled_flags,
-                                   uint64_t disabled_flags, void *user_arg)
-{
+                                   uint64_t disabled_flags, void *user_arg) {
   (void)user_arg;
   log_info("update_config_flags callback: enable=0x%" PRIx64
            " disable=0x%" PRIx64,
@@ -692,8 +702,7 @@ static void on_update_config_flags(uint64_t enabled_flags,
 
 static void on_add_contact(ConstUniboBPEID neighbor, bool uplink,
                            struct timeval *start_time, struct timeval *end_time,
-                           uint64_t xmit_rate_Bps, void *user_arg)
-{
+                           uint64_t xmit_rate_Bps, void *user_arg) {
   (void)start_time;
   (void)end_time;
   (void)xmit_rate_Bps;
@@ -703,8 +712,7 @@ static void on_add_contact(ConstUniboBPEID neighbor, bool uplink,
     return;
 
   const uint8_t csp_addr = csp_addr_from_eid(neighbor);
-  if (csp_addr == 0)
-  {
+  if (csp_addr == 0) {
     log_info("add_contact callback: could not map EID to CSP address");
     return;
   }
@@ -713,11 +721,9 @@ static void on_add_contact(ConstUniboBPEID neighbor, bool uplink,
            csp_addr);
 
   pthread_mutex_lock(&cfg->lock);
-  if (ensure_link_for_addr(cfg, csp_addr) == 0)
-  {
+  if (ensure_link_for_addr(cfg, csp_addr) == 0) {
     struct csp_peer *peer = find_peer_by_addr(cfg, csp_addr);
-    if (peer)
-    {
+    if (peer) {
       UniboBPError err = unibo_bp_cla_open_link(cfg->handle, peer->link_id);
       if (err != UniboBP_NoError)
         log_bp_error("unibo_bp_cla_open_link", err);
@@ -731,19 +737,16 @@ static void on_add_contact(ConstUniboBPEID neighbor, bool uplink,
 }
 
 static void on_remove_contact(ConstUniboBPEID neighbor, bool uplink,
-                              struct timeval *start_time, void *user_arg)
-{
+                              struct timeval *start_time, void *user_arg) {
   struct csp_cla_config *cfg = user_arg;
   const uint8_t csp_addr = csp_addr_from_eid(neighbor);
   log_info("remove_contact callback: uplink=%d csp_addr=%u", (int)uplink,
            csp_addr);
 
-  if (cfg)
-  {
+  if (cfg) {
     pthread_mutex_lock(&cfg->lock);
     struct csp_peer *peer = find_peer_by_addr(cfg, csp_addr);
-    if (peer)
-    {
+    if (peer) {
       UniboBPError err = unibo_bp_cla_close_link(cfg->handle, peer->link_id);
       if (err != UniboBP_NoError)
         log_bp_error("unibo_bp_cla_close_link", err);
@@ -760,8 +763,7 @@ static void on_remove_contact(ConstUniboBPEID neighbor, bool uplink,
 
 static void on_add_range(ConstUniboBPEID neighbor, bool uplink,
                          struct timeval *start_time, struct timeval *end_time,
-                         uint64_t owlt_s, void *user_arg)
-{
+                         uint64_t owlt_s, void *user_arg) {
   const uint8_t csp_addr = csp_addr_from_eid(neighbor);
   log_info("add_range callback: uplink=%d csp_addr=%u owlt=%" PRIu64,
            (int)uplink, csp_addr, owlt_s);
@@ -771,8 +773,7 @@ static void on_add_range(ConstUniboBPEID neighbor, bool uplink,
 }
 
 static void on_remove_range(ConstUniboBPEID neighbor, bool uplink,
-                            struct timeval *start_time, void *user_arg)
-{
+                            struct timeval *start_time, void *user_arg) {
   const uint8_t csp_addr = csp_addr_from_eid(neighbor);
   log_info("remove_range callback: uplink=%d csp_addr=%u", (int)uplink,
            csp_addr);
@@ -784,15 +785,13 @@ static void on_remove_range(ConstUniboBPEID neighbor, bool uplink,
 /* RX worker                                                                  */
 /* ------------------------------------------------------------------------- */
 
-static void *csp_rx_task(void *arg)
-{
+static void *csp_rx_task(void *arg) {
   struct csp_cla_config *cfg = arg;
   uint8_t bundle_buffer[CSP_RX_BUFFER_SIZE];
 
   log_info("rx thread started");
 
-  while (cfg->rx_running)
-  {
+  while (cfg->rx_running) {
     size_t bundle_len = sizeof(bundle_buffer);
     uint8_t src_addr = 0;
     uint8_t src_port = 0;
@@ -802,8 +801,7 @@ static void *csp_rx_task(void *arg)
 
     if (err == CSPCL_ERR_TIMEOUT)
       continue;
-    if (err != CSPCL_OK)
-    {
+    if (err != CSPCL_OK) {
       log_info("rx: cspcl_recv_bundle error=%d", (int)err);
       continue;
     }
@@ -812,8 +810,7 @@ static void *csp_rx_task(void *arg)
     log_payload_preview("rx", bundle_buffer, bundle_len);
 
     pthread_mutex_lock(&cfg->lock);
-    if (ensure_link_for_addr(cfg, src_addr) != 0)
-    {
+    if (ensure_link_for_addr(cfg, src_addr) != 0) {
       pthread_mutex_unlock(&cfg->lock);
       continue;
     }
@@ -822,27 +819,23 @@ static void *csp_rx_task(void *arg)
     uint64_t link_id = peer ? peer->link_id : 0;
     pthread_mutex_unlock(&cfg->lock);
 
-    if (link_id == 0)
-    {
+    if (link_id == 0) {
       log_info("rx: no link_id for src_csp=%u", src_addr);
       continue;
     }
 
     int fd = unibo_bp_cla_open_file(cfg->handle);
-    if (fd < 0)
-    {
+    if (fd < 0) {
       log_info("rx: unibo_bp_cla_open_file failed");
       continue;
     }
 
     size_t remaining = bundle_len;
     const uint8_t *cursor = bundle_buffer;
-    while (remaining > 0)
-    {
+    while (remaining > 0) {
       size_t chunk = (remaining > 4096U) ? 4096U : remaining;
       ssize_t n = write(fd, cursor, chunk);
-      if (n <= 0)
-      {
+      if (n <= 0) {
         log_info("rx: write failed fd=%d errno=%d (%s)", fd, errno,
                  strerror(errno));
         break;
@@ -852,8 +845,7 @@ static void *csp_rx_task(void *arg)
       cursor += n;
     }
 
-    if (remaining == 0)
-    {
+    if (remaining == 0) {
       lseek(fd, 0, SEEK_SET);
       UniboBPError in_err =
           unibo_bp_cla_inbound_pdu(cfg->handle, link_id, fd, bundle_len);
@@ -862,9 +854,7 @@ static void *csp_rx_task(void *arg)
       else
         log_info("rx: delivered inbound pdu link_id=%" PRIu64 " bytes=%zu",
                  link_id, bundle_len);
-    }
-    else
-    {
+    } else {
       log_info("rx: write to inbound fd incomplete, remaining=%zu", remaining);
     }
 
@@ -882,8 +872,7 @@ static void *csp_rx_task(void *arg)
 
 static int csp_cla_init(struct csp_cla_config *cfg, uint8_t local_addr,
                         uint8_t csp_port, uint64_t cla_id,
-                        const char *bp_directory)
-{
+                        const char *bp_directory) {
   memset(cfg, 0, sizeof(*cfg));
   cfg->local_addr = local_addr;
   cfg->csp_port = csp_port;
@@ -894,8 +883,7 @@ static int csp_cla_init(struct csp_cla_config *cfg, uint8_t local_addr,
            local_addr, csp_port, cla_id,
            bp_directory ? bp_directory : "(null)");
 
-  if (pthread_mutex_init(&cfg->lock, NULL) != 0)
-  {
+  if (pthread_mutex_init(&cfg->lock, NULL) != 0) {
     log_info("pthread_mutex_init failed");
     return -1;
   }
@@ -909,37 +897,82 @@ static int csp_cla_init(struct csp_cla_config *cfg, uint8_t local_addr,
   strncpy(cfg->cspcl.can_iface, g_can_iface, CSP_IFACE_PARAM_MAX - 1);
   cfg->cspcl.can_iface[CSP_IFACE_PARAM_MAX - 1] = '\0';
 
-  if (cspcl_init(&cfg->cspcl) != CSPCL_OK)
-  {
+  if (cspcl_init(&cfg->cspcl) != CSPCL_OK) {
     log_info("cspcl_init failed");
     return -1;
+  }
+
+  cspcl_route_error_t route_rc = cspcl_route_bridge_init(&cfg->route_bridge);
+  if (route_rc != CSPCL_ROUTE_OK) {
+    log_info("route bridge init failed: %s", cspcl_route_strerror(route_rc));
+    cspcl_cleanup(&cfg->cspcl);
+    return -1;
+  }
+
+  route_rc =
+      cspcl_asabr_process_provider_init(&cfg->asabr_provider, NULL, NULL);
+  if (route_rc != CSPCL_ROUTE_OK) {
+    log_info("asabr provider disabled: init failed (%s)",
+             cspcl_route_strerror(route_rc));
+  } else {
+    route_rc = cspcl_asabr_process_provider_register(&cfg->route_bridge,
+                                                     &cfg->asabr_provider);
+    if (route_rc != CSPCL_ROUTE_OK) {
+      log_info("asabr provider disabled: register failed (%s)",
+               cspcl_route_strerror(route_rc));
+      cspcl_asabr_process_provider_cleanup(&cfg->asabr_provider);
+    } else {
+      cfg->asabr_enabled = true;
+      log_info("asabr provider enabled");
+    }
   }
 
   if (!bp_directory)
     bp_directory = ".";
 
   UniboBPError err = unibo_bp_cla_connect(bp_directory, &cfg->handle);
-  if (err != UniboBP_NoError)
-  {
+  if (err != UniboBP_NoError) {
     log_bp_error("unibo_bp_cla_connect", err);
+    if (cfg->asabr_enabled) {
+      (void)cspcl_asabr_process_provider_unregister(&cfg->route_bridge,
+                                                    &cfg->asabr_provider);
+      cspcl_asabr_process_provider_cleanup(&cfg->asabr_provider);
+      cfg->asabr_enabled = false;
+    }
+    cspcl_route_bridge_cleanup(&cfg->route_bridge);
+    cspcl_cleanup(&cfg->cspcl);
     return -1;
   }
 
   log_info("connected to unibo-bp cla api");
 
   err = unibo_bp_cla_set_id(cfg->handle, cfg->cla_id);
-  if (err != UniboBP_NoError)
-  {
+  if (err != UniboBP_NoError) {
     log_bp_error("unibo_bp_cla_set_id", err);
     unibo_bp_cla_disconnect(&cfg->handle);
+    if (cfg->asabr_enabled) {
+      (void)cspcl_asabr_process_provider_unregister(&cfg->route_bridge,
+                                                    &cfg->asabr_provider);
+      cspcl_asabr_process_provider_cleanup(&cfg->asabr_provider);
+      cfg->asabr_enabled = false;
+    }
+    cspcl_route_bridge_cleanup(&cfg->route_bridge);
+    cspcl_cleanup(&cfg->cspcl);
     return -1;
   }
 
   err = unibo_bp_cla_set_cla_name(cfg->handle, "CSPCLA");
-  if (err != UniboBP_NoError)
-  {
+  if (err != UniboBP_NoError) {
     log_bp_error("unibo_bp_cla_set_cla_name", err);
     unibo_bp_cla_disconnect(&cfg->handle);
+    if (cfg->asabr_enabled) {
+      (void)cspcl_asabr_process_provider_unregister(&cfg->route_bridge,
+                                                    &cfg->asabr_provider);
+      cspcl_asabr_process_provider_cleanup(&cfg->asabr_provider);
+      cfg->asabr_enabled = false;
+    }
+    cspcl_route_bridge_cleanup(&cfg->route_bridge);
+    cspcl_cleanup(&cfg->cspcl);
     return -1;
   }
 
@@ -971,11 +1004,18 @@ static int csp_cla_init(struct csp_cla_config *cfg, uint8_t local_addr,
                                         : "(unset)");
 
   cfg->rx_running = true;
-  if (pthread_create(&cfg->rx_thread, NULL, csp_rx_task, cfg) != 0)
-  {
+  if (pthread_create(&cfg->rx_thread, NULL, csp_rx_task, cfg) != 0) {
     log_info("pthread_create rx thread failed");
     cfg->rx_running = false;
     unibo_bp_cla_disconnect(&cfg->handle);
+    if (cfg->asabr_enabled) {
+      (void)cspcl_asabr_process_provider_unregister(&cfg->route_bridge,
+                                                    &cfg->asabr_provider);
+      cspcl_asabr_process_provider_cleanup(&cfg->asabr_provider);
+      cfg->asabr_enabled = false;
+    }
+    cspcl_route_bridge_cleanup(&cfg->route_bridge);
+    cspcl_cleanup(&cfg->cspcl);
     return -1;
   }
 
@@ -984,8 +1024,7 @@ static int csp_cla_init(struct csp_cla_config *cfg, uint8_t local_addr,
   return 0;
 }
 
-static void csp_cla_cleanup(struct csp_cla_config *cfg)
-{
+static void csp_cla_cleanup(struct csp_cla_config *cfg) {
   if (!cfg)
     return;
 
@@ -995,8 +1034,7 @@ static void csp_cla_cleanup(struct csp_cla_config *cfg)
   if (cfg->rx_thread)
     pthread_join(cfg->rx_thread, NULL);
 
-  for (size_t i = 0; i < CSP_MAX_LINKS; ++i)
-  {
+  for (size_t i = 0; i < CSP_MAX_LINKS; ++i) {
     if (!cfg->peers[i].used)
       continue;
 
@@ -1013,6 +1051,14 @@ static void csp_cla_cleanup(struct csp_cla_config *cfg)
 
   if (cfg->handle)
     unibo_bp_cla_disconnect(&cfg->handle);
+
+  if (cfg->asabr_enabled) {
+    (void)cspcl_asabr_process_provider_unregister(&cfg->route_bridge,
+                                                  &cfg->asabr_provider);
+    cspcl_asabr_process_provider_cleanup(&cfg->asabr_provider);
+    cfg->asabr_enabled = false;
+  }
+  cspcl_route_bridge_cleanup(&cfg->route_bridge);
 
   cspcl_cleanup(&cfg->cspcl);
   pthread_mutex_destroy(&cfg->lock);
@@ -1035,8 +1081,7 @@ static void csp_cla_cleanup(struct csp_cla_config *cfg)
  * iface_type: zmqhub | can | loopback
  */
 int csp_cla_create_unibo_update(const char *const options[],
-                                size_t option_count)
-{
+                                size_t option_count) {
   if (option_count < 2 || option_count > 5)
     return -1;
 
@@ -1050,8 +1095,7 @@ int csp_cla_create_unibo_update(const char *const options[],
   if (copy_iface_param(g_can_iface, sizeof(g_can_iface), CSP_CAN_IFACE) != 0)
     return -1;
 
-  if (option_count >= 3)
-  {
+  if (option_count >= 3) {
     if (parse_iface_spec(options[2], &g_iface_type, g_zmqhub_addr,
                          sizeof(g_zmqhub_addr), g_can_iface,
                          sizeof(g_can_iface)) != 0)
@@ -1068,8 +1112,7 @@ int csp_cla_create_unibo_update(const char *const options[],
   if (!cfg)
     return -1;
 
-  if (csp_cla_init(cfg, local_addr, csp_port, cla_id, bp_directory) != 0)
-  {
+  if (csp_cla_init(cfg, local_addr, csp_port, cla_id, bp_directory) != 0) {
     free(cfg);
     return -1;
   }
@@ -1082,19 +1125,16 @@ int csp_cla_create_unibo_update(const char *const options[],
 }
 
 #ifdef CSPCLA_STANDALONE_MAIN
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
   struct cspcl_daemon_config daemon_cfg;
   const int parse_result = parse_daemon_args(argc, argv, &daemon_cfg);
-  if (parse_result != 0)
-  {
+  if (parse_result != 0) {
     if (parse_result < 0)
       print_usage(argv[0]);
     return (parse_result > 0) ? 0 : EXIT_FAILURE;
   }
 
-  if (install_signal_handlers() != 0)
-  {
+  if (install_signal_handlers() != 0) {
     perror("sigaction");
     return EXIT_FAILURE;
   }
@@ -1105,8 +1145,7 @@ int main(int argc, char **argv)
 
   struct csp_cla_config cfg;
   if (csp_cla_init(&cfg, daemon_cfg.local_addr, daemon_cfg.csp_port,
-                   daemon_cfg.cla_id, daemon_cfg.bp_directory) != 0)
-  {
+                   daemon_cfg.cla_id, daemon_cfg.bp_directory) != 0) {
     fprintf(stderr, "[cspcla] initialization failed\n");
     return EXIT_FAILURE;
   }

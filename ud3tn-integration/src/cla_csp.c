@@ -98,6 +98,7 @@ struct csp_cla_config {
 
   /* CSPCL instance */
   cspcl_t cspcl;
+  uint8_t local_addr;
 
   /* Link management */
   struct htab_entrylist *param_htab_elem[CSP_PARAM_HTAB_SLOT_COUNT];
@@ -107,6 +108,11 @@ struct csp_cla_config {
   /* RX task control */
   bool rx_running;
   Semaphore_t rx_task_sem;
+
+  /* ASABR support */
+  bool asabr_enabled;
+  cspcl_route_bridge_t route_bridge;
+  cspcl_asabr_process_provider_t asabr_provider;
 };
 
 /**
@@ -245,7 +251,6 @@ static uint8_t parse_csp_port(const char *cla_addr) {
 
   return (uint8_t)port;
 }
-
 
 static char *create_cla_addr(uint8_t csp_addr, uint8_t csp_port) {
   char *addr = malloc(16);
@@ -488,6 +493,64 @@ static void csp_rx_task(void *p) {
 }
 
 /*===========================================================================*/
+/* TX Task                                                                    */
+/*===========================================================================*/
+
+static uint8_t resolve_tx_destination(struct csp_cla_config *cfg,
+                                      uint8_t fallback_addr, uint64_t tx_id,
+                                      size_t bundle_len) {
+  uint16_t destination = fallback_addr;
+  cspcl_route_request_t request;
+  const double now_s = (double)time(NULL);
+  cspcl_route_result_t result;
+
+  if (!cfg->asabr_enabled)
+    return fallback_addr;
+
+  memset(&request, 0, sizeof(request));
+  memset(&result, 0, sizeof(result));
+
+  request.source_node_id = cfg->local_addr;
+  request.destination_node_ids = &destination;
+  request.destination_count = 1;
+  request.bundle_priority = 0;
+  request.bundle_size = (double)bundle_len;
+  request.bundle_expiration = now_s + 3600.0;
+  request.current_time = now_s;
+  request.timeout_ms = 5000;
+
+  cspcl_route_error_t rc =
+      cspcl_route_bridge_route(&cfg->route_bridge, &request, &result);
+  if (rc != CSPCL_ROUTE_OK) {
+    log_info("asabr route failed tx_id=%" PRIu64 " fallback=%u err=%s", tx_id,
+             fallback_addr, cspcl_route_strerror(rc));
+    return fallback_addr;
+  }
+
+  if (result.decision_status == CSPCL_ROUTE_DECISION_FOUND &&
+      result.next_hop_count > 0) {
+    const uint16_t next_hop = result.next_hops[0].next_hop_node_id;
+    if (next_hop <= UINT8_MAX) {
+      const uint8_t selected = (uint8_t)next_hop;
+      log_info("asabr route tx_id=%" PRIu64
+               " diag=%s mode=%d next_hop=%u (fallback=%u)",
+               tx_id,
+               result.diagnostic[0] != '\0' ? result.diagnostic : "(none)",
+               (int)result.mode, selected, fallback_addr);
+      cspcl_route_result_cleanup(&result);
+      return selected;
+    }
+  }
+
+  log_info("asabr no-route tx_id=%" PRIu64 " status=%d diag=%s fallback=%u",
+           tx_id, (int)result.decision_status,
+           result.diagnostic[0] != '\0' ? result.diagnostic : "(none)",
+           fallback_addr);
+  cspcl_route_result_cleanup(&result);
+  return fallback_addr;
+}
+
+/*===========================================================================*/
 /* CLA VTable Implementation                                                  */
 /*===========================================================================*/
 
@@ -649,14 +712,17 @@ enum ud3tn_result csp_cla_end_packet(struct cla_link *link) {
     return UD3TN_OK;
   }
 
+  const uint8_t dest_addr =
+      resolve_tx_destination(config, csp_link->dest_addr, link->tx_id,
+                             (size_t)csp_link->tx_buffer_len);
+
   LOGF_DEBUG("CSP: Sending %zu bytes to csp:%u", csp_link->tx_buffer_len,
-             csp_link->dest_addr);
+             dest_addr);
 
   /* Send bundle via CSPCL */
-  cspcl_error_t err =
-      cspcl_send_bundle(&config->cspcl, csp_link->tx_buffer,
-                        csp_link->tx_buffer_len, csp_link->dest_addr,
-                        csp_link->dest_port);
+  cspcl_error_t err = cspcl_send_bundle(&config->cspcl, csp_link->tx_buffer,
+                                        csp_link->tx_buffer_len, dest_addr,
+                                        csp_link->dest_port);
 
   /* Reset TX buffer */
   csp_link->tx_buffer_len = 0;
