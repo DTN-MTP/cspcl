@@ -663,12 +663,22 @@ uint8_t cspcl_endpoint_to_addr(const char *endpoint_id)
     }
   }
 
-  /* Parse DTN scheme: dtn://nodeX/... → CSP address X */
+  /* Parse DTN scheme variants used by the integration stack. */
   if (strncmp(endpoint_id, "dtn://node", 10) == 0) {
     int node = 0;
     if (sscanf(endpoint_id + 10, "%d", &node) == 1) {
       if (node >= 0 && node <= 255) {
         return (uint8_t) node;
+      }
+    }
+  }
+
+  if (strncmp(endpoint_id, "dtn://", 6) == 0) {
+    const char *name = endpoint_id + 6;
+    if (name[0] != '\0' && name[1] == '.' && strncmp(name + 2, "dtn/", 4) == 0) {
+      char label = name[0];
+      if (label >= 'a' && label <= 'z') {
+        return (uint8_t) (label - 'a' + 1);
       }
     }
   }
