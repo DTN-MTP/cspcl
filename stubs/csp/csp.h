@@ -16,6 +16,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "csp_types.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -81,6 +83,11 @@ typedef struct csp_conn_s csp_conn_t;
 #define CSP_O_HMAC 0x0002
 #define CSP_O_XTEA 0x0004
 #define CSP_O_CRC32 0x0008
+
+/* Router init/task API (stubbed) */
+void csp_conf_get_defaults(csp_conf_t *conf);
+int csp_init(const csp_conf_t *conf);
+int csp_route_start_task(unsigned int stack_size, unsigned int prio);
 
 /*===========================================================================*/
 /* CSP Buffer API                                                             */
@@ -270,7 +277,8 @@ static inline int csp_sfp_send(csp_conn_t *conn, const void *data, unsigned int 
 /**
  * Receive data using SFP (handles reassembly automatically)
  * @param conn Connection handle
- * @param dataout Output pointer to received data (allocated by SFP, free with csp_free)
+ * @param dataout Output pointer to received data (allocated by SFP, free with
+ * csp_free)
  * @param datasize Output size of received data
  * @param timeout Timeout in ms
  * @param first_packet First packet if already received, or NULL
@@ -282,7 +290,8 @@ int csp_sfp_recv_fp(csp_conn_t *conn, void **dataout, int *datasize, uint32_t ti
 /**
  * Receive data using SFP (convenience wrapper)
  * @param conn Connection handle
- * @param dataout Output pointer to received data (allocated by SFP, free with csp_free)
+ * @param dataout Output pointer to received data (allocated by SFP, free with
+ * csp_free)
  * @param datasize Output size of received data
  * @param timeout Timeout in ms
  * @return CSP_ERR_NONE on success

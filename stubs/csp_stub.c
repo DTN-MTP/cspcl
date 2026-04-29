@@ -11,6 +11,8 @@
 #include <string.h>
 
 #include "csp/csp.h"
+#include "csp/csp_rtable.h"
+#include "csp/interfaces/csp_if_zmqhub.h"
 
 /*===========================================================================*/
 /* Internal Structures                                                        */
@@ -48,6 +50,55 @@ static struct {
  * Reset to 0 to restore normal behaviour. Used for failure-injection tests.
  */
 int g_csp_sfp_send_fail = 0;
+
+/*===========================================================================*/
+/* Core stack API                                                            */
+/*===========================================================================*/
+
+void csp_conf_get_defaults(csp_conf_t *conf)
+{
+  if (conf == NULL) {
+    return;
+  }
+  memset(conf, 0, sizeof(*conf));
+}
+
+int csp_init(const csp_conf_t *conf)
+{
+  (void) conf;
+  return CSP_ERR_NONE;
+}
+
+int csp_route_start_task(unsigned int stack_size, unsigned int prio)
+{
+  (void) stack_size;
+  (void) prio;
+  return CSP_ERR_NONE;
+}
+
+int csp_rtable_set(uint8_t addr, uint8_t netmask, csp_iface_t *ifc, uint16_t via)
+{
+  (void) addr;
+  (void) netmask;
+  (void) ifc;
+  (void) via;
+  return CSP_ERR_NONE;
+}
+
+int csp_zmqhub_init(uint8_t addr, const char *server, uint16_t rx_filter, csp_iface_t **iface)
+{
+  static csp_iface_t iface_static;
+
+  (void) server;
+  (void) rx_filter;
+
+  iface_static.addr = addr;
+  if (iface != NULL) {
+    *iface = &iface_static;
+  }
+
+  return CSP_ERR_NONE;
+}
 
 /*===========================================================================*/
 /* Buffer API                                                                 */
