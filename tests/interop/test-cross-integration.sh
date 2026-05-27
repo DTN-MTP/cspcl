@@ -64,6 +64,13 @@ done
 
 echo "[2/7] Configuring cross-integration routes..."
 
+# Fetch a reference time for consistent Unibo range/contact schedules.
+REFERENCE_TIME=$(docker exec "$UNIBO_1_CONTAINER" /opt/unibo-bp/bin/unibo-bp-utility --get-utc-time +0 2>/dev/null | tail -n 1 | tr -d '\r')
+if [ -z "$REFERENCE_TIME" ]; then
+    echo "✗ FAILED: Unable to fetch Unibo-BP reference time"
+    exit 1
+fi
+
 # Configure uD3TN Node A to send to Unibo Node 2 (CSP address 4)
 docker exec "$UD3TN_A_CONTAINER" \
     /opt/ud3tn-src/build/posix/aap2/aap2_config \
@@ -85,18 +92,23 @@ docker exec "$UD3TN_B_CONTAINER" \
     > /dev/null 2>&1 || echo "Route may already exist"
 
 # Configure Unibo-BP nodes
-REFERENCE_TIME="+0"
-
 # Unibo Node 1 configuration (sends to uD3TN B at CSP 2)
 docker exec "$UNIBO_1_CONTAINER" bash -c "
     cd /tmp/unibo-node1
     /opt/unibo-bp/bin/unibo-bp-admin region home --register-node ipn:1.0 2>/dev/null || true
     /opt/unibo-bp/bin/unibo-bp-admin region home --register-node ipn:2.0 2>/dev/null || true
-    /opt/unibo-bp/bin/unibo-bp-admin range add --start-time +0 --end-time +3600 --sender ipn:3.0 --receiver ipn:2.0 --owlt 0 --reference-time $REFERENCE_TIME 2>/dev/null || true
-    /opt/unibo-bp/bin/unibo-bp-admin range add --start-time +0 --end-time +3600 --sender ipn:2.0 --receiver ipn:3.0 --owlt 0 --reference-time $REFERENCE_TIME 2>/dev/null || true
-    /opt/unibo-bp/bin/unibo-bp-admin contact add --start-time +0 --end-time +3600 --sender ipn:3.0 --receiver ipn:2.0 --xmit-rate 1000000 --reference-time $REFERENCE_TIME 2>/dev/null || true
-    /opt/unibo-bp/bin/unibo-bp-admin contact add --start-time +0 --end-time +3600 --sender ipn:2.0 --receiver ipn:3.0 --xmit-rate 1000000 --reference-time $REFERENCE_TIME 2>/dev/null || true
+    /opt/unibo-bp/bin/unibo-bp-admin range add --start-time +0 --end-time +3600 --sender ipn:3.0 --receiver ipn:2.0 --owlt 0 --reference-time \"$REFERENCE_TIME\" 2>/dev/null || true
+    /opt/unibo-bp/bin/unibo-bp-admin range add --start-time +0 --end-time +3600 --sender ipn:2.0 --receiver ipn:3.0 --owlt 0 --reference-time \"$REFERENCE_TIME\" 2>/dev/null || true
+    /opt/unibo-bp/bin/unibo-bp-admin contact add --start-time +0 --end-time +3600 --sender ipn:3.0 --receiver ipn:2.0 --xmit-rate 1000000 --reference-time \"$REFERENCE_TIME\" 2>/dev/null || true
+    /opt/unibo-bp/bin/unibo-bp-admin contact add --start-time +0 --end-time +3600 --sender ipn:2.0 --receiver ipn:3.0 --xmit-rate 1000000 --reference-time \"$REFERENCE_TIME\" 2>/dev/null || true
     /opt/unibo-bp/bin/unibo-bp-admin routing static add --destination dtn://b.dtn/ --gateway ipn:2.0 2>/dev/null || true
+" > /dev/null 2>&1
+
+# Nudge Unibo contact observers so CLA peers wake up when contacts are added.
+docker exec "$UNIBO_1_CONTAINER" bash -c "
+    cd /tmp/unibo-node1
+    /opt/unibo-bp/bin/unibo-bp-admin contact change --sender ipn:3.0 --receiver ipn:2.0 \
+        --start-time \"$REFERENCE_TIME\" --new-start-time \"$REFERENCE_TIME\" 2>/dev/null || true
 " > /dev/null 2>&1
 
 # Unibo Node 2 configuration (receives from uD3TN A at CSP 1)
@@ -104,10 +116,16 @@ docker exec "$UNIBO_2_CONTAINER" bash -c "
     cd /tmp/unibo-node2
     /opt/unibo-bp/bin/unibo-bp-admin region home --register-node ipn:1.0 2>/dev/null || true
     /opt/unibo-bp/bin/unibo-bp-admin region home --register-node ipn:4.0 2>/dev/null || true
-    /opt/unibo-bp/bin/unibo-bp-admin range add --start-time +0 --end-time +3600 --sender ipn:1.0 --receiver ipn:4.0 --owlt 0 --reference-time $REFERENCE_TIME 2>/dev/null || true
-    /opt/unibo-bp/bin/unibo-bp-admin range add --start-time +0 --end-time +3600 --sender ipn:4.0 --receiver ipn:1.0 --owlt 0 --reference-time $REFERENCE_TIME 2>/dev/null || true
-    /opt/unibo-bp/bin/unibo-bp-admin contact add --start-time +0 --end-time +3600 --sender ipn:1.0 --receiver ipn:4.0 --xmit-rate 1000000 --reference-time $REFERENCE_TIME 2>/dev/null || true
-    /opt/unibo-bp/bin/unibo-bp-admin contact add --start-time +0 --end-time +3600 --sender ipn:4.0 --receiver ipn:1.0 --xmit-rate 1000000 --reference-time $REFERENCE_TIME 2>/dev/null || true
+    /opt/unibo-bp/bin/unibo-bp-admin range add --start-time +0 --end-time +3600 --sender ipn:1.0 --receiver ipn:4.0 --owlt 0 --reference-time \"$REFERENCE_TIME\" 2>/dev/null || true
+    /opt/unibo-bp/bin/unibo-bp-admin range add --start-time +0 --end-time +3600 --sender ipn:4.0 --receiver ipn:1.0 --owlt 0 --reference-time \"$REFERENCE_TIME\" 2>/dev/null || true
+    /opt/unibo-bp/bin/unibo-bp-admin contact add --start-time +0 --end-time +3600 --sender ipn:1.0 --receiver ipn:4.0 --xmit-rate 1000000 --reference-time \"$REFERENCE_TIME\" 2>/dev/null || true
+    /opt/unibo-bp/bin/unibo-bp-admin contact add --start-time +0 --end-time +3600 --sender ipn:4.0 --receiver ipn:1.0 --xmit-rate 1000000 --reference-time \"$REFERENCE_TIME\" 2>/dev/null || true
+" > /dev/null 2>&1
+
+docker exec "$UNIBO_2_CONTAINER" bash -c "
+    cd /tmp/unibo-node2
+    /opt/unibo-bp/bin/unibo-bp-admin contact change --sender ipn:4.0 --receiver ipn:1.0 \
+        --start-time \"$REFERENCE_TIME\" --new-start-time \"$REFERENCE_TIME\" 2>/dev/null || true
 " > /dev/null 2>&1
 
 echo "✓ Cross-integration routes configured"

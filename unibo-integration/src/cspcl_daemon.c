@@ -511,7 +511,7 @@ static int ensure_link_for_addr(struct csp_cla_config *cfg, uint8_t csp_addr)
     return -1;
   }
 
-  err = unibo_bp_cla_set_link_param(cfg->handle, link_id, false,
+  err = unibo_bp_cla_set_link_param(cfg->handle, link_id, true,
                                     CSPCL_MAX_BUNDLE_SIZE);
   if (err != UniboBP_NoError)
   {

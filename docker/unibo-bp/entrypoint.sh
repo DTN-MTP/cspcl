@@ -65,10 +65,17 @@ echo "Starting Unibo-BP daemon..."
 sleep 2
 
 # Start CSPCL daemon
+# Build interface spec for cspcl_daemon:
+#   zmqhub[:host] | can[:iface] | loopback
+IFACE_SPEC="${TRANSPORT}"
+if [ "${TRANSPORT}" = "zmqhub" ] && [ -n "${ZMQ_BROKER_HOST}" ]; then
+    IFACE_SPEC="zmqhub:${ZMQ_BROKER_HOST}"
+fi
+
 echo "Starting CSPCL daemon..."
 exec stdbuf -oL -eL "${UNIBO_BP_BIN}/unibo-bp-cspcl" \
     "${CSP_ADDR}" \
     "${CSP_PORT}" \
-    "${TRANSPORT}" \
+    "${IFACE_SPEC}" \
     "${UNIBO_SOCKET}" \
     "${UNIBO_NODE_DIR}"
