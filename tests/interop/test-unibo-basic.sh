@@ -38,9 +38,6 @@ done
 # Configure nodes (regions, ranges, contacts, routing)
 echo "[2/5] Configuring Unibo-BP nodes..."
 
-# Unibo-BP admin accepts relative offsets directly; use +0 as reference.
-REFERENCE_TIME="+0"
-
 echo "  Waiting for Unibo-BP admin sockets..."
 for node in "$NODE_1_CONTAINER" "$NODE_2_CONTAINER"; do
     for ((i=1; i<=30; i++)); do
@@ -58,15 +55,23 @@ for node in "$NODE_1_CONTAINER" "$NODE_2_CONTAINER"; do
     done
 done
 
+# Fetch a reference time for consistent range/contact schedules.
+echo "  Fetching Unibo-BP reference time..."
+REFERENCE_TIME=$(docker exec "$NODE_1_CONTAINER" /opt/unibo-bp/bin/unibo-bp-utility --get-utc-time +0 2>/dev/null | tail -n 1 | tr -d '\r')
+if [ -z "$REFERENCE_TIME" ]; then
+    echo "✗ FAILED: Unable to fetch Unibo-BP reference time"
+    exit 1
+fi
+
 # Configure Node 1
 docker exec "$NODE_1_CONTAINER" bash -c "
     cd /tmp/unibo-node1
     /opt/unibo-bp/bin/unibo-bp-admin region home --register-node ipn:3.0
     /opt/unibo-bp/bin/unibo-bp-admin region home --register-node ipn:4.0
-    /opt/unibo-bp/bin/unibo-bp-admin range add --start-time +0 --end-time +3600 --sender ipn:3.0 --receiver ipn:4.0 --owlt 0 --reference-time $REFERENCE_TIME
-    /opt/unibo-bp/bin/unibo-bp-admin range add --start-time +0 --end-time +3600 --sender ipn:4.0 --receiver ipn:3.0 --owlt 0 --reference-time $REFERENCE_TIME
-    /opt/unibo-bp/bin/unibo-bp-admin contact add --start-time +0 --end-time +3600 --sender ipn:3.0 --receiver ipn:4.0 --xmit-rate 1000000 --reference-time $REFERENCE_TIME
-    /opt/unibo-bp/bin/unibo-bp-admin contact add --start-time +0 --end-time +3600 --sender ipn:4.0 --receiver ipn:3.0 --xmit-rate 1000000 --reference-time $REFERENCE_TIME
+    /opt/unibo-bp/bin/unibo-bp-admin range add --start-time +0 --end-time +3600 --sender ipn:3.0 --receiver ipn:4.0 --owlt 0 --reference-time \"$REFERENCE_TIME\"
+    /opt/unibo-bp/bin/unibo-bp-admin range add --start-time +0 --end-time +3600 --sender ipn:4.0 --receiver ipn:3.0 --owlt 0 --reference-time \"$REFERENCE_TIME\"
+    /opt/unibo-bp/bin/unibo-bp-admin contact add --start-time +0 --end-time +3600 --sender ipn:3.0 --receiver ipn:4.0 --xmit-rate 1000000 --reference-time \"$REFERENCE_TIME\"
+    /opt/unibo-bp/bin/unibo-bp-admin contact add --start-time +0 --end-time +3600 --sender ipn:4.0 --receiver ipn:3.0 --xmit-rate 1000000 --reference-time \"$REFERENCE_TIME\"
     /opt/unibo-bp/bin/unibo-bp-admin routing static add --destination ipn:4.55 --gateway ipn:4.0
     /opt/unibo-bp/bin/unibo-bp-admin routing static add --destination ipn:4.0 --gateway ipn:4.0
 "
@@ -76,12 +81,24 @@ docker exec "$NODE_2_CONTAINER" bash -c "
     cd /tmp/unibo-node2
     /opt/unibo-bp/bin/unibo-bp-admin region home --register-node ipn:3.0
     /opt/unibo-bp/bin/unibo-bp-admin region home --register-node ipn:4.0
-    /opt/unibo-bp/bin/unibo-bp-admin range add --start-time +0 --end-time +3600 --sender ipn:3.0 --receiver ipn:4.0 --owlt 0 --reference-time $REFERENCE_TIME
-    /opt/unibo-bp/bin/unibo-bp-admin range add --start-time +0 --end-time +3600 --sender ipn:4.0 --receiver ipn:3.0 --owlt 0 --reference-time $REFERENCE_TIME
-    /opt/unibo-bp/bin/unibo-bp-admin contact add --start-time +0 --end-time +3600 --sender ipn:3.0 --receiver ipn:4.0 --xmit-rate 1000000 --reference-time $REFERENCE_TIME
-    /opt/unibo-bp/bin/unibo-bp-admin contact add --start-time +0 --end-time +3600 --sender ipn:4.0 --receiver ipn:3.0 --xmit-rate 1000000 --reference-time $REFERENCE_TIME
+    /opt/unibo-bp/bin/unibo-bp-admin range add --start-time +0 --end-time +3600 --sender ipn:3.0 --receiver ipn:4.0 --owlt 0 --reference-time \"$REFERENCE_TIME\"
+    /opt/unibo-bp/bin/unibo-bp-admin range add --start-time +0 --end-time +3600 --sender ipn:4.0 --receiver ipn:3.0 --owlt 0 --reference-time \"$REFERENCE_TIME\"
+    /opt/unibo-bp/bin/unibo-bp-admin contact add --start-time +0 --end-time +3600 --sender ipn:3.0 --receiver ipn:4.0 --xmit-rate 1000000 --reference-time \"$REFERENCE_TIME\"
+    /opt/unibo-bp/bin/unibo-bp-admin contact add --start-time +0 --end-time +3600 --sender ipn:4.0 --receiver ipn:3.0 --xmit-rate 1000000 --reference-time \"$REFERENCE_TIME\"
     /opt/unibo-bp/bin/unibo-bp-admin routing static add --destination ipn:3.55 --gateway ipn:3.0
     /opt/unibo-bp/bin/unibo-bp-admin routing static add --destination ipn:3.0 --gateway ipn:3.0
+"
+
+# Nudge Unibo contact observers so CLA peers wake up when contacts are added.
+docker exec "$NODE_1_CONTAINER" bash -c "
+    cd /tmp/unibo-node1
+    /opt/unibo-bp/bin/unibo-bp-admin contact change --sender ipn:3.0 --receiver ipn:4.0 \
+        --start-time \"$REFERENCE_TIME\" --new-start-time \"$REFERENCE_TIME\" >/dev/null 2>&1 || true
+"
+docker exec "$NODE_2_CONTAINER" bash -c "
+    cd /tmp/unibo-node2
+    /opt/unibo-bp/bin/unibo-bp-admin contact change --sender ipn:4.0 --receiver ipn:3.0 \
+        --start-time \"$REFERENCE_TIME\" --new-start-time \"$REFERENCE_TIME\" >/dev/null 2>&1 || true
 "
 
 echo "✓ Nodes configured"
