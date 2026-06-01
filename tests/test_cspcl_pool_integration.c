@@ -8,12 +8,20 @@
  */
 
 #include "cspcl.h"
+#include "cspcl_config.h"
 
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#ifndef FREERTOS
+#include <pthread.h>
+#endif
 
 #include <csp/csp.h>
+
+#ifndef CSP_ANY
+#define CSP_ANY 255
+#endif
 
 /*===========================================================================*/
 /* Test Utilities                                                             */
@@ -50,6 +58,63 @@
 
 /* Global instance — initialized exactly once in main(). */
 static cspcl_t g_cspcl = {0};
+
+#ifndef FREERTOS
+static csp_socket_t *g_discard_socket = NULL;
+static pthread_t g_discard_thread;
+static volatile bool g_discard_running = false;
+
+static void *discard_thread(void *arg)
+{
+  (void) arg;
+  while (g_discard_running) {
+    csp_conn_t *conn = csp_accept(g_discard_socket, 100);
+    if (conn == NULL) {
+      continue;
+    }
+
+    void *data = NULL;
+    int datasize = 0;
+    (void) csp_sfp_recv(conn, &data, &datasize, CSPCL_SFP_TIMEOUT_MS);
+
+    if (data != NULL) {
+      csp_free(data);
+    }
+    csp_close(conn);
+  }
+  return NULL;
+}
+
+static int start_discard_server(void)
+{
+  g_discard_socket = csp_socket(CSPCL_CSP_SOCKET_OPTIONS);
+  if (g_discard_socket == NULL) {
+    return -1;
+  }
+  if (csp_bind(g_discard_socket, CSP_ANY) != CSP_ERR_NONE) {
+    return -1;
+  }
+  if (csp_listen(g_discard_socket, 5) != CSP_ERR_NONE) {
+    return -1;
+  }
+
+  g_discard_running = true;
+  if (pthread_create(&g_discard_thread, NULL, discard_thread, NULL) != 0) {
+    g_discard_running = false;
+    return -1;
+  }
+  return 0;
+}
+
+static void stop_discard_server(void)
+{
+  if (!g_discard_running) {
+    return;
+  }
+  g_discard_running = false;
+  (void) pthread_join(g_discard_thread, NULL);
+}
+#endif
 
 /* Reset pool state between tests without destroying the mutex or
  * cspcl.initialized. */
@@ -206,6 +271,14 @@ int main(void)
     return 77;
   }
 
+#ifndef FREERTOS
+  if (start_discard_server() != 0) {
+    printf("SKIP: failed to start discard server\n");
+    cspcl_cleanup(&g_cspcl);
+    return 77;
+  }
+#endif
+
   int failures = 0;
 
   failures += test_pool_no_eviction_when_free_slot();
@@ -217,6 +290,9 @@ int main(void)
   else
     printf("%d pool integration test(s) FAILED.\n", failures);
 
+#ifndef FREERTOS
+  stop_discard_server();
+#endif
   cspcl_cleanup(&g_cspcl);
   return failures;
 }

@@ -53,6 +53,26 @@ extern int g_csp_sfp_send_fail;
     }                                                                                              \
   } while (0)
 
+#ifndef FREERTOS
+typedef struct {
+  cspcl_t *cspcl;
+  uint8_t *buf;
+  size_t buf_len;
+  uint32_t timeout_ms;
+  cspcl_error_t err;
+  size_t received_len;
+} recv_ctx_t;
+
+static void *recv_bundle_thread(void *arg)
+{
+  recv_ctx_t *ctx = (recv_ctx_t *) arg;
+  size_t len = ctx->buf_len;
+  ctx->err = cspcl_recv_bundle(ctx->cspcl, ctx->buf, &len, NULL, NULL, ctx->timeout_ms);
+  ctx->received_len = len;
+  return NULL;
+}
+#endif
+
 /*===========================================================================*/
 /* Test: Connection Pool                                                      */
 /*===========================================================================*/
@@ -425,9 +445,30 @@ static int test_send_small_bundle(void)
   cspcl.csp_port = CSPCL_PORT_BP;
   ASSERT_EQ(cspcl_init(&cspcl), CSPCL_OK);
 
+#if !defined(FREERTOS) && !defined(USING_CSP_STUBS)
+  uint8_t recv_buf[64] = {0};
+  recv_ctx_t ctx = {
+      .cspcl = &cspcl,
+      .buf = recv_buf,
+      .buf_len = sizeof(recv_buf),
+      .timeout_ms = 2000,
+      .err = CSPCL_ERR_TIMEOUT,
+      .received_len = 0,
+  };
+  pthread_t rx_thread;
+  ASSERT_EQ(pthread_create(&rx_thread, NULL, recv_bundle_thread, &ctx), 0);
+#endif
+
   /* Send small bundle (no fragmentation needed) */
-  err = cspcl_send_bundle(&cspcl, bundle, sizeof(bundle), 2, CSPCL_PORT_BP);
+  err = cspcl_send_bundle(&cspcl, bundle, sizeof(bundle), cspcl.local_addr, CSPCL_PORT_BP);
   ASSERT_EQ(err, CSPCL_OK);
+
+#if !defined(FREERTOS) && !defined(USING_CSP_STUBS)
+  ASSERT_EQ(pthread_join(rx_thread, NULL), 0);
+  ASSERT_EQ(ctx.err, CSPCL_OK);
+  ASSERT_EQ(ctx.received_len, sizeof(bundle));
+  ASSERT_TRUE(memcmp(recv_buf, bundle, sizeof(bundle)) == 0);
+#endif
 
   cspcl_cleanup(&cspcl);
 
@@ -455,9 +496,32 @@ static int test_send_large_bundle(void)
   cspcl.csp_port = CSPCL_PORT_BP;
   ASSERT_EQ(cspcl_init(&cspcl), CSPCL_OK);
 
+#if !defined(FREERTOS) && !defined(USING_CSP_STUBS)
+  uint8_t *recv_buf = (uint8_t *) malloc(bundle_size);
+  ASSERT_NE(recv_buf, NULL);
+  recv_ctx_t ctx = {
+      .cspcl = &cspcl,
+      .buf = recv_buf,
+      .buf_len = bundle_size,
+      .timeout_ms = 5000,
+      .err = CSPCL_ERR_TIMEOUT,
+      .received_len = 0,
+  };
+  pthread_t rx_thread;
+  ASSERT_EQ(pthread_create(&rx_thread, NULL, recv_bundle_thread, &ctx), 0);
+#endif
+
   /* Send large bundle (fragmentation needed) */
-  err = cspcl_send_bundle(&cspcl, bundle, bundle_size, 2, CSPCL_PORT_BP);
+  err = cspcl_send_bundle(&cspcl, bundle, bundle_size, cspcl.local_addr, CSPCL_PORT_BP);
   ASSERT_EQ(err, CSPCL_OK);
+
+#if !defined(FREERTOS) && !defined(USING_CSP_STUBS)
+  ASSERT_EQ(pthread_join(rx_thread, NULL), 0);
+  ASSERT_EQ(ctx.err, CSPCL_OK);
+  ASSERT_EQ(ctx.received_len, bundle_size);
+  ASSERT_TRUE(memcmp(recv_buf, bundle, bundle_size) == 0);
+  free(recv_buf);
+#endif
 
   free(bundle);
   cspcl_cleanup(&cspcl);
