@@ -114,7 +114,7 @@ jobs:
           cd /tmp
           git clone --branch v1.6 --depth 1 https://github.com/libcsp/libcsp.git
           cd libcsp
-          python3.11 waf configure --enable-can-socketcan --enable-if-zmqhub --with-os=posix
+          python3.11 waf configure --enable-can-socketcan --enable-if-zmqhub --enable-rdp --with-os=posix
           python3.11 waf build
 
       - name: Configure CSPCL

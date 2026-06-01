@@ -69,15 +69,15 @@ aap2-send / aap2-receive
 cd /path/to/libcsp
 
 # ZMQHUB only
-python3 waf configure --enable-if-zmqhub
+python3 waf configure --enable-if-zmqhub --enable-rdp
 python3 waf build
 
 # CAN (SocketCAN) only
-python3 waf configure --enable-can-socketcan
+python3 waf configure --enable-can-socketcan --enable-rdp
 python3 waf build
 
 # Both (recommended for development)
-python3 waf configure --enable-can-socketcan --enable-if-zmqhub
+python3 waf configure --enable-can-socketcan --enable-if-zmqhub --enable-rdp
 python3 waf build
 ```
 
