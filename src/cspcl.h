@@ -3,10 +3,11 @@
  * @brief CSPCL - CubeSat Space Protocol Convergence Layer for Bundle Protocol
  *
  * This convergence layer adapter enables BP7 bundles to be transmitted over
- * CSP (CubeSat Space Protocol) using UDP mode (connectionless, unreliable).
+ * CSP (CubeSat Space Protocol) using connection-oriented mode with RDP
+ * enabled by default for link-level reliability.
  *
  * Architecture:
- *   BP7 Bundle → CSPCL → CSP UDP → Physical (CAN/ZMQHUB/SocketCAN)
+ *   BP7 Bundle → CSPCL → CSP (RDP) → Physical (CAN/ZMQHUB/SocketCAN)
  *
  * @version 1.0
  * @note Designed for CSP v1.6 (not v2)

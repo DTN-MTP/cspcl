@@ -38,6 +38,16 @@
 #define CSPCL_CSP_TIMEOUT_MS 1000
 #endif
 
+/** CSP connection options for outbound connections (bitmask of CSP_O_*) */
+#ifndef CSPCL_CSP_CONN_OPTIONS
+#define CSPCL_CSP_CONN_OPTIONS CSP_O_RDP
+#endif
+
+/** CSP socket options for inbound server sockets (bitmask of CSP_SO_*) */
+#ifndef CSPCL_CSP_SOCKET_OPTIONS
+#define CSPCL_CSP_SOCKET_OPTIONS CSP_SO_RDPREQ
+#endif
+
 /*===========================================================================*/
 /* Fragmentation Configuration                                                */
 /*===========================================================================*/

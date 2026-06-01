@@ -63,6 +63,8 @@ Defined in `cspcl_config.h`. Override with `-D` flags or by editing the file.
 | `CSPCL_MAX_PAYLOAD`     | `248`   | Usable payload per CSP packet (`MTU - SFP header`) |
 | `CSPCL_MAX_BUNDLE_SIZE` | `65535` | Maximum reassembled bundle size (bytes)            |
 | `CSPCL_CSP_TIMEOUT_MS`  | `1000`  | Timeout for opening a CSP connection (ms)          |
+| `CSPCL_CSP_CONN_OPTIONS` | `CSP_O_RDP` | CSP connection options (bitmask of `CSP_O_*`)     |
+| `CSPCL_CSP_SOCKET_OPTIONS` | `CSP_SO_RDPREQ` | Server socket options (bitmask of `CSP_SO_*`) |
 | `CSPCL_SFP_TIMEOUT_MS`  | `5000`  | Timeout for receiving an SFP fragment (ms)         |
 
 ---

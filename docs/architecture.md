@@ -108,11 +108,12 @@ is provided at other layers:
 | Layer | Mechanism |
 | --- | --- |
 | Physical (CAN) | Hardware CRC + ack |
+| CSP | RDP enabled by default via `CSPCL_CSP_CONN_OPTIONS` / `CSPCL_CSP_SOCKET_OPTIONS` |
 | BP7 custody transfer | End-to-end bundle retransmission |
-| CSPCL | Best-effort; returns `CSPCL_ERR_TIMEOUT` or `CSPCL_ERR_SFP` on failure |
+| CSPCL | Surfaces CSP/SFP failures as `CSPCL_ERR_TIMEOUT` or `CSPCL_ERR_SFP` |
 
-For lossy RF links where neither the physical layer nor BP custody is active, open the
-CSP connection with `CSP_O_RDP` before calling SFP.
+If you need best-effort delivery, override `CSPCL_CSP_CONN_OPTIONS` to `CSP_O_NONE` and
+`CSPCL_CSP_SOCKET_OPTIONS` to `CSP_SO_NONE`.
 
 ---
 
