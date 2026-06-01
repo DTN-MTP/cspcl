@@ -117,8 +117,8 @@ static csp_conn_t *cspcl_pool_get_or_create_locked(cspcl_conn_pool_t *pool, uint
     }
   }
 
-  csp_conn_t *conn =
-      csp_connect(CSP_PRIO_NORM, dest_addr, dest_port, CSPCL_CSP_TIMEOUT_MS, CSP_O_NONE);
+  csp_conn_t *conn = csp_connect(CSP_PRIO_NORM, dest_addr, dest_port, CSPCL_CSP_TIMEOUT_MS,
+                                 CSPCL_CSP_CONN_OPTIONS);
   if (conn == NULL) {
     pool->stats.connect_failures++;
     return NULL;
@@ -504,7 +504,7 @@ cspcl_error_t cspcl_open_rx_socket(cspcl_t *cspcl)
   }
 
   /* Create socket for connection-oriented mode */
-  csp_socket_t *sock = csp_socket(CSP_SO_NONE);
+  csp_socket_t *sock = csp_socket(CSPCL_CSP_SOCKET_OPTIONS);
   if (sock == NULL) {
 #ifndef FREERTOS
     pthread_mutex_unlock(&g_cspcl_global_lock);
