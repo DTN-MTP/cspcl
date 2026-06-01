@@ -43,6 +43,7 @@ WORKDIR /opt/libcsp
 RUN python3 waf configure \
         --enable-can-socketcan \
         --enable-if-zmqhub \
+        --enable-rdp \
         --with-os=posix \
     && python3 waf build
 

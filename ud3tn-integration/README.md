@@ -107,7 +107,7 @@ If libcsp is not already configured with ZMQHUB:
 cd /path/to/libcsp
 
 # Using waf (libcsp 1.x) - version 1.6 recommended, others untested, requires python 3.11
-python3 waf configure --enable-can-socketcan --enable-if-zmqhub
+python3 waf configure --enable-can-socketcan --enable-if-zmqhub --enable-rdp
 python3 waf build
 
 # Or using CMake (libcsp 2.x) - not working yet
@@ -218,4 +218,3 @@ cspcl/
 - [libcsp Documentation](https://github.com/libcsp/libcsp)
 - [Bundle Protocol 7 (RFC 9171)](https://www.rfc-editor.org/rfc/rfc9171)
 - [CubeSat Space Protocol](https://github.com/libcsp/libcsp/wiki)
-

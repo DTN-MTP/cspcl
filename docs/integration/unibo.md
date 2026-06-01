@@ -75,7 +75,7 @@ Follow the [Unibo-BP README](https://gitlab.com/unibo-dtn/unibo-bp/-/blob/main/R
 cd /path/to/libcsp
 
 # Using waf (libcsp 1.x, version 1.6 recommended)
-python3 waf configure --enable-can-socketcan --enable-if-zmqhub
+python3 waf configure --enable-can-socketcan --enable-if-zmqhub --enable-rdp
 python3 waf build
 
 # Verify build output

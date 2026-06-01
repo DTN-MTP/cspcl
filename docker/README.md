@@ -80,7 +80,7 @@ These images are automatically built and published by CI/CD on every commit to m
 
 ### Base Image (`cspcl-base`)
 - Ubuntu 22.04
-- libcsp v1.6 with ZMQHUB and SocketCAN support
+- libcsp v1.6 with ZMQHUB, SocketCAN, and RDP support
 - CSPCL library
 - Python 3 with ZMQ broker utility
 
