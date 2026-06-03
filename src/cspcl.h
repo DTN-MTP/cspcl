@@ -56,8 +56,12 @@ extern "C" {
 /** SFP header size (offset + totalsize = 8 bytes) */
 #define CSPCL_SFP_HEADER_SIZE 8
 
-/** Maximum payload per CSP packet when using SFP */
-#define CSPCL_MAX_PAYLOAD (CSPCL_CSP_MTU - CSPCL_SFP_HEADER_SIZE)
+/* RDP header appended to each CSP packet when CSP_O_RDP is set:
+ * flags[1] + seq_nr[2] + ack_nr[2] = 5 bytes (struct is __packed__). */
+#define CSPCL_CSP_RDP_HEADER_SIZE 5
+
+/** Maximum user-data bytes per SFP fragment: buffer minus both headers */
+#define CSPCL_MAX_PAYLOAD (CSPCL_CSP_MTU - CSPCL_SFP_HEADER_SIZE - CSPCL_CSP_RDP_HEADER_SIZE)
 
 /** Maximum bundle size supported */
 #define CSPCL_MAX_BUNDLE_SIZE 65535

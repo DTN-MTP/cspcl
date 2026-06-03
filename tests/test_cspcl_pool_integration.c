@@ -18,6 +18,7 @@
 #endif
 
 #include <csp/csp.h>
+#include <csp/arch/csp_malloc.h>
 
 #ifndef CSP_ANY
 #define CSP_ANY 255
@@ -120,8 +121,19 @@ static void stop_discard_server(void)
  * cspcl.initialized. */
 static void reset_pool(void)
 {
-  memset(g_cspcl.conn_pool.entries, 0, sizeof(g_cspcl.conn_pool.entries));
-  memset(&g_cspcl.conn_pool.stats, 0, sizeof(g_cspcl.conn_pool.stats));
+  for (int i = 0; i < CSPCL_CONN_POOL_SIZE; i++) {
+    if (g_cspcl.conn_pool.entries[i].used && g_cspcl.conn_pool.entries[i].conn) {
+      csp_close(g_cspcl.conn_pool.entries[i].conn);
+    }
+
+    g_cspcl.conn_pool.entries[i].used = false;
+    g_cspcl.conn_pool.entries[i].conn = NULL;
+    g_cspcl.conn_pool.entries[i].dest_addr = 0;
+    g_cspcl.conn_pool.entries[i].dest_port = 0;
+    g_cspcl.conn_pool.entries[i].last_used = 0;
+  }
+
+  g_cspcl.conn_pool.stats = (cspcl_conn_pool_stats_t){0};
   g_cspcl.conn_pool.tick = 0;
 }
 

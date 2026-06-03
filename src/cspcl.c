@@ -117,14 +117,8 @@ static csp_conn_t *cspcl_pool_get_or_create_locked(cspcl_conn_pool_t *pool, uint
     }
   }
 
-  csp_conn_t *conn = csp_connect(CSP_PRIO_NORM, dest_addr, dest_port, CSPCL_CSP_TIMEOUT_MS,
-                                 CSPCL_CSP_CONN_OPTIONS);
-  if (conn == NULL) {
-    pool->stats.connect_failures++;
-    return NULL;
-  }
-
-  /* LRU eviction when pool is full */
+  /* LRU eviction when pool is full — close the LRU entry BEFORE calling
+   * csp_connect() so that CSP has a free connection slot available. */
   if (free_slot == CSPCL_CONN_POOL_SIZE) {
     size_t lru = 0;
     uint32_t oldest = pool->entries[0].last_used;
@@ -135,13 +129,22 @@ static csp_conn_t *cspcl_pool_get_or_create_locked(cspcl_conn_pool_t *pool, uint
       }
     }
     free_slot = lru;
-    if (pool->entries[free_slot].conn != NULL) {
-      csp_close(pool->entries[free_slot].conn);
-    }
-    pool->stats.evictions++;
     CSPCL_LOG("pool full, evicted LRU entry (addr=%u port=%u)",
               (unsigned) pool->entries[free_slot].dest_addr,
               (unsigned) pool->entries[free_slot].dest_port);
+    if (pool->entries[free_slot].conn != NULL) {
+      csp_close(pool->entries[free_slot].conn);
+      pool->entries[free_slot].conn = NULL;
+    }
+    pool->entries[free_slot].used = false;
+    pool->stats.evictions++;
+  }
+
+  csp_conn_t *conn = csp_connect(CSP_PRIO_NORM, dest_addr, dest_port, CSPCL_CSP_TIMEOUT_MS,
+                                 CSPCL_CSP_CONN_OPTIONS);
+  if (conn == NULL) {
+    pool->stats.connect_failures++;
+    return NULL;
   }
 
   pool->entries[free_slot].used = true;
