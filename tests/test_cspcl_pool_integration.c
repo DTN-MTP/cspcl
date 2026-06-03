@@ -17,8 +17,8 @@
 #include <pthread.h>
 #endif
 
-#include <csp/csp.h>
 #include <csp/arch/csp_malloc.h>
+#include <csp/csp.h>
 
 #ifndef CSP_ANY
 #define CSP_ANY 255
