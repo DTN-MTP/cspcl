@@ -54,7 +54,7 @@ cspcl = { version = "0.1", features = ["async-tokio"] }
 ```
 
 ```rust
-use cspcl::async_api::AsyncCspcl;
+use cspcl::asynchronous;
 use cspcl::{Cspcl, CspclConfig, Interface, InterfaceName};
 
 let cspcl = Cspcl::from_config(
@@ -62,7 +62,7 @@ let cspcl = Cspcl::from_config(
         .with_interface(Interface::Loopback(InterfaceName::new("loopback"))),
 )?;
 
-let async_cspcl = AsyncCspcl::from_sync(cspcl.clone());
+let async_cspcl = asynchronous::Cspcl::from_sync(cspcl.clone());
 let (sender, receiver) = async_cspcl.split();
 
 sender.send_bundle(&[1, 2, 3], 2, 10).await?;
@@ -91,7 +91,7 @@ async_cspcl.shutdown().await?;
   Received metadata plus helpers to derive a `RemotePeer`.
 - `RemotePeer`
   Transport-native remote identity helper for CSP address and port handling.
-- `async_api::{AsyncCspcl, AsyncSender, AsyncReceiver}`
+- `asynchronous::{Cspcl, Sender, Receiver}`
   Optional Tokio wrappers that delegate to the sync runtime through `spawn_blocking`.
 
 ## Documentation

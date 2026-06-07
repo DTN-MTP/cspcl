@@ -2,7 +2,7 @@ use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::bundle::{Receiver, Sender};
+use crate::io::{Receiver, Sender};
 use crate::cspcl_sys;
 use crate::error::{Error, Result};
 use crate::interface::Interface;

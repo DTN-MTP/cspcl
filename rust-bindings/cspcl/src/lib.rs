@@ -7,19 +7,19 @@
 pub use cspcl_sys;
 
 // Module declarations
-mod address;
+mod addressing;
 #[cfg(feature = "async-tokio")]
-pub mod async_api;
+pub mod asynchronous;
 mod bundle;
 mod error;
 mod instance;
 mod interface;
-mod peer;
+mod io;
 
 // Public exports
-pub use address::{addr_to_endpoint, endpoint_to_addr};
-pub use bundle::{ReceivedBundle, ReceivedBundleView, Receiver, Sender};
+pub use addressing::{RemotePeer, addr_to_endpoint, endpoint_to_addr};
+pub use bundle::{ReceivedBundle, ReceivedBundleView};
 pub use error::{Error, Result};
 pub use instance::{ConnectionStats, Cspcl, CspclConfig};
 pub use interface::{Interface, InterfaceName};
-pub use peer::RemotePeer;
+pub use io::{Receiver, Sender};

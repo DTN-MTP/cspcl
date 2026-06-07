@@ -2,7 +2,7 @@
 
 use std::sync::{Mutex, MutexGuard};
 
-use cspcl::async_api::AsyncCspcl;
+use cspcl::asynchronous;
 use cspcl::{Cspcl, CspclConfig, Error, Interface, InterfaceName};
 
 static TEST_GUARD: Mutex<()> = Mutex::new(());
@@ -45,7 +45,7 @@ fn assert_invalid_param(err: Error) {
 async fn async_wrappers_can_be_constructed_from_sync_runtime() {
     let _guard = test_lock();
     let cspcl = test_instance();
-    let async_cspcl = AsyncCspcl::from_sync(cspcl.clone());
+    let async_cspcl = asynchronous::Cspcl::from_sync(cspcl.clone());
     let (_sender, _receiver) = async_cspcl.split();
 
     assert!(async_cspcl.is_initialized());
@@ -57,7 +57,7 @@ async fn async_wrappers_can_be_constructed_from_sync_runtime() {
 async fn async_receiver_times_out_without_pending_bundle() {
     let _guard = test_lock();
     let cspcl = test_instance();
-    let async_receiver = AsyncCspcl::from_sync(cspcl).receiver();
+    let async_receiver = asynchronous::Cspcl::from_sync(cspcl).receiver();
 
     assert_timeout(async_receiver.recv_bundle(5).await.unwrap_err());
 }
@@ -66,7 +66,7 @@ async fn async_receiver_times_out_without_pending_bundle() {
 async fn async_receiver_into_times_out_without_pending_bundle() {
     let _guard = test_lock();
     let cspcl = test_instance();
-    let async_receiver = AsyncCspcl::from_sync(cspcl).receiver();
+    let async_receiver = asynchronous::Cspcl::from_sync(cspcl).receiver();
     let mut buffer = [0_u8; 64];
 
     assert_timeout(
@@ -81,7 +81,7 @@ async fn async_receiver_into_times_out_without_pending_bundle() {
 async fn async_receive_observes_sync_shutdown() {
     let _guard = test_lock();
     let cspcl = test_instance();
-    let async_receiver = AsyncCspcl::from_sync(cspcl.clone()).receiver();
+    let async_receiver = asynchronous::Cspcl::from_sync(cspcl.clone()).receiver();
     let mut buffer = [0_u8; 64];
 
     cspcl.shutdown().unwrap();
@@ -99,7 +99,7 @@ async fn async_receive_observes_sync_shutdown() {
 async fn async_sender_can_send_and_report_stats() {
     let _guard = test_lock();
     let cspcl = test_instance();
-    let async_cspcl = AsyncCspcl::from_sync(cspcl.clone());
+    let async_cspcl = asynchronous::Cspcl::from_sync(cspcl.clone());
     let sender = async_cspcl.sender();
     let sender_clone = sender.clone();
 
@@ -116,7 +116,7 @@ async fn async_sender_can_send_and_report_stats() {
 async fn async_sender_rejects_invalid_input_and_shutdown() {
     let _guard = test_lock();
     let cspcl = test_instance();
-    let async_cspcl = AsyncCspcl::from_sync(cspcl.clone());
+    let async_cspcl = asynchronous::Cspcl::from_sync(cspcl.clone());
     let sender = async_cspcl.sender();
 
     assert_invalid_param(sender.send_bundle(&[], 42, 10).await.unwrap_err());

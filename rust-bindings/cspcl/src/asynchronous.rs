@@ -1,40 +1,40 @@
-use crate::{ConnectionStats, Cspcl, Receiver, Sender};
-use crate::{ReceivedBundle, ReceivedBundleView, Result};
+use crate::{ConnectionStats, ReceivedBundle, ReceivedBundleView, Result};
+use crate::{Cspcl as SyncCspcl, Receiver as SyncReceiver, Sender as SyncSender};
 use tokio::task;
 
 #[derive(Clone)]
-pub struct AsyncCspcl {
-    inner: Cspcl,
+pub struct Cspcl {
+    inner: SyncCspcl,
 }
 
 #[derive(Clone)]
-pub struct AsyncSender {
-    inner: Sender,
+pub struct Sender {
+    inner: SyncSender,
 }
 
 #[derive(Clone)]
-pub struct AsyncReceiver {
-    inner: Receiver,
+pub struct Receiver {
+    inner: SyncReceiver,
 }
 
-impl AsyncCspcl {
-    pub fn from_sync(cspcl: Cspcl) -> Self {
+impl Cspcl {
+    pub fn from_sync(cspcl: SyncCspcl) -> Self {
         Self { inner: cspcl }
     }
 
-    pub fn sender(&self) -> AsyncSender {
-        AsyncSender {
+    pub fn sender(&self) -> Sender {
+        Sender {
             inner: self.inner.sender(),
         }
     }
 
-    pub fn receiver(&self) -> AsyncReceiver {
-        AsyncReceiver {
+    pub fn receiver(&self) -> Receiver {
+        Receiver {
             inner: self.inner.receiver(),
         }
     }
 
-    pub fn split(&self) -> (AsyncSender, AsyncReceiver) {
+    pub fn split(&self) -> (Sender, Receiver) {
         (self.sender(), self.receiver())
     }
 
@@ -58,8 +58,8 @@ impl AsyncCspcl {
     }
 }
 
-impl AsyncSender {
-    pub fn from_sync(sender: Sender) -> Self {
+impl Sender {
+    pub fn from_sync(sender: SyncSender) -> Self {
         Self { inner: sender }
     }
 
@@ -76,8 +76,8 @@ impl AsyncSender {
     }
 }
 
-impl AsyncReceiver {
-    pub fn from_sync(receiver: Receiver) -> Self {
+impl Receiver {
+    pub fn from_sync(receiver: SyncReceiver) -> Self {
         Self { inner: receiver }
     }
 
