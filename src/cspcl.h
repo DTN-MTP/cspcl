@@ -3,11 +3,10 @@
  * @brief CSPCL - CubeSat Space Protocol Convergence Layer for Bundle Protocol
  *
  * This convergence layer adapter enables BP7 bundles to be transmitted over
- * CSP (CubeSat Space Protocol) using connection-oriented mode with RDP
- * enabled by default for link-level reliability.
+ * CSP (CubeSat Space Protocol) using UDP mode (connectionless, unreliable).
  *
  * Architecture:
- *   BP7 Bundle → CSPCL → CSP (RDP) → Physical (CAN/ZMQHUB/SocketCAN)
+ *   BP7 Bundle → CSPCL → CSP UDP → Physical (CAN/ZMQHUB/SocketCAN)
  *
  * @version 1.0
  * @note Designed for CSP v1.6 (not v2)
@@ -56,12 +55,8 @@ extern "C" {
 /** SFP header size (offset + totalsize = 8 bytes) */
 #define CSPCL_SFP_HEADER_SIZE 8
 
-/* RDP header appended to each CSP packet when CSP_O_RDP is set:
- * flags[1] + seq_nr[2] + ack_nr[2] = 5 bytes (struct is __packed__). */
-#define CSPCL_CSP_RDP_HEADER_SIZE 5
-
-/** Maximum user-data bytes per SFP fragment: buffer minus both headers */
-#define CSPCL_MAX_PAYLOAD (CSPCL_CSP_MTU - CSPCL_SFP_HEADER_SIZE - CSPCL_CSP_RDP_HEADER_SIZE)
+/** Maximum payload per CSP packet when using SFP */
+#define CSPCL_MAX_PAYLOAD (CSPCL_CSP_MTU - CSPCL_SFP_HEADER_SIZE)
 
 /** Maximum bundle size supported */
 #define CSPCL_MAX_BUNDLE_SIZE 65535
@@ -139,8 +134,8 @@ typedef struct {
   SemaphoreHandle_t lock;
 #endif
   cspcl_conn_pool_entry_t entries[CSPCL_CONN_POOL_SIZE];
-  uint32_t tick;                 /**< Monotonic counter incremented on each access */
-  uint32_t max_conn_age_ms;      /**< Max connection age in ms (0 = disabled) */
+  uint32_t tick;            /**< Monotonic counter incremented on each access */
+  uint32_t max_conn_age_ms; /**< Max connection age in ms (0 = disabled) */
   cspcl_conn_pool_stats_t stats; /**< Pool operation counters */
 } cspcl_conn_pool_t;
 
@@ -157,7 +152,8 @@ typedef struct {
 typedef struct {
   bool initialized;   /**< Instance is initialized */
   uint8_t local_addr; /**< Local CSP address */
-  void *rx_socket;    /**< Server socket for accepting connections (csp_socket_t*) */
+  void *
+      rx_socket; /**< Server socket for accepting connections (csp_socket_t*) */
 
   /* CSP port for BP traffic */
   uint8_t csp_port;
@@ -218,7 +214,8 @@ void cspcl_conn_pool_cleanup(cspcl_conn_pool_t *pool);
  * @param pool   Pointer to pool instance (may be NULL — safe no-op)
  * @param stats  Output buffer to fill
  */
-void cspcl_conn_pool_get_stats(const cspcl_conn_pool_t *pool, cspcl_conn_pool_stats_t *stats);
+void cspcl_conn_pool_get_stats(const cspcl_conn_pool_t *pool,
+                               cspcl_conn_pool_stats_t *stats);
 
 /*===========================================================================*/
 /* Bundle Transmission Functions                                              */
@@ -238,8 +235,9 @@ void cspcl_conn_pool_get_stats(const cspcl_conn_pool_t *pool, cspcl_conn_pool_st
  * @param dest_port Destination CSP port
  * @return CSPCL_OK on success, error code otherwise
  */
-cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle, size_t len,
-                                uint8_t dest_addr, uint8_t dest_port);
+cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle,
+                                size_t len, uint8_t dest_addr,
+                                uint8_t dest_port);
 
 /**
  * @brief Receive a BP7 bundle from CSP
@@ -256,8 +254,9 @@ cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle, size_t le
  * @param timeout_ms Timeout in milliseconds (0 = no timeout)
  * @return CSPCL_OK on success, error code otherwise
  */
-cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len, uint8_t *src_addr,
-                                uint8_t *src_port, uint32_t timeout_ms);
+cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len,
+                                uint8_t *src_addr, uint8_t *src_port,
+                                uint32_t timeout_ms);
 
 /**
  * @brief Open and bind server socket for incoming connections
