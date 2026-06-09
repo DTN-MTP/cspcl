@@ -1,6 +1,6 @@
 [package]
 name = "cspcl"
-version = "0.4.0"
+version = "0.6.1"
 edition = "2024"
 description = "Rust bindings for the cspcl library"
 authors = ["cspcl contributors"]
@@ -9,6 +9,14 @@ repository = "https://github.com/d3tn/cspcl"
 readme = "README.md"
 keywords = ["cspcl"]
 
+[features]
+default = []
+async-tokio = ["dep:tokio"]
+
 [dependencies]
-cspcl-sys = "0.3"
-futures = { version = "0.3", features = ["alloc"] }
+cspcl-sys = { path = "../cspcl-sys", version = "0.4.0" }
+tokio = { version = "1", optional = true, features = [
+  "rt-multi-thread",
+  "macros",
+  "sync",
+] }

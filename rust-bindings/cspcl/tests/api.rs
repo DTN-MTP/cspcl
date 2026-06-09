@@ -1,0 +1,250 @@
+use std::sync::{Mutex, MutexGuard};
+
+use cspcl::{
+    Cspcl, CspclConfig, Error, Interface, InterfaceName, ReceivedBundle, ReceivedBundleView,
+    RemotePeer, addr_to_endpoint, endpoint_to_addr,
+};
+
+static TEST_GUARD: Mutex<()> = Mutex::new(());
+
+fn test_lock() -> MutexGuard<'static, ()> {
+    TEST_GUARD
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn loopback_interface() -> Interface {
+    Interface::Loopback(InterfaceName::new("loopback"))
+}
+
+fn test_instance() -> Cspcl {
+    Cspcl::from_config(CspclConfig::new(7).with_interface(loopback_interface()))
+        .expect("failed to initialize test cspcl instance")
+}
+
+fn assert_timeout(err: Error) {
+    assert_eq!(
+        err.code(),
+        cspcl::cspcl_sys::cspcl_error_t_CSPCL_ERR_TIMEOUT
+    );
+}
+
+fn assert_not_initialized(err: Error) {
+    assert_eq!(
+        err.code(),
+        cspcl::cspcl_sys::cspcl_error_t_CSPCL_ERR_NOT_INITIALIZED
+    );
+}
+
+#[test]
+fn endpoint_helpers_cover_valid_and_invalid_inputs() {
+    let _guard = test_lock();
+
+    assert_eq!(endpoint_to_addr("ipn:1.0"), Some(1));
+    assert_eq!(endpoint_to_addr("dtn://node7/sink"), Some(7));
+    assert_eq!(endpoint_to_addr("invalid"), None);
+    assert_eq!(endpoint_to_addr("ipn:\0bad"), None);
+
+    assert_eq!(addr_to_endpoint(42).unwrap(), "ipn:42.0");
+}
+
+#[test]
+fn config_defaults_and_constructors_match() {
+    let _guard = test_lock();
+
+    let default_config = CspclConfig::new(9);
+    let from_config = Cspcl::from_config(default_config.clone()).unwrap();
+    let from_new = Cspcl::new(
+        9,
+        cspcl::cspcl_sys::CSPCL_PORT_BP as u8,
+        Interface::default(),
+    )
+    .unwrap();
+
+    assert_eq!(from_config.local_addr(), 9);
+    assert_eq!(
+        from_config.local_port(),
+        cspcl::cspcl_sys::CSPCL_PORT_BP as u8
+    );
+    assert!(from_config.is_initialized());
+    assert_eq!(from_new.local_addr(), from_config.local_addr());
+    assert_eq!(from_new.local_port(), from_config.local_port());
+}
+
+#[test]
+fn shutdown_is_explicit_and_idempotent() {
+    let _guard = test_lock();
+    let cspcl = test_instance();
+
+    cspcl.shutdown().unwrap();
+    cspcl.shutdown().unwrap();
+
+    assert!(!cspcl.is_initialized());
+}
+
+#[test]
+fn send_and_receive_fail_after_shutdown() {
+    let _guard = test_lock();
+    let cspcl = test_instance();
+    let sender = cspcl.sender();
+    let receiver = cspcl.receiver();
+
+    cspcl.shutdown().unwrap();
+
+    assert_not_initialized(cspcl.send_bundle(&[1, 2, 3], 12, 10).unwrap_err());
+    assert_not_initialized(sender.send_bundle(&[1, 2, 3], 12, 10).unwrap_err());
+    assert_not_initialized(cspcl.recv_bundle(5).unwrap_err());
+    assert_not_initialized(receiver.recv_bundle(5).unwrap_err());
+}
+
+#[test]
+fn split_handles_can_send_without_mutable_access() {
+    let _guard = test_lock();
+    let cspcl = test_instance();
+    let (sender, _receiver) = cspcl.split();
+    let payload = vec![1_u8, 2, 3, 4, 5];
+
+    sender.send_bundle(&payload, 12, 10).unwrap();
+    assert_eq!(cspcl.local_addr(), 7);
+}
+
+#[test]
+fn convenience_send_method_matches_split_handle_send() {
+    let _guard = test_lock();
+    let cspcl = test_instance();
+    let payload = vec![9_u8, 8, 7];
+
+    cspcl.send_bundle(&payload, 21, 10).unwrap();
+    assert!(cspcl.is_initialized());
+}
+
+#[test]
+fn empty_bundle_is_rejected() {
+    let _guard = test_lock();
+    let cspcl = test_instance();
+    let err = cspcl.send_bundle(&[], 4, 10).unwrap_err();
+
+    assert_eq!(
+        err.code(),
+        cspcl::cspcl_sys::cspcl_error_t_CSPCL_ERR_INVALID_PARAM
+    );
+}
+
+#[test]
+fn recv_times_out_when_no_bundle_is_pending() {
+    let _guard = test_lock();
+    let cspcl = test_instance();
+    let err = cspcl.recv_bundle(5).unwrap_err();
+
+    assert_timeout(err);
+}
+
+#[test]
+fn recv_bundle_into_times_out_when_no_bundle_is_pending() {
+    let _guard = test_lock();
+    let cspcl = test_instance();
+    let mut buffer = [0_u8; 64];
+    let err = cspcl.recv_bundle_into(&mut buffer, 5).unwrap_err();
+
+    assert_timeout(err);
+}
+
+#[test]
+fn recv_bundle_into_fails_after_shutdown() {
+    let _guard = test_lock();
+    let cspcl = test_instance();
+    let receiver = cspcl.receiver();
+    let mut buffer = [0_u8; 64];
+
+    cspcl.shutdown().unwrap();
+
+    assert_not_initialized(cspcl.recv_bundle_into(&mut buffer, 5).unwrap_err());
+    assert_not_initialized(receiver.recv_bundle_into(&mut buffer, 5).unwrap_err());
+}
+
+#[test]
+fn cloned_sender_handles_can_send_sequentially() {
+    let _guard = test_lock();
+    let cspcl = test_instance();
+    let sender = cspcl.sender();
+    let sender_clone = sender.clone();
+
+    sender.send_bundle(&[1, 2, 3], 40, 10).unwrap();
+    sender_clone.send_bundle(&[4, 5], 41, 10).unwrap();
+}
+
+#[test]
+fn cloned_receivers_time_out_sequentially() {
+    let _guard = test_lock();
+    let cspcl = test_instance();
+    let receiver = cspcl.receiver();
+    let receiver_clone = receiver.clone();
+
+    assert_timeout(receiver.recv_bundle(5).unwrap_err());
+    assert_timeout(receiver_clone.recv_bundle(5).unwrap_err());
+}
+
+#[test]
+fn connection_stats_start_zeroed() {
+    let _guard = test_lock();
+    let cspcl = test_instance();
+    let stats = cspcl.connection_stats();
+
+    assert_eq!(stats.hits, 0);
+    assert_eq!(stats.misses, 0);
+    assert_eq!(stats.evictions, 0);
+    assert_eq!(stats.connect_failures, 0);
+    assert_eq!(stats.invalidations, 0);
+}
+
+#[test]
+fn connection_stats_reflect_send_activity() {
+    let _guard = test_lock();
+    let cspcl = test_instance();
+    let sender = cspcl.sender();
+    let sender_clone = sender.clone();
+
+    sender.send_bundle(&[1, 2, 3], 42, 10).unwrap();
+    sender_clone.send_bundle(&[4, 5, 6], 42, 10).unwrap();
+
+    let stats = cspcl.connection_stats();
+    assert!(stats.misses >= 1);
+    assert!(stats.hits >= 1);
+
+    let sender_stats = sender.connection_stats();
+    assert_eq!(sender_stats.hits, stats.hits);
+    assert_eq!(sender_stats.misses, stats.misses);
+}
+
+#[test]
+fn remote_peer_helpers_round_trip_transport_identity() {
+    let _guard = test_lock();
+
+    let peer = RemotePeer::new(17, 10);
+    assert_eq!(peer.addr, 17);
+    assert_eq!(peer.port, 10);
+    assert_eq!(peer.endpoint().unwrap(), "ipn:17.0");
+
+    let from_endpoint = RemotePeer::from_endpoint("ipn:17.42", 10).unwrap();
+    assert_eq!(from_endpoint, peer);
+    assert!(RemotePeer::from_endpoint("invalid", 10).is_none());
+}
+
+#[test]
+fn received_bundle_metadata_maps_to_remote_peer() {
+    let _guard = test_lock();
+
+    let received = ReceivedBundle {
+        data: vec![1, 2, 3],
+        src_addr: 23,
+        src_port: 11,
+    };
+    let view = ReceivedBundleView {
+        len: 3,
+        src_addr: 23,
+        src_port: 11,
+    };
+
+    assert_eq!(received.remote_peer(), RemotePeer::new(23, 11));
+    assert_eq!(view.remote_peer(), RemotePeer::new(23, 11));
+}

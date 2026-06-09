@@ -18,6 +18,47 @@ make
 ctest --verbose
 ```
 
+Rust bindings are tested against a built `libcsp` checkout:
+
+```bash
+cd rust-bindings
+export CSP_REPO_DIR=/path/to/libcsp
+cargo test -p cspcl
+```
+
+The Rust binding crate is expected to preserve a small Hardy-facing transport surface:
+
+- explicit lifecycle via `shutdown()`
+- blocking receive plus `recv_bundle_into()`
+- connection observability via `connection_stats()`
+- transport peer helpers via `RemotePeer`
+- optional Tokio wrappers in `cspcl::async_api` behind `async-tokio`
+
+When changing the async API, keep the separation explicit:
+
+- do not change existing sync method signatures
+- keep async code feature-gated and isolated from the sync modules
+- delegate blocking transport work through the sync runtime instead of reimplementing CSPCL logic
+
+Coverage for the safe Rust crate uses `cargo-llvm-cov`:
+
+```bash
+rustup component add llvm-tools-preview
+cargo install cargo-llvm-cov
+cd rust-bindings
+export CSP_REPO_DIR=/path/to/libcsp
+cargo llvm-cov -p cspcl --summary-only
+```
+
+Run the async feature path with:
+
+```bash
+cd rust-bindings
+export CSP_REPO_DIR=/path/to/libcsp
+cargo test -p cspcl --features async-tokio
+cargo llvm-cov -p cspcl --features async-tokio --summary-only
+```
+
 ## Coding Standards
 
 - **C**: Follow the existing style (C11, clang-format); run `clang-format -i src/*.c src/*.h` before committing.
