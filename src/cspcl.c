@@ -78,6 +78,68 @@ static int cspcl_pool_unlock(cspcl_conn_pool_t *pool)
 #endif
 }
 
+static size_t cspcl_pool_find_free_or_evict_locked(cspcl_conn_pool_t *pool)
+{
+  for (size_t i = 0; i < CSPCL_CONN_POOL_SIZE; i++) {
+    if (!pool->entries[i].used) {
+      return i;
+    }
+  }
+
+  size_t lru = 0;
+  uint32_t oldest = pool->entries[0].last_used;
+
+  for (size_t i = 1; i < CSPCL_CONN_POOL_SIZE; i++) {
+    if (pool->entries[i].last_used < oldest) {
+      oldest = pool->entries[i].last_used;
+      lru = i;
+    }
+  }
+
+  if (pool->entries[lru].conn != NULL) {
+    csp_close(pool->entries[lru].conn);
+    pool->entries[lru].conn = NULL;
+  }
+
+  pool->entries[lru].used = false;
+  pool->stats.evictions++;
+
+  return lru;
+}
+
+cspcl_error_t cspcl_conn_pool_add(cspcl_conn_pool_t *pool, uint8_t dest_addr, uint8_t dest_port,
+                                  csp_conn_t *conn)
+{
+  if (pool == NULL || conn == NULL) {
+    return CSPCL_ERR_INVALID_PARAM;
+  }
+
+  if (!pool->initialized) {
+    return CSPCL_ERR_NOT_INITIALIZED;
+  }
+
+  if (cspcl_pool_lock(pool) != 0) {
+    return CSPCL_ERR_CONNECTION;
+  }
+
+  pool->tick++;
+
+  size_t slot = cspcl_pool_find_free_or_evict_locked(pool);
+
+  pool->entries[slot].used = true;
+  pool->entries[slot].dest_addr = dest_addr;
+  pool->entries[slot].dest_port = dest_port;
+  pool->entries[slot].conn = conn;
+  pool->entries[slot].last_used = pool->tick;
+
+#ifndef FREERTOS
+  pool->entries[slot].connected_at = time(NULL);
+#endif
+
+  (void) cspcl_pool_unlock(pool);
+  return CSPCL_OK;
+}
+
 static csp_conn_t *cspcl_pool_get_or_create_locked(cspcl_conn_pool_t *pool, uint8_t dest_addr,
                                                    uint8_t dest_port)
 {
@@ -599,7 +661,7 @@ cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len, ui
   int ret = csp_sfp_recv(conn, &data, &datasize, CSPCL_SFP_TIMEOUT_MS);
 
   /* Close connection */
-  csp_close(conn);
+  // csp_close(conn);
 
   if (ret != CSP_ERR_NONE) {
     if (data != NULL) {
@@ -630,6 +692,11 @@ cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len, ui
   }
   if (src_port != NULL) {
     *src_port = pkt_src_port;
+  }
+
+  int add_res = cspcl_conn_pool_add(&cspcl->conn_pool, pkt_src_addr, pkt_src_port, conn);
+  if (add_res != CSPCL_OK) {
+    return add_res;
   }
 
   /* Free SFP-allocated memory */
