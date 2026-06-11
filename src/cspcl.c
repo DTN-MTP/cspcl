@@ -645,28 +645,12 @@ static cspcl_error_t cspcl_accept_conn(cspcl_t *cspcl, csp_conn_t **conn, uint8_
   return CSPCL_OK;
 }
 
-cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len, uint8_t *src_addr,
-                                uint8_t *src_port, uint32_t timeout_ms)
+static cspcl_error_t cspcl_recv_bundle_from_conn(csp_conn_t *conn, uint8_t *bundle, size_t *len,
+                                                 uint8_t *src_addr, uint8_t *src_port,
+                                                 uint8_t pkt_src_addr, uint8_t pkt_src_port)
 {
-  if (cspcl == NULL || bundle == NULL || len == NULL) {
-    return CSPCL_ERR_INVALID_PARAM;
-  }
-
-  if (!cspcl->initialized) {
-    return CSPCL_ERR_NOT_INITIALIZED;
-  }
-
   size_t max_len = *len;
   *len = 0;
-
-  csp_conn_t *conn = NULL;
-  uint8_t pkt_src_addr = 0;
-  uint8_t pkt_src_port = 0;
-  cspcl_error_t accept_err =
-      cspcl_accept_conn(cspcl, &conn, &pkt_src_addr, &pkt_src_port, timeout_ms);
-  if (accept_err != CSPCL_OK) {
-    return accept_err;
-  }
 
   /* Use CSP's SFP to receive the bundle with automatic reassembly */
   void *data = NULL;
@@ -708,13 +692,43 @@ cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len, ui
     *src_port = pkt_src_port;
   }
 
+  /* Free SFP-allocated memory */
+  csp_free(data);
+
+  return CSPCL_OK;
+}
+
+cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len, uint8_t *src_addr,
+                                uint8_t *src_port, uint32_t timeout_ms)
+{
+  if (cspcl == NULL || bundle == NULL || len == NULL) {
+    return CSPCL_ERR_INVALID_PARAM;
+  }
+
+  if (!cspcl->initialized) {
+    return CSPCL_ERR_NOT_INITIALIZED;
+  }
+
+  csp_conn_t *conn = NULL;
+  uint8_t pkt_src_addr = 0;
+  uint8_t pkt_src_port = 0;
+  cspcl_error_t accept_err =
+      cspcl_accept_conn(cspcl, &conn, &pkt_src_addr, &pkt_src_port, timeout_ms);
+  if (accept_err != CSPCL_OK) {
+    *len = 0;
+    return accept_err;
+  }
+
+  cspcl_error_t recv_err = cspcl_recv_bundle_from_conn(conn, bundle, len, src_addr, src_port,
+                                                       pkt_src_addr, pkt_src_port);
+  if (recv_err != CSPCL_OK) {
+    return recv_err;
+  }
+
   int add_res = cspcl_conn_pool_add(&cspcl->conn_pool, pkt_src_addr, pkt_src_port, conn);
   if (add_res != CSPCL_OK) {
     return add_res;
   }
-
-  /* Free SFP-allocated memory */
-  csp_free(data);
 
   return CSPCL_OK;
 }
