@@ -622,6 +622,29 @@ void cspcl_close_rx_socket(cspcl_t *cspcl)
   }
 }
 
+static cspcl_error_t cspcl_accept_conn(cspcl_t *cspcl, csp_conn_t **conn, uint8_t *src_addr,
+                                       uint8_t *src_port, uint32_t timeout_ms)
+{
+  if (cspcl->rx_socket == NULL) {
+    cspcl_error_t err = cspcl_open_rx_socket(cspcl);
+    if (err != CSPCL_OK) {
+      return err;
+    }
+  }
+
+  csp_conn_t *accepted_conn = csp_accept((csp_socket_t *) cspcl->rx_socket,
+                                         timeout_ms > 0 ? timeout_ms : CSPCL_CSP_TIMEOUT_MS);
+  if (accepted_conn == NULL) {
+    return CSPCL_ERR_TIMEOUT;
+  }
+
+  *conn = accepted_conn;
+  *src_addr = csp_conn_src(accepted_conn);
+  *src_port = csp_conn_sport(accepted_conn);
+
+  return CSPCL_OK;
+}
+
 cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len, uint8_t *src_addr,
                                 uint8_t *src_port, uint32_t timeout_ms)
 {
@@ -636,23 +659,14 @@ cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len, ui
   size_t max_len = *len;
   *len = 0;
 
-  if (cspcl->rx_socket == NULL) {
-    cspcl_error_t err = cspcl_open_rx_socket(cspcl);
-    if (err != CSPCL_OK) {
-      return err;
-    }
+  csp_conn_t *conn = NULL;
+  uint8_t pkt_src_addr = 0;
+  uint8_t pkt_src_port = 0;
+  cspcl_error_t accept_err =
+      cspcl_accept_conn(cspcl, &conn, &pkt_src_addr, &pkt_src_port, timeout_ms);
+  if (accept_err != CSPCL_OK) {
+    return accept_err;
   }
-
-  /* Accept incoming connection */
-  csp_conn_t *conn = csp_accept((csp_socket_t *) cspcl->rx_socket,
-                                timeout_ms > 0 ? timeout_ms : CSPCL_CSP_TIMEOUT_MS);
-  if (conn == NULL) {
-    return CSPCL_ERR_TIMEOUT;
-  }
-
-  /* Get source address from connection */
-  uint8_t pkt_src_addr = csp_conn_src(conn);
-  uint8_t pkt_src_port = csp_conn_sport(conn);
 
   /* Use CSP's SFP to receive the bundle with automatic reassembly */
   void *data = NULL;
