@@ -260,6 +260,45 @@ cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len, ui
                                 uint8_t *src_port, uint32_t timeout_ms);
 
 /**
+ * @brief Accept an inbound CSP connection for bundle traffic
+ *
+ * This function ensures the receive socket is open, accepts one incoming
+ * connection, and returns the accepted connection plus its source address and
+ * source port.
+ *
+ * The caller owns the returned connection unless it is later passed to another
+ * CSPCL API that documents an ownership transfer.
+ *
+ * @param cspcl      Pointer to initialized CSPCL instance
+ * @param conn       Output pointer for the accepted CSP connection
+ * @param src_addr   Output source CSP address
+ * @param src_port   Output source CSP port
+ * @param timeout_ms Timeout in milliseconds (0 = internal default)
+ * @return CSPCL_OK on success, error code otherwise
+ */
+cspcl_error_t cspcl_accept_conn(cspcl_t *cspcl, csp_conn_t **conn, uint8_t *src_addr,
+                                uint8_t *src_port, uint32_t timeout_ms);
+
+/**
+ * @brief Receive a BP7 bundle from an accepted CSP connection
+ *
+ * This function uses SFP to reassemble one complete bundle from an existing
+ * connection and copies it into the caller-provided buffer.
+ *
+ * @param conn         Accepted CSP connection
+ * @param bundle       Buffer for bundle data
+ * @param len          Pointer to buffer size (in) / received size (out)
+ * @param src_addr     Pointer to store source CSP address (can be NULL)
+ * @param src_port     Pointer to store source CSP port (can be NULL)
+ * @param pkt_src_addr Source CSP address associated with the connection
+ * @param pkt_src_port Source CSP port associated with the connection
+ * @return CSPCL_OK on success, error code otherwise
+ */
+cspcl_error_t cspcl_recv_bundle_from_conn(csp_conn_t *conn, uint8_t *bundle, size_t *len,
+                                          uint8_t *src_addr, uint8_t *src_port,
+                                          uint8_t pkt_src_addr, uint8_t pkt_src_port);
+
+/**
  * @brief Open and bind server socket for incoming connections
  *
  * Call this once during initialization to create a socket bound
