@@ -1,5 +1,3 @@
-use crate::cspcl_sys;
-use std::ffi::CStr;
 use std::fmt;
 
 /// Rust wrapper for CSPCL errors
@@ -7,6 +5,11 @@ use std::fmt;
 pub struct Error(cspcl_sys::cspcl_error_t);
 
 impl Error {
+    /// Create error from a raw CSPCL error code.
+    pub fn from_raw(code: cspcl_sys::cspcl_error_t) -> Self {
+        Error(code)
+    }
+
     /// Create error from error code
     pub fn from_code(code: cspcl_sys::cspcl_error_t) -> std::result::Result<(), Self> {
         if code == cspcl_sys::cspcl_error_t_CSPCL_OK {
@@ -18,11 +21,7 @@ impl Error {
 
     /// Get human-readable error message
     pub fn message(&self) -> &'static str {
-        unsafe {
-            CStr::from_ptr(cspcl_sys::cspcl_strerror(self.0))
-                .to_str()
-                .unwrap_or("Unknown error")
-        }
+        cspcl_sys::primitive::error_message(self.0)
     }
 
     /// Get the raw error code

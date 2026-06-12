@@ -3,8 +3,6 @@
 //! This crate provides high-level safe wrappers around the C CSPCL library,
 //! enabling transmission of BP7 bundles over CSP UDP.
 
-pub use cspcl_sys;
-
 // Module declarations
 mod address;
 mod bundle;

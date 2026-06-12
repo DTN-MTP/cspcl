@@ -10,5 +10,5 @@ readme = "README.md"
 keywords = ["cspcl"]
 
 [dependencies]
-cspcl-sys = "0.3"
+cspcl-sys = { version = "0.3", path = "../cspcl-sys" }
 futures = { version = "0.3", features = ["alloc"] }
