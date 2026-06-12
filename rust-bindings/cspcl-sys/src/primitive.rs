@@ -2,8 +2,8 @@ use std::ffi::{CStr, c_char};
 
 use crate::{
     csp_conn_t, cspcl_accept_conn, cspcl_addr_to_endpoint, cspcl_cleanup, cspcl_close_rx_socket,
-    cspcl_endpoint_to_addr, cspcl_error_t, cspcl_init, cspcl_recv_bundle,
-    cspcl_recv_bundle_from_conn, cspcl_send_bundle, cspcl_strerror, cspcl_t,
+    cspcl_conn_pool_add, cspcl_conn_pool_t, cspcl_endpoint_to_addr, cspcl_error_t, cspcl_init,
+    cspcl_recv_bundle, cspcl_recv_bundle_from_conn, cspcl_send_bundle, cspcl_strerror, cspcl_t,
 };
 
 pub fn init(cspcl: &mut cspcl_t) -> cspcl_error_t {
@@ -62,6 +62,15 @@ pub fn accept_conn(
     let code =
         unsafe { cspcl_accept_conn(cspcl, &mut conn, &mut src_addr, &mut src_port, timeout_ms) };
     (code, conn, src_addr, src_port)
+}
+
+pub fn conn_pool_add(
+    pool: &mut cspcl_conn_pool_t,
+    dest_addr: u8,
+    dest_port: u8,
+    conn: *mut csp_conn_t,
+) -> cspcl_error_t {
+    unsafe { cspcl_conn_pool_add(pool, dest_addr, dest_port, conn) }
 }
 
 pub fn recv_bundle_from_conn(

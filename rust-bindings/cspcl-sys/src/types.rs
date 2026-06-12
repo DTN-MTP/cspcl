@@ -1,6 +1,7 @@
 use crate::{
     csp_conn_t, csp_iface_type_CSP_IFACE_CAN, csp_iface_type_CSP_IFACE_LOOPBACK,
-    csp_iface_type_CSP_IFACE_ZMQHUB, cspcl_error_t, cspcl_error_t_CSPCL_OK, cspcl_t, primitive,
+    csp_iface_type_CSP_IFACE_ZMQHUB, cspcl_conn_pool_t, cspcl_error_t, cspcl_error_t_CSPCL_OK,
+    cspcl_t, primitive,
 };
 
 pub type Result<T> = std::result::Result<T, cspcl_error_t>;
@@ -153,6 +154,24 @@ pub fn accept_conn(cspcl: &mut cspcl_t, timeout_ms: u32) -> Result<AcceptedConn>
         src_addr,
         src_port,
     })
+}
+
+pub fn conn_pool_add(
+    pool: &mut cspcl_conn_pool_t,
+    dest_addr: u8,
+    dest_port: u8,
+    conn: *mut csp_conn_t,
+) -> Result<()> {
+    ok_or_err(primitive::conn_pool_add(pool, dest_addr, dest_port, conn))
+}
+
+pub fn conn_pool_add_accepted(cspcl: &mut cspcl_t, accepted: AcceptedConn) -> Result<()> {
+    conn_pool_add(
+        &mut cspcl.conn_pool,
+        accepted.src_addr,
+        accepted.src_port,
+        accepted.conn,
+    )
 }
 
 pub fn recv_bundle_from_conn<'a>(
