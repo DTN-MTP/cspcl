@@ -1,86 +1,141 @@
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+/// C sources whose changes should trigger a rebuild.
+const SOURCE_FILES: [&str; 3] = ["cspcl.c", "cspcl.h", "cspcl_config.h"];
+
+/// Environment variables used to locate libcsp.
+const BUILD_ENV_VARS: [&str; 3] = ["CSP_INCLUDE_DIR", "CSP_REPO_DIR", "CSP_BUILD_DIR"];
+
+/// Resolved location of the libcsp headers and compiled library.
+struct Libcsp {
+    include_dirs: Vec<PathBuf>,
+    lib_dir: PathBuf,
+}
 
 fn main() {
-    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-    let manifest_path = PathBuf::from(&manifest_dir);
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
+    let workspace_root = manifest_dir
+        .parent()
+        .and_then(Path::parent)
+        .expect("workspace root");
 
-    // When published to crates.io, the C source files are included in the crate root
-    // Check cspcl-sys/src first (where they'll be when published)
-    let src_in_crate = manifest_path.join("c_src");
+    let source_dir = resolve_source_dir(&manifest_dir, workspace_root);
+    let libcsp = resolve_libcsp();
 
-    // Otherwise look in workspace (local development)
-    let workspace_root = manifest_path.parent().unwrap().parent().unwrap();
-    let src_in_workspace = workspace_root.join("src");
+    for file in SOURCE_FILES {
+        println!("cargo:rerun-if-changed={}", source_dir.join(file).display());
+    }
+    for var in BUILD_ENV_VARS {
+        println!("cargo:rerun-if-env-changed={var}");
+    }
 
-    let src_dir = if src_in_crate.exists() {
-        src_in_crate
-    } else if src_in_workspace.exists() {
-        src_in_workspace
-    } else {
-        panic!(
-            "C source directory not found. Looked in:\n  {}\n  {}",
-            src_in_crate.display(),
-            src_in_workspace.display()
-        );
-    };
+    let header = source_dir.join("cspcl.h");
+    assert!(header.exists(), "cspcl.h not found at {}", header.display());
 
-    println!("Using C sources from: {}", src_dir.display());
+    compile_native(&source_dir, &libcsp);
+    generate_bindings(&header, &source_dir, &libcsp);
+}
 
-    // Tell cargo to look for shared libraries in the specified directory
-    println!("cargo:rustc-link-search={}", src_dir.display());
+/// Locate the cspcl C sources (vendored `c_src/` or the workspace `src/`).
+fn resolve_source_dir(manifest_dir: &Path, workspace_root: &Path) -> PathBuf {
+    let candidates = [manifest_dir.join("c_src"), workspace_root.join("src")];
+    candidates
+        .iter()
+        .find(|dir| dir.exists())
+        .cloned()
+        .unwrap_or_else(|| {
+            panic!(
+                "cspcl C sources not found. Looked in:\n  {}\n  {}",
+                candidates[0].display(),
+                candidates[1].display()
+            )
+        })
+}
+
+/// Locate libcsp via `CSP_INCLUDE_DIR`, or a checkout pointed to by `CSP_REPO_DIR`.
+fn resolve_libcsp() -> Libcsp {
+    let mut include_dirs = Vec::new();
+    let mut lib_dir = None;
+
+    if let Ok(dir) = env::var("CSP_INCLUDE_DIR") {
+        include_dirs.push(PathBuf::from(dir));
+    } else if let Ok(repo) = env::var("CSP_REPO_DIR") {
+        let repo = PathBuf::from(repo);
+        include_dirs.push(repo.join("include"));
+
+        let build_dir = env::var("CSP_BUILD_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| repo.join("build"));
+        if build_dir.join("include").exists() {
+            include_dirs.push(build_dir.join("include"));
+        }
+        if build_dir.join("libcsp.a").exists() || build_dir.join("libcsp.so").exists() {
+            lib_dir = Some(build_dir);
+        }
+    }
+
+    include_dirs.retain(|dir| dir.exists());
+
+    match (include_dirs.is_empty(), lib_dir.filter(|dir| dir.exists())) {
+        (false, Some(lib_dir)) => Libcsp {
+            include_dirs,
+            lib_dir,
+        },
+        _ => panic!(
+            "libcsp not found. Set CSP_INCLUDE_DIR to the headers, or CSP_REPO_DIR to a \
+             libcsp checkout with include/ and a build/ containing libcsp.a or libcsp.so."
+        ),
+    }
+}
+
+fn compile_native(source_dir: &Path, libcsp: &Libcsp) {
+    let mut build = cc::Build::new();
+    build.file(source_dir.join("cspcl.c")).include(source_dir);
+    for dir in &libcsp.include_dirs {
+        build.include(dir);
+    }
+
+    println!(
+        "cargo:rustc-link-search=native={}",
+        libcsp.lib_dir.display()
+    );
+    println!("cargo:rustc-link-lib=static=csp");
+    println!("cargo:rustc-link-lib=zmq");
+    println!("cargo:rustc-link-lib=socketcan");
+
+    if cfg!(target_os = "linux") {
+        build.define("__linux__", None);
+        println!("cargo:rustc-link-lib=rt");
+    }
     println!("cargo:rustc-link-lib=bz2");
 
-    let header_path = src_dir.join("cspcl.h");
+    build.compile("cspcl_native");
+}
 
-    if !header_path.exists() {
-        panic!("cspcl.h not found at: {}", header_path.display());
-    }
-
-    println!("cargo:rerun-if-env-changed=CSP_INCLUDE_DIR");
-    println!("cargo:rerun-if-env-changed=CSP_REPO_DIR");
-
-    // Resolve libcsp include directories.
-    // CSP_INCLUDE_DIR: explicit path to libcsp's include/ directory.
-    // CSP_REPO_DIR: path to the libcsp repo root; we add both include/ and
-    //               build/include/ (where csp_autoconfig.h is generated).
-    let mut csp_include_dirs: Vec<PathBuf> = Vec::new();
-    if let Ok(dir) = env::var("CSP_INCLUDE_DIR") {
-        csp_include_dirs.push(PathBuf::from(dir));
-    } else if let Ok(repo) = env::var("CSP_REPO_DIR") {
-        let repo_path = PathBuf::from(&repo);
-        csp_include_dirs.push(repo_path.join("include"));
-        // csp_autoconfig.h is generated into build/include by cmake
-        let build_include = repo_path.join("build").join("include");
-        if build_include.exists() {
-            csp_include_dirs.push(build_include);
-        }
-    } else {
-        panic!(
-            "libcsp headers not found. Set CSP_INCLUDE_DIR (path to libcsp include/) \
-             or CSP_REPO_DIR (path to libcsp repo root)."
-        );
-    }
-
+fn generate_bindings(header: &Path, source_dir: &Path, libcsp: &Libcsp) {
     let mut builder = bindgen::Builder::default()
-        .header(header_path.to_string_lossy().to_string())
-        .clang_arg(format!("-I{}", src_dir.display()));
-    for inc in &csp_include_dirs {
-        builder = builder.clang_arg(format!("-I{}", inc.display()));
-    }
-    let bindings = builder
+        .header(header.to_string_lossy())
+        .clang_arg(format!("-I{}", source_dir.display()))
         .allowlist_type("cspcl_.*")
+        .allowlist_type("csp_iface_type")
         .allowlist_function("cspcl_.*")
         .allowlist_var("CSPCL_.*")
+        .allowlist_var("csp_iface_type_.*")
         .generate_comments(true)
         .derive_debug(true)
         .derive_default(true)
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
-        .generate()
-        .expect("Unable to generate bindings");
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()));
 
-    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
-    bindings
-        .write_to_file(out_path.join("bindings.rs"))
-        .expect("Couldn't write bindings!");
+    for dir in &libcsp.include_dirs {
+        builder = builder.clang_arg(format!("-I{}", dir.display()));
+    }
+
+    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));
+    builder
+        .generate()
+        .expect("unable to generate bindings")
+        .write_to_file(out_dir.join("bindings.rs"))
+        .expect("couldn't write bindings");
 }
+

@@ -6,6 +6,7 @@ use crate::error::{Error, Result, from_sys_result};
 use crate::interface::Interface;
 
 /// Safe wrapper for CSPCL instance
+#[derive(Clone)]
 pub struct Cspcl {
     inner: Arc<RwLock<cspcl_sys::cspcl_t>>,
 }
@@ -27,12 +28,12 @@ impl Cspcl {
     }
 
     /// Close the receive socket
-    pub fn close_rx_socket(&mut self) {
+    pub fn close_rx_socket(self) {
         let mut cspcl = self.inner_mut();
         cspcl_sys::types::close_rx_socket(&mut cspcl);
     }
 
-    pub fn poll_connection(&self) -> Result<AcceptedConn> {
+    pub(crate) fn poll_connection(&self) -> Result<AcceptedConn> {
         let mut cspcl = self.inner_mut();
         let accepted_conn = from_sys_result(cspcl_sys::types::accept_conn(&mut cspcl, 10))?;
         from_sys_result(cspcl_sys::types::conn_pool_add_accepted(
@@ -52,16 +53,13 @@ impl Cspcl {
         self.inner().initialized
     }
 
-    // TODO: Add a method to get reassembly stats/status if needed
-    // pub fn reassembly_status(&self) -> ReassemblyStatus { ... }
-
     /// Get mutable reference to inner CSPCL instance (for advanced usage)
-    pub fn inner_mut(&self) -> RwLockWriteGuard<'_, cspcl_sys::cspcl_t> {
+    pub(crate) fn inner_mut(&self) -> RwLockWriteGuard<'_, cspcl_sys::cspcl_t> {
         self.inner.write().expect("CSPCL instance lock poisoned")
     }
 
     /// Get immutable reference to inner CSPCL instance (for advanced usage)
-    pub fn inner(&self) -> RwLockReadGuard<'_, cspcl_sys::cspcl_t> {
+    pub(crate) fn inner(&self) -> RwLockReadGuard<'_, cspcl_sys::cspcl_t> {
         self.inner.read().expect("CSPCL instance lock poisoned")
     }
 }
