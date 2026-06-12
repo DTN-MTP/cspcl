@@ -213,6 +213,21 @@ cspcl_error_t cspcl_conn_pool_init(cspcl_conn_pool_t *pool);
 void cspcl_conn_pool_cleanup(cspcl_conn_pool_t *pool);
 
 /**
+ * @brief Add an existing CSP connection to the connection pool
+ *
+ * The pool takes ownership of the connection pointer. The connection will be
+ * closed when the entry is evicted, invalidated, or the pool is cleaned up.
+ *
+ * @param pool      Pointer to initialized pool instance
+ * @param dest_addr Remote CSP address associated with the connection
+ * @param dest_port Remote CSP port associated with the connection
+ * @param conn      Existing CSP connection to store
+ * @return CSPCL_OK on success, error code otherwise
+ */
+cspcl_error_t cspcl_conn_pool_add(cspcl_conn_pool_t *pool, uint8_t dest_addr, uint8_t dest_port,
+                                  csp_conn_t *conn);
+
+/**
  * @brief Read pool statistics counters
  *
  * @param pool   Pointer to pool instance (may be NULL — safe no-op)
