@@ -42,12 +42,11 @@ impl Cspcl {
     /// Ok(()) on success, or Err(Error) if the operation failed
     pub fn send_bundle(&mut self, bundle: &[u8], dest_addr: u8, dest_port: u8) -> Result<()> {
         if bundle.is_empty() {
-            return Err(
-                Error::from_code(cspcl_sys::cspcl_error_t_CSPCL_ERR_INVALID_PARAM).unwrap_err(),
-            );
+            return Err(Error::InvalidParam);
         }
 
-        cspcl_sys::types::send_bundle(self.inner_mut(), bundle, dest_addr, dest_port)
+        let mut inner = self.inner_mut();
+        cspcl_sys::types::send_bundle(&mut inner, bundle, dest_addr, dest_port)
             .map_err(Error::from_raw)?;
         Ok(())
     }
@@ -66,7 +65,8 @@ impl Cspcl {
     pub fn recv_bundle(&mut self, timeout_ms: u32) -> Result<(Vec<u8>, u8, u8)> {
         // TODO: Consider making buffer size configurable via constructor or method parameter
         let mut buffer = vec![0u8; cspcl_sys::CSPCL_MAX_BUNDLE_SIZE as usize];
-        let received = cspcl_sys::types::recv_bundle(self.inner_mut(), &mut buffer, timeout_ms)
+        let mut inner = self.inner_mut();
+        let received = cspcl_sys::types::recv_bundle(&mut inner, &mut buffer, timeout_ms)
             .map_err(Error::from_raw)?;
         let len = received.len;
         let src_addr = received.src_addr;
@@ -84,7 +84,7 @@ impl Cspcl {
             let mut cspcl = self;
             loop {
                 match cspcl.recv_bundle(100) {
-                    Err(e) if e.code() == cspcl_sys::cspcl_error_t_CSPCL_ERR_TIMEOUT => {
+                    Err(Error::Timeout) => {
                         if tx.is_closed() {
                             break;
                         }
