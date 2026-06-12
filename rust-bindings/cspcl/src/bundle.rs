@@ -5,7 +5,6 @@ use std::thread;
 use futures::channel::mpsc;
 use futures::{SinkExt, Stream};
 
-use crate::cspcl_sys;
 use crate::error::{Error, Result};
 use crate::instance::Cspcl;
 
@@ -48,15 +47,8 @@ impl Cspcl {
             );
         }
 
-        unsafe {
-            Error::from_code(cspcl_sys::cspcl_send_bundle(
-                self.inner_mut(),
-                bundle.as_ptr(),
-                bundle.len(),
-                dest_addr,
-                dest_port,
-            ))?;
-        }
+        cspcl_sys::types::send_bundle(self.inner_mut(), bundle, dest_addr, dest_port)
+            .map_err(Error::from_raw)?;
         Ok(())
     }
 
@@ -74,19 +66,13 @@ impl Cspcl {
     pub fn recv_bundle(&mut self, timeout_ms: u32) -> Result<(Vec<u8>, u8, u8)> {
         // TODO: Consider making buffer size configurable via constructor or method parameter
         let mut buffer = vec![0u8; cspcl_sys::CSPCL_MAX_BUNDLE_SIZE as usize];
-        let mut len = buffer.len();
-        let mut src_addr: u8 = 0;
-        let mut src_port: u8 = 0;
-        unsafe {
-            Error::from_code(cspcl_sys::cspcl_recv_bundle(
-                self.inner_mut(),
-                buffer.as_mut_ptr(),
-                &mut len,
-                &mut src_addr,
-                &mut src_port,
-                timeout_ms,
-            ))?;
-        }
+        let received = cspcl_sys::types::recv_bundle(self.inner_mut(), &mut buffer, timeout_ms)
+            .map_err(Error::from_raw)?;
+        let len = received.len;
+        let src_addr = received.src_addr;
+        let src_port = received.src_port;
+        drop(received);
+        buffer.truncate(len);
 
         Ok((buffer, src_addr, src_port))
     }

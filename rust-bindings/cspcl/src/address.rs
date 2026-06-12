@@ -1,4 +1,3 @@
-use crate::cspcl_sys;
 use crate::error::{Error, Result};
 use std::ffi::CString;
 
@@ -13,7 +12,7 @@ use std::ffi::CString;
 /// Some(address) if conversion successful, None otherwise
 pub fn endpoint_to_addr(endpoint: &str) -> Option<u8> {
     let c_str = CString::new(endpoint).ok()?;
-    let addr = unsafe { cspcl_sys::cspcl_endpoint_to_addr(c_str.as_ptr()) };
+    let addr = cspcl_sys::primitive::endpoint_to_addr(&c_str);
     if addr == 0 { None } else { Some(addr) }
 }
 
@@ -27,13 +26,7 @@ pub fn endpoint_to_addr(endpoint: &str) -> Option<u8> {
 pub fn addr_to_endpoint(addr: u8) -> Result<String> {
     // TODO: Consider if 32 bytes is enough for endpoint strings, or make it configurable
     let mut buffer = [0u8; 32];
-    unsafe {
-        Error::from_code(cspcl_sys::cspcl_addr_to_endpoint(
-            addr,
-            buffer.as_mut_ptr() as *mut i8,
-            buffer.len(),
-        ))?;
-    }
+    Error::from_code(cspcl_sys::primitive::addr_to_endpoint(addr, &mut buffer))?;
     Ok(String::from_utf8_lossy(&buffer)
         .trim_matches('\0')
         .to_string())

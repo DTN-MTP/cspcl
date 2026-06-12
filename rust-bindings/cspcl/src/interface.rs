@@ -70,6 +70,16 @@ impl From<Interface> for c_uint {
     }
 }
 
+impl From<Interface> for cspcl_sys::types::InterfaceConfig {
+    fn from(value: Interface) -> Self {
+        match value {
+            Interface::Zmq(interface_name) => Self::Zmq(interface_name.0),
+            Interface::Can(interface_name) => Self::Can(interface_name.0),
+            Interface::Loopback(_) => Self::Loopback,
+        }
+    }
+}
+
 impl Into<[i8; 64]> for InterfaceName {
     fn into(self) -> [i8; 64] {
         let interface_name: &str = &self;

@@ -1,4 +1,3 @@
-use crate::cspcl_sys;
 use crate::error::{Error, Result};
 use crate::interface::Interface;
 
@@ -10,31 +9,20 @@ pub struct Cspcl {
 impl Cspcl {
     /// Initialize a new CSPCL instance with local CSP address
     pub fn new(local_addr: u8, local_port: u8, interface: Interface) -> Result<Self> {
-        let mut cspcl = cspcl_sys::cspcl_t {
+        let config = cspcl_sys::types::CspclConfig {
             local_addr,
             csp_port: local_port,
-            iface_type: interface.clone().into(),
-            ..Default::default()
+            interface: interface.into(),
         };
 
-        match interface {
-            Interface::Zmq(interface_name) => cspcl.zmqhub_addr = interface_name.into(),
-            Interface::Can(interface_name) => cspcl.can_iface = interface_name.into(),
-            _ => {}
-        };
-
-        unsafe {
-            Error::from_code(cspcl_sys::cspcl_init(&mut cspcl))?;
-        }
+        let cspcl = cspcl_sys::types::init_from_config(&config).map_err(Error::from_raw)?;
 
         Ok(Cspcl { inner: cspcl })
     }
 
     /// Close the receive socket
     pub fn close_rx_socket(&mut self) {
-        unsafe {
-            cspcl_sys::cspcl_close_rx_socket(&mut self.inner);
-        }
+        cspcl_sys::types::close_rx_socket(&mut self.inner);
     }
 
     /// Get local CSP address
@@ -63,11 +51,6 @@ impl Cspcl {
 
 impl Drop for Cspcl {
     fn drop(&mut self) {
-        unsafe {
-            cspcl_sys::cspcl_cleanup(&mut self.inner);
-        }
+        cspcl_sys::types::cleanup(&mut self.inner);
     }
 }
-
-unsafe impl Send for Cspcl {}
-unsafe impl Sync for Cspcl {}
