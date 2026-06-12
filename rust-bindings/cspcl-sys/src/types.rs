@@ -12,6 +12,26 @@ pub enum InterfaceConfig {
     Loopback,
 }
 
+impl InterfaceConfig {
+    pub fn zmq(interface_name: impl Into<String>) -> Self {
+        Self::Zmq(interface_name.into())
+    }
+
+    pub fn can(interface_name: impl Into<String>) -> Self {
+        Self::Can(interface_name.into())
+    }
+
+    pub fn loopback() -> Self {
+        Self::Loopback
+    }
+}
+
+impl Default for InterfaceConfig {
+    fn default() -> Self {
+        Self::Loopback
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CspclConfig {
     pub local_addr: u8,

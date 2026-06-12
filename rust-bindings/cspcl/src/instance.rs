@@ -12,7 +12,7 @@ impl Cspcl {
         let config = cspcl_sys::types::CspclConfig {
             local_addr,
             csp_port: local_port,
-            interface: interface.into(),
+            interface,
         };
 
         let cspcl = cspcl_sys::types::init_from_config(&config).map_err(Error::from_raw)?;

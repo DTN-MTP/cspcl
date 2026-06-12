@@ -14,3 +14,4 @@ mod interface;
 pub use address::{addr_to_endpoint, endpoint_to_addr};
 pub use error::{Error, Result};
 pub use instance::Cspcl;
+pub use interface::Interface;
