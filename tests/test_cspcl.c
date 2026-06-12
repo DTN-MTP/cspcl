@@ -413,6 +413,44 @@ static int test_send_bundle_invalid_params(void)
   return 0;
 }
 
+static int test_accept_conn_invalid_params(void)
+{
+  cspcl_t cspcl = {0};
+  csp_conn_t *conn = NULL;
+  uint8_t src_addr = 0;
+  uint8_t src_port = 0;
+
+  ASSERT_EQ(cspcl_accept_conn(NULL, &conn, &src_addr, &src_port, 1), CSPCL_ERR_INVALID_PARAM);
+  ASSERT_EQ(cspcl_accept_conn(&cspcl, NULL, &src_addr, &src_port, 1), CSPCL_ERR_INVALID_PARAM);
+  ASSERT_EQ(cspcl_accept_conn(&cspcl, &conn, NULL, &src_port, 1), CSPCL_ERR_INVALID_PARAM);
+  ASSERT_EQ(cspcl_accept_conn(&cspcl, &conn, &src_addr, NULL, 1), CSPCL_ERR_INVALID_PARAM);
+
+  ASSERT_EQ(cspcl_accept_conn(&cspcl, &conn, &src_addr, &src_port, 1), CSPCL_ERR_NOT_INITIALIZED);
+
+  TEST_PASS();
+  return 0;
+}
+
+static int test_recv_bundle_from_conn_invalid_params(void)
+{
+  uint8_t bundle[16] = {0};
+  size_t len = sizeof(bundle);
+  uint8_t src_addr = 0;
+  uint8_t src_port = 0;
+
+  ASSERT_EQ(cspcl_recv_bundle_from_conn(NULL, bundle, &len, &src_addr, &src_port, 1, 2),
+            CSPCL_ERR_INVALID_PARAM);
+  ASSERT_EQ(
+      cspcl_recv_bundle_from_conn((csp_conn_t *) bundle, NULL, &len, &src_addr, &src_port, 1, 2),
+      CSPCL_ERR_INVALID_PARAM);
+  ASSERT_EQ(
+      cspcl_recv_bundle_from_conn((csp_conn_t *) bundle, bundle, NULL, &src_addr, &src_port, 1, 2),
+      CSPCL_ERR_INVALID_PARAM);
+
+  TEST_PASS();
+  return 0;
+}
+
 static int test_send_bundle_too_large(void)
 {
   cspcl_t cspcl = {0};
@@ -590,6 +628,8 @@ static test_case_t tests[] = {
     /* Send tests */
     {"test_send_bundle_not_initialized", test_send_bundle_not_initialized},
     {"test_send_bundle_invalid_params", test_send_bundle_invalid_params},
+    {"test_accept_conn_invalid_params", test_accept_conn_invalid_params},
+    {"test_recv_bundle_from_conn_invalid_params", test_recv_bundle_from_conn_invalid_params},
     {"test_send_bundle_too_large", test_send_bundle_too_large},
     {"test_send_small_bundle", test_send_small_bundle},
     {"test_send_large_bundle", test_send_large_bundle},

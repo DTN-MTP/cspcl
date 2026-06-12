@@ -622,9 +622,17 @@ void cspcl_close_rx_socket(cspcl_t *cspcl)
   }
 }
 
-static cspcl_error_t cspcl_accept_conn(cspcl_t *cspcl, csp_conn_t **conn, uint8_t *src_addr,
-                                       uint8_t *src_port, uint32_t timeout_ms)
+cspcl_error_t cspcl_accept_conn(cspcl_t *cspcl, csp_conn_t **conn, uint8_t *src_addr,
+                                uint8_t *src_port, uint32_t timeout_ms)
 {
+  if (cspcl == NULL || conn == NULL || src_addr == NULL || src_port == NULL) {
+    return CSPCL_ERR_INVALID_PARAM;
+  }
+
+  if (!cspcl->initialized) {
+    return CSPCL_ERR_NOT_INITIALIZED;
+  }
+
   if (cspcl->rx_socket == NULL) {
     cspcl_error_t err = cspcl_open_rx_socket(cspcl);
     if (err != CSPCL_OK) {
@@ -645,10 +653,14 @@ static cspcl_error_t cspcl_accept_conn(cspcl_t *cspcl, csp_conn_t **conn, uint8_
   return CSPCL_OK;
 }
 
-static cspcl_error_t cspcl_recv_bundle_from_conn(csp_conn_t *conn, uint8_t *bundle, size_t *len,
-                                                 uint8_t *src_addr, uint8_t *src_port,
-                                                 uint8_t pkt_src_addr, uint8_t pkt_src_port)
+cspcl_error_t cspcl_recv_bundle_from_conn(csp_conn_t *conn, uint8_t *bundle, size_t *len,
+                                          uint8_t *src_addr, uint8_t *src_port,
+                                          uint8_t pkt_src_addr, uint8_t pkt_src_port)
 {
+  if (conn == NULL || bundle == NULL || len == NULL) {
+    return CSPCL_ERR_INVALID_PARAM;
+  }
+
   size_t max_len = *len;
   *len = 0;
 
