@@ -47,15 +47,19 @@ pub struct AcceptedConn {
     pub src_port: u8,
 }
 
+// Accepted connections are handed off to a single listener worker, which owns
+// the pointer for receive calls. The pointer must not be used concurrently.
+unsafe impl Send for AcceptedConn {}
+
 #[derive(Debug)]
-pub struct ReceivedBundle<'a> {
-    pub buffer: &'a mut [u8],
+pub struct ReceivedBundle {
+    pub buffer: Vec<u8>,
     pub len: usize,
     pub src_addr: u8,
     pub src_port: u8,
 }
 
-impl<'a> ReceivedBundle<'a> {
+impl ReceivedBundle {
     pub fn data(&self) -> &[u8] {
         &self.buffer[..self.len]
     }
@@ -129,16 +133,16 @@ pub fn send_bundle(cspcl: &mut cspcl_t, bundle: &[u8], dest_addr: u8, dest_port:
     ok_or_err(primitive::send_bundle(cspcl, bundle, dest_addr, dest_port))
 }
 
-pub fn recv_bundle<'a>(
+pub fn recv_bundle(
     cspcl: &mut cspcl_t,
-    buffer: &'a mut [u8],
+    buffer: &mut [u8],
     timeout_ms: u32,
-) -> Result<ReceivedBundle<'a>> {
+) -> Result<ReceivedBundle> {
     let (code, len, src_addr, src_port) = primitive::recv_bundle(cspcl, buffer, timeout_ms);
     ok_or_err(code)?;
 
     Ok(ReceivedBundle {
-        buffer,
+        buffer: buffer.to_vec(),
         len,
         src_addr,
         src_port,
@@ -156,35 +160,38 @@ pub fn accept_conn(cspcl: &mut cspcl_t, timeout_ms: u32) -> Result<AcceptedConn>
     })
 }
 
-pub fn conn_pool_add(
+pub unsafe fn conn_pool_add(
     pool: &mut cspcl_conn_pool_t,
     dest_addr: u8,
     dest_port: u8,
     conn: *mut csp_conn_t,
 ) -> Result<()> {
-    ok_or_err(primitive::conn_pool_add(pool, dest_addr, dest_port, conn))
+    ok_or_err(unsafe { primitive::conn_pool_add(pool, dest_addr, dest_port, conn) })
 }
 
 pub fn conn_pool_add_accepted(cspcl: &mut cspcl_t, accepted: AcceptedConn) -> Result<()> {
-    conn_pool_add(
-        &mut cspcl.conn_pool,
-        accepted.src_addr,
-        accepted.src_port,
-        accepted.conn,
-    )
+    unsafe {
+        conn_pool_add(
+            &mut cspcl.conn_pool,
+            accepted.src_addr,
+            accepted.src_port,
+            accepted.conn,
+        )
+    }
 }
 
-pub fn recv_bundle_from_conn<'a>(
-    accepted: AcceptedConn,
-    buffer: &'a mut [u8],
-) -> Result<ReceivedBundle<'a>> {
-    let (code, len, src_addr, src_port) = primitive::recv_bundle_from_conn(
-        accepted.conn,
-        buffer,
-        accepted.src_addr,
-        accepted.src_port,
-    );
+pub fn recv_bundle_from_conn(accepted: AcceptedConn) -> Result<ReceivedBundle> {
+    let mut buffer = vec![0u8; crate::CSPCL_MAX_BUNDLE_SIZE as usize];
+    let (code, len, src_addr, src_port) = unsafe {
+        primitive::recv_bundle_from_conn(
+            accepted.conn,
+            &mut buffer,
+            accepted.src_addr,
+            accepted.src_port,
+        )
+    };
     ok_or_err(code)?;
+    buffer.truncate(len);
 
     Ok(ReceivedBundle {
         buffer,

@@ -64,7 +64,7 @@ pub fn accept_conn(
     (code, conn, src_addr, src_port)
 }
 
-pub fn conn_pool_add(
+pub unsafe fn conn_pool_add(
     pool: &mut cspcl_conn_pool_t,
     dest_addr: u8,
     dest_port: u8,
@@ -73,7 +73,7 @@ pub fn conn_pool_add(
     unsafe { cspcl_conn_pool_add(pool, dest_addr, dest_port, conn) }
 }
 
-pub fn recv_bundle_from_conn(
+pub unsafe fn recv_bundle_from_conn(
     conn: *mut csp_conn_t,
     buffer: &mut [u8],
     pkt_src_addr: u8,
