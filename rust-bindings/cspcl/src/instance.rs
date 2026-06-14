@@ -3,7 +3,6 @@ use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use cspcl_sys::types::AcceptedConn;
 
 use crate::error::{Error, Result, from_sys_result};
-use crate::interface::Interface;
 
 /// Safe wrapper for CSPCL instance
 #[derive(Clone)]
@@ -13,7 +12,7 @@ pub struct Cspcl {
 
 impl Cspcl {
     /// Initialize a new CSPCL instance with local CSP address
-    pub fn new(local_addr: u8, local_port: u8, interface: Interface) -> Result<Self> {
+    pub fn new(local_addr: u8, local_port: u8, interface: super::Interface) -> Result<Self> {
         let config = cspcl_sys::types::CspclConfig {
             local_addr,
             csp_port: local_port,
