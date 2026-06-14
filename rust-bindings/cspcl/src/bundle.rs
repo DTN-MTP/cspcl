@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use tracing::{debug, error};
+
 use crate::InboundStream;
 use crate::error::{Error, Result};
 use crate::instance::Cspcl;
@@ -23,13 +25,24 @@ impl Cspcl {
         }
 
         let mut inner = self.inner_mut();
-        cspcl_sys::types::send_bundle(&mut inner, bundle, dest_addr, dest_port)
-            .map_err(Error::from_raw)?;
+        debug!("Sending bundle to {}:{}", dest_addr, dest_port);
+        match cspcl_sys::types::send_bundle(&mut inner, bundle, dest_addr, dest_port)
+            .map_err(Error::from_raw)
+        {
+            Ok(_) => debug!("Bundle sent to {}:{}", dest_addr, dest_port),
+            Err(e) => error!(
+                "Could not send bundle to {}:{} : {}",
+                dest_addr,
+                dest_port,
+                e.to_string()
+            ),
+        };
+
         Ok(())
     }
 
-    pub fn inbound(self) -> InboundStream {
+    pub async fn inbound(self) -> InboundStream {
         let cspcl = Arc::new(self);
-        InboundStream::new(cspcl)
+        InboundStream::new(cspcl.clone()).await
     }
 }

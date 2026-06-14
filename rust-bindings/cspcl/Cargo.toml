@@ -12,4 +12,6 @@ keywords = ["cspcl"]
 [dependencies]
 cspcl-sys = { version = "0.3", path = "../cspcl-sys" }
 futures = { version = "0.3", features = ["alloc"] }
-tokio = { version = "1.52.3", features = ["rt"] }
+tokio = { version = "1.52.3", features = ["rt", "time"] }
+trace = "0.1.7"
+tracing = "0.1.44"
