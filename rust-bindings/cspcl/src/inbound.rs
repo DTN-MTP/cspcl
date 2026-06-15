@@ -101,7 +101,7 @@ async fn poll_inbound_connections(
                 if inbound_shutdown.is_cancelled() {
                     break;
                 }
-                warn!("Timed out while waiting for new connection");
+                debug!("Timed out while waiting for new connection");
                 tokio::select! {
                     () = inbound_shutdown.cancelled() => break,
                     () = tokio::time::sleep(Duration::from_millis(500)) => {}
@@ -168,7 +168,7 @@ fn listen_incoming_from_conn(
                 if inbound_shutdown.is_cancelled() {
                     break;
                 }
-                warn!("Timed out while waiting for new bundle");
+                debug!("Timed out while waiting for new bundle");
                 continue;
             }
             Err(error) => {
