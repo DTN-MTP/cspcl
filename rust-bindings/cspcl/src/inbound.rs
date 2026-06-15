@@ -1,17 +1,19 @@
 use futures::{Stream, channel::mpsc};
 use std::{
     pin::Pin,
-    sync::Arc,
+    sync::{Arc, Mutex},
     task::{Context, Poll},
     time::Duration,
 };
-use tokio::task;
+use tokio::task::{self, JoinHandle, JoinSet};
 use tracing::{debug, error, trace, warn};
 
 use crate::{Bundle, Cspcl, Error, Result};
 
 pub struct InboundStream {
     rx: mpsc::UnboundedReceiver<Result<Bundle>>,
+    connection_listener: JoinHandle<()>,
+    bundle_listeners: Arc<Mutex<JoinSet<()>>>,
 }
 
 impl Stream for InboundStream {
@@ -43,13 +45,39 @@ impl InboundStream {
     pub async fn new(cspcl: Arc<Cspcl>) -> Self {
         let (tx, rx) = mpsc::unbounded();
         debug!("Creating inbound stream");
-        tokio::spawn(async move { poll_inbound_connections(cspcl, tx).await });
 
-        Self { rx }
+        let bundle_listeners = Arc::new(Mutex::new(JoinSet::new()));
+        let connection_listener = task::spawn({
+            let bundle_listeners = Arc::clone(&bundle_listeners);
+            async move { poll_inbound_connections(cspcl, tx, bundle_listeners).await }
+        });
+
+        Self {
+            rx,
+            connection_listener,
+            bundle_listeners,
+        }
     }
 }
 
-async fn poll_inbound_connections(cspcl: Arc<Cspcl>, tx: mpsc::UnboundedSender<Result<Bundle>>) {
+impl Drop for InboundStream {
+    fn drop(&mut self) {
+        debug!("Aborting inbound connection polling task");
+        self.connection_listener.abort();
+
+        debug!("Aborting inbound bundle listener tasks");
+        self.bundle_listeners
+            .lock()
+            .expect("Inbound bundle listener task set lock poisoned")
+            .abort_all();
+    }
+}
+
+async fn poll_inbound_connections(
+    cspcl: Arc<Cspcl>,
+    tx: mpsc::UnboundedSender<Result<Bundle>>,
+    bundle_listeners: Arc<Mutex<JoinSet<()>>>,
+) {
     debug!("Inbound connection polling task started");
 
     loop {
@@ -79,7 +107,10 @@ async fn poll_inbound_connections(cspcl: Arc<Cspcl>, tx: mpsc::UnboundedSender<R
             "New connection made with {}:{}",
             conn.src_addr, conn.src_port
         );
-        task::spawn_blocking(move || listen_incoming_from_conn(conn, tx));
+        bundle_listeners
+            .lock()
+            .expect("Inbound bundle listener task set lock poisoned")
+            .spawn_blocking(move || listen_incoming_from_conn(conn, tx));
     }
 
     debug!("Inbound connection polling task stopped");
