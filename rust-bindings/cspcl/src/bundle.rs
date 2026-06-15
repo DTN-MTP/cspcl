@@ -30,12 +30,15 @@ impl Cspcl {
             .map_err(Error::from_raw)
         {
             Ok(_) => debug!("Bundle sent to {}:{}", dest_addr, dest_port),
-            Err(e) => error!(
-                "Could not send bundle to {}:{} : {}",
-                dest_addr,
-                dest_port,
-                e.to_string()
-            ),
+            Err(e) => {
+                error!(
+                    "Could not send bundle to {}:{} : {}",
+                    dest_addr,
+                    dest_port,
+                    e.to_string()
+                );
+                return Err(e);
+            }
         };
 
         Ok(())
