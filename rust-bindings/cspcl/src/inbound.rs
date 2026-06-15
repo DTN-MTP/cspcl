@@ -6,6 +6,7 @@ use std::{
     time::Duration,
 };
 use tokio::task::{self, JoinHandle, JoinSet};
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, trace, warn};
 
 use crate::{Bundle, Cspcl, Error, Result};
@@ -14,6 +15,7 @@ pub struct InboundStream {
     rx: mpsc::UnboundedReceiver<Result<Bundle>>,
     connection_listener: JoinHandle<()>,
     bundle_listeners: Arc<Mutex<JoinSet<()>>>,
+    inbound_shutdown: CancellationToken,
 }
 
 impl Stream for InboundStream {
@@ -47,21 +49,27 @@ impl InboundStream {
         debug!("Creating inbound stream");
 
         let bundle_listeners = Arc::new(Mutex::new(JoinSet::new()));
+        let inbound_shutdown = cspcl.inbound_shutdown_token();
         let connection_listener = task::spawn({
             let bundle_listeners = Arc::clone(&bundle_listeners);
-            async move { poll_inbound_connections(cspcl, tx, bundle_listeners).await }
+            let inbound_shutdown = inbound_shutdown.clone();
+            async move { poll_inbound_connections(cspcl, tx, bundle_listeners, inbound_shutdown).await }
         });
 
         Self {
             rx,
             connection_listener,
             bundle_listeners,
+            inbound_shutdown,
         }
     }
 }
 
 impl Drop for InboundStream {
     fn drop(&mut self) {
+        debug!("Cancelling inbound stream tasks");
+        self.inbound_shutdown.cancel();
+
         debug!("Aborting inbound connection polling task");
         self.connection_listener.abort();
 
@@ -77,16 +85,27 @@ async fn poll_inbound_connections(
     cspcl: Arc<Cspcl>,
     tx: mpsc::UnboundedSender<Result<Bundle>>,
     bundle_listeners: Arc<Mutex<JoinSet<()>>>,
+    inbound_shutdown: CancellationToken,
 ) {
     debug!("Inbound connection polling task started");
 
     loop {
+        if inbound_shutdown.is_cancelled() {
+            break;
+        }
+
         debug!("Polling incoming connection");
         let conn = match cspcl.poll_connection() {
             Ok(conn) => conn,
             Err(Error::Timeout) => {
+                if inbound_shutdown.is_cancelled() {
+                    break;
+                }
                 warn!("Timed out while waiting for new connection");
-                tokio::time::sleep(Duration::from_millis(500)).await;
+                tokio::select! {
+                    () = inbound_shutdown.cancelled() => break,
+                    () = tokio::time::sleep(Duration::from_millis(500)) => {}
+                }
                 continue;
             }
             Err(error) => {
@@ -103,6 +122,7 @@ async fn poll_inbound_connections(
         };
 
         let tx = tx.clone();
+        let listener_shutdown = inbound_shutdown.child_token();
         debug!(
             "New connection made with {}:{}",
             conn.src_addr, conn.src_port
@@ -110,7 +130,7 @@ async fn poll_inbound_connections(
         bundle_listeners
             .lock()
             .expect("Inbound bundle listener task set lock poisoned")
-            .spawn_blocking(move || listen_incoming_from_conn(conn, tx));
+            .spawn_blocking(move || listen_incoming_from_conn(conn, tx, listener_shutdown));
     }
 
     debug!("Inbound connection polling task stopped");
@@ -119,6 +139,7 @@ async fn poll_inbound_connections(
 fn listen_incoming_from_conn(
     conn: cspcl_sys::types::AcceptedConn,
     tx: mpsc::UnboundedSender<Result<Bundle>>,
+    inbound_shutdown: CancellationToken,
 ) {
     debug!(
         src_addr = conn.src_addr,
@@ -127,6 +148,10 @@ fn listen_incoming_from_conn(
     );
 
     loop {
+        if inbound_shutdown.is_cancelled() {
+            break;
+        }
+
         match recv_bundle_from_conn(conn) {
             Ok(bundle) => {
                 debug!(
@@ -140,6 +165,9 @@ fn listen_incoming_from_conn(
                 trace!("Bundle sent to inbound stream");
             }
             Err(Error::Timeout) => {
+                if inbound_shutdown.is_cancelled() {
+                    break;
+                }
                 warn!("Timed out while waiting for new bundle");
                 continue;
             }

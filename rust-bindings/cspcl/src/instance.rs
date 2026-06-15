@@ -1,6 +1,7 @@
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use cspcl_sys::types::AcceptedConn;
+use tokio_util::sync::CancellationToken;
 
 use crate::error::{Error, Result, from_sys_result};
 
@@ -8,6 +9,7 @@ use crate::error::{Error, Result, from_sys_result};
 #[derive(Clone)]
 pub struct Cspcl {
     inner: Arc<RwLock<cspcl_sys::cspcl_t>>,
+    inbound_shutdown: CancellationToken,
 }
 
 impl Cspcl {
@@ -23,11 +25,13 @@ impl Cspcl {
 
         Ok(Cspcl {
             inner: Arc::new(RwLock::new(cspcl)),
+            inbound_shutdown: CancellationToken::new(),
         })
     }
 
     /// Close the receive socket
     pub fn close_rx_socket(self) {
+        self.inbound_shutdown.cancel();
         let mut cspcl = self.inner_mut();
         cspcl_sys::types::close_rx_socket(&mut cspcl);
     }
@@ -61,11 +65,45 @@ impl Cspcl {
     pub(crate) fn inner(&self) -> RwLockReadGuard<'_, cspcl_sys::cspcl_t> {
         self.inner.read().expect("CSPCL instance lock poisoned")
     }
+
+    pub(crate) fn inbound_shutdown_token(&self) -> CancellationToken {
+        self.inbound_shutdown.clone()
+    }
+
+    #[cfg(test)]
+    fn from_config_without_init_for_test(config: cspcl_sys::types::CspclConfig) -> Self {
+        Cspcl {
+            inner: Arc::new(RwLock::new(cspcl_sys::types::configure(&config))),
+            inbound_shutdown: CancellationToken::new(),
+        }
+    }
 }
 
 impl Drop for Cspcl {
     fn drop(&mut self) {
+        self.inbound_shutdown.cancel();
         let mut cspcl = self.inner_mut();
         cspcl_sys::types::cleanup(&mut cspcl);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn drop_cancels_inbound_shutdown_token() {
+        let cspcl = Cspcl::from_config_without_init_for_test(cspcl_sys::types::CspclConfig {
+            local_addr: 4,
+            csp_port: 10,
+            interface: cspcl_sys::types::InterfaceConfig::Loopback,
+        });
+        let inbound_shutdown = cspcl.inbound_shutdown_token();
+
+        assert!(!inbound_shutdown.is_cancelled());
+
+        drop(cspcl);
+
+        assert!(inbound_shutdown.is_cancelled());
     }
 }
