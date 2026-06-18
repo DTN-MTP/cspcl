@@ -1,9 +1,9 @@
-use std::ffi::{CStr, c_char};
+use std::ffi::CStr;
 
 use crate::{
-    csp_conn_t, cspcl_accept_conn, cspcl_addr_to_endpoint, cspcl_cleanup, cspcl_close_rx_socket,
-    cspcl_conn_pool_add, cspcl_conn_pool_t, cspcl_endpoint_to_addr, cspcl_error_t, cspcl_init,
-    cspcl_recv_bundle, cspcl_recv_bundle_from_conn, cspcl_send_bundle, cspcl_strerror, cspcl_t,
+    csp_conn_t, cspcl_accept_conn, cspcl_cleanup, cspcl_close_rx_socket, cspcl_conn_pool_add,
+    cspcl_conn_pool_t, cspcl_error_t, cspcl_init, cspcl_recv_bundle, cspcl_recv_bundle_from_conn,
+    cspcl_send_bundle, cspcl_strerror, cspcl_t,
 };
 
 pub fn init(cspcl: &mut cspcl_t) -> cspcl_error_t {
@@ -94,14 +94,6 @@ pub unsafe fn recv_bundle_from_conn(
         )
     };
     (code, len, src_addr, src_port)
-}
-
-pub fn endpoint_to_addr(endpoint: &CStr) -> u8 {
-    unsafe { cspcl_endpoint_to_addr(endpoint.as_ptr()) }
-}
-
-pub fn addr_to_endpoint(addr: u8, buffer: &mut [u8]) -> cspcl_error_t {
-    unsafe { cspcl_addr_to_endpoint(addr, buffer.as_mut_ptr() as *mut c_char, buffer.len()) }
 }
 
 pub fn error_message(code: cspcl_error_t) -> &'static str {
