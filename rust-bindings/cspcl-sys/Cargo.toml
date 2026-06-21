@@ -1,7 +1,7 @@
 [package]
 name = "cspcl-sys"
 version = "0.3.0"
-edition = "2024"
+edition.workspace = true
 description = "Raw FFI bindings for the cspcl library"
 authors = ["cspcl contributors"]
 license = "MIT"
