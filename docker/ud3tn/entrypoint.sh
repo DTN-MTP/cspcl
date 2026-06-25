@@ -12,6 +12,8 @@ CSP_PORT=${CSP_PORT:-10}
 TRANSPORT=${TRANSPORT:-zmqhub}
 UD3TN_EID=${UD3TN_EID:-dtn://node.dtn/}
 UD3TN_LOG_LEVEL=${UD3TN_LOG_LEVEL:-}
+ASABR_ENABLED=${ASABR_ENABLED:-0}
+BDM_SECRET=${BDM_SECRET:-}
 
 echo "=================================================="
 echo "  uD3TN with CSPCL - Docker Container"
@@ -20,6 +22,7 @@ echo "CSP Address:    ${CSP_ADDR}"
 echo "CSP Port:       ${CSP_PORT}"
 echo "Transport:      ${TRANSPORT}"
 echo "uD3TN EID:      ${UD3TN_EID}"
+echo "ASABR Enabled:  ${ASABR_ENABLED}"
 echo "=================================================="
 
 # Clean up any previous socket files
@@ -57,6 +60,15 @@ fi
 UD3TN_ARGS=(--eid "${UD3TN_EID}" --cla "${CLA_SPEC}")
 if [ -n "${UD3TN_LOG_LEVEL}" ]; then
     UD3TN_ARGS+=(-L "${UD3TN_LOG_LEVEL}")
+fi
+
+if [ "${ASABR_ENABLED}" = "1" ]; then
+    echo "External dispatch mode enabled (A-SABR BDM)"
+    UD3TN_ARGS+=(-d)
+    if [ -n "${BDM_SECRET}" ]; then
+        export _UD3TN_BDM_SECRET="${BDM_SECRET}"
+        UD3TN_ARGS+=(-x _UD3TN_BDM_SECRET)
+    fi
 fi
 
 exec /opt/ud3tn-src/build/posix/ud3tn \

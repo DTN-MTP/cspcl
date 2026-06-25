@@ -1,0 +1,4 @@
+{
+    "dtn://a.dtn/": {"name": "a", "cla_addr": null},
+    "dtn://b.dtn/": {"name": "b", "cla_addr": "csp:2,10"}
+}

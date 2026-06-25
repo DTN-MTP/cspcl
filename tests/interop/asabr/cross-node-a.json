@@ -1,0 +1,8 @@
+{
+    "dtn://a.dtn/": {"name": "a", "cla_addr": null},
+    "dtn://b.dtn/": {"name": "b", "cla_addr": "csp:2,10"},
+    "dtn://c.dtn/": {"name": "c", "cla_addr": "csp:3,10"},
+    "dtn://d.dtn/": {"name": "d", "cla_addr": "csp:4,10"},
+    "ipn:3.0":      {"name": "c", "cla_addr": "csp:3,10"},
+    "ipn:4.0":      {"name": "d", "cla_addr": "csp:4,10"}
+}
