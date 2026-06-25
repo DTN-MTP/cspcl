@@ -77,18 +77,25 @@ Maps DTN node EIDs to A-SABR node names and CSP CLA addresses. Each µD3TN node 
 
 **File:** `docker/ud3tn/entrypoint.sh`
 
-Add support for the `ASABR_ENABLED` environment variable. When set to `1`, pass `-d` to µD3TN to disable the internal Router Agent, and optionally `-x` for BDM authentication in release builds.
+Add `ASABR_ENABLED` and `BDM_SECRET` to the environment variable block at the top of the script, then add a guard before `exec` that passes `-d` to µD3TN to disable the internal Router Agent and optionally `-x` for BDM authentication in release builds.
 
 ```bash
-# Add after building UD3TN_ARGS, before exec:
-if [ "${ASABR_ENABLED:-0}" = "1" ]; then
+# At the top, with the other env var defaults:
+ASABR_ENABLED=${ASABR_ENABLED:-0}
+BDM_SECRET=${BDM_SECRET:-}
+
+# After building UD3TN_ARGS, before exec:
+if [ "${ASABR_ENABLED}" = "1" ]; then
+    echo "External dispatch mode enabled (A-SABR BDM)"
     UD3TN_ARGS+=(-d)
-    if [ -n "${BDM_SECRET:-}" ]; then
-        export _BDM_SECRET_VALUE="${BDM_SECRET}"
-        UD3TN_ARGS+=(-x _BDM_SECRET_VALUE)
+    if [ -n "${BDM_SECRET}" ]; then
+        export _UD3TN_BDM_SECRET="${BDM_SECRET}"
+        UD3TN_ARGS+=(-x _UD3TN_BDM_SECRET)
     fi
 fi
 ```
+
+Note the env var name passed to `-x` is `_UD3TN_BDM_SECRET` — µD3TN reads the secret from the environment variable whose *name* is given to `-x`, so the export must match exactly.
 
 Nothing else in the entrypoint changes. The socket path (`/var/run/ud3tn/ud3tn.aap2.socket`) and CLA configuration remain the same.
 
@@ -191,39 +198,73 @@ contact 3 1 0 9999999999 100000 0
 
 The `asabr_bdm` image requires:
 1. A Rust toolchain to build the `a-sabr-python` native extension via `maturin`
-2. The Python packages from `asabr_bdm/pyproject.toml` (`pyd3tn`, `ud3tn-utils`, `a-sabr-python`)
+2. `pyd3tn` and `python-ud3tn-utils` from the µD3TN source tree
+3. The `a-sabr-python` Rust extension (built from the `feat/asabr-bdm` fork branch)
+4. The `asabr_bdm` Python package
 
 **New file: `docker/asabr-bdm/Dockerfile`**
 
 ```dockerfile
-ARG BASE_IMAGE=cspcl-base:latest
-FROM ${BASE_IMAGE}
+FROM ubuntu:22.04
 
 LABEL description="A-SABR Bundle Dispatch Module for µD3TN"
 
-# Rust toolchain (required by maturin to compile a-sabr-python)
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-    | sh -s -- -y --default-toolchain stable --profile minimal
-ENV PATH="/root/.cargo/bin:${PATH}"
+ENV DEBIAN_FRONTEND=noninteractive
 
-RUN pip3 install --no-cache-dir maturin
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential python3 python3-pip python3-dev git wget ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-# Build a-sabr-python Rust extension
-COPY external/a-sabr-python /opt/a-sabr-python
+ENV RUSTUP_HOME=/opt/rust/rustup \
+    CARGO_HOME=/opt/rust/cargo \
+    PATH="/opt/rust/cargo/bin:${PATH}"
+
+RUN wget -qO- https://sh.rustup.rs \
+    | sh -s -- -y --default-toolchain stable --profile minimal \
+    && cargo --version
+
+# cbor2: pyd3tn/bundle7.py; jsonschema: ud3tn_utils/config.py; protobuf: ud3tn_utils/aap2
+RUN pip3 install --no-cache-dir maturin patchelf cbor2 jsonschema protobuf
+
+# pyd3tn and python-ud3tn-utils from µD3TN v0.14.5.
+# These packages have broken pip metadata at v0.14.5 — pip silently no-ops on them.
+# The modules are pure Python so we add their source dirs to PYTHONPATH directly.
+RUN git clone --depth 1 --branch v0.14.5 \
+    https://gitlab.com/d3tn/ud3tn.git /opt/ud3tn-src
+ENV PYTHONPATH="/opt/ud3tn-src/pyd3tn:/opt/ud3tn-src/python-ud3tn-utils"
+
+# a-sabr-python: use the feat/asabr-bdm fork branch.
+# The upstream main branch is missing get_all_nodes() and other methods
+# required by asabr-bdm/main.py.
+RUN git clone --depth 1 --branch feat/asabr-bdm \
+    https://github.com/theotchlx/A-SABR-Python.git /opt/a-sabr-python
 WORKDIR /opt/a-sabr-python
-RUN maturin build --release -o /tmp/wheels && \
-    pip3 install --no-cache-dir /tmp/wheels/*.whl
+RUN maturin build --release --interpreter python3 -o /tmp/a-sabr-wheels
+RUN pip3 install --no-cache-dir --ignore-requires-python /tmp/a-sabr-wheels/*.whl
 
-# Install asabr_bdm and its Python dependencies
-COPY external/asabr_bdm /opt/asabr-bdm
+# asabr-bdm: pyproject.toml uses [tool.uv.sources] path overrides that pip
+# ignores; all dependencies are already installed above so --no-deps is safe.
+RUN git clone --depth 1 \
+    https://github.com/theotchlx/asabr_bdm.git /opt/asabr-bdm
 WORKDIR /opt/asabr-bdm
-RUN pip3 install --no-cache-dir -e .
+RUN pip3 install --no-cache-dir --no-deps --ignore-requires-python .
+
+# Smoke-test at build time: catches missing deps before they surface at runtime.
+RUN python3 -c "from a_sabr_python import AsabrRouter, AsabrBundle; \
+    from ud3tn_utils.aap2 import AAP2UnixClient, AuthType; \
+    from pyd3tn.eid import get_node_id; print('imports OK')"
 
 COPY docker/asabr-bdm/entrypoint.sh /opt/entrypoint.sh
 RUN chmod +x /opt/entrypoint.sh
 
+ENV PYTHONUNBUFFERED=1
+
 ENTRYPOINT ["/opt/entrypoint.sh"]
 ```
+
+> **Why not `cspcl-base`?** The BDM has no dependency on libcsp or the CSP CLA, and the base image's Python environment lacks the packages needed by `pyd3tn`/`ud3tn-utils`. Starting from `ubuntu:22.04` keeps the build self-contained.
+
+> **Why `feat/asabr-bdm`?** The upstream `A-SABR-Python` `main` branch does not expose `get_all_nodes()` and related methods that `asabr_bdm/main.py` requires. The fork branch adds these.
 
 **New file: `docker/asabr-bdm/entrypoint.sh`**
 
@@ -235,12 +276,16 @@ SOCKET="${UD3TN_SOCKET:-/var/run/ud3tn/ud3tn.aap2.socket}"
 CP_FILE="${ASABR_CP_FILE:-/config/contact_plan.cp}"
 EID_MAP="${ASABR_EID_MAP:-/config/eid_map.json}"
 ROUTER_TYPE="${ASABR_ROUTER_TYPE:-VolCgrHybridParenting}"
+VERBOSITY="${ASABR_VERBOSITY:-1}"
 
 echo "Waiting for µD3TN socket at ${SOCKET}..."
 until [ -S "${SOCKET}" ]; do sleep 1; done
-echo "Socket ready. Starting ASABR BDM..."
+echo "Socket ready."
 
-ARGS=(--socket "${SOCKET}" "${CP_FILE}" "${EID_MAP}" --router-type "${ROUTER_TYPE}")
+VERBOSITY_ARGS=()
+for ((i=0; i<VERBOSITY; i++)); do VERBOSITY_ARGS+=(-v); done
+
+ARGS=("${VERBOSITY_ARGS[@]}" --socket "${SOCKET}" "${CP_FILE}" "${EID_MAP}" --router-type "${ROUTER_TYPE}")
 if [ -n "${BDM_SECRET:-}" ]; then
     ARGS+=(--secret "${BDM_SECRET}")
 fi
@@ -248,7 +293,7 @@ fi
 exec python3 /opt/asabr-bdm/main.py "${ARGS[@]}"
 ```
 
-> **Build context:** `A-SABR-Python` and `asabr_bdm` live outside `cspcl/`. Add them as git submodules at `cspcl/external/a-sabr-python` and `cspcl/external/asabr_bdm`, or symlink them, so the Docker build context can reach them.
+> **`ASABR_VERBOSITY`:** `asabr_bdm/main.py` uses Python's `logging` module with a default level of `WARNING`. At `WARN` level all informational messages — including `"Registered as BDM with µD3TN"` and `"Link UP: …"` — are silenced. The entrypoint defaults `ASABR_VERBOSITY=1` (INFO), which maps to one `-v` flag and makes the BDM's connection status visible. Set to `0` to suppress, `2` for DEBUG.
 
 ---
 
@@ -446,7 +491,7 @@ The following describes what happens when a bundle is sent from Node A to Node B
 
 | # | Question | Impact | Resolution |
 |---|----------|--------|------------|
-| 1 | **Build context for external sources** | `A-SABR-Python` and `asabr_bdm` live outside `cspcl/`. The Docker build needs them reachable. | Use git submodules at `cspcl/external/` (recommended) or widen the build context to the parent `DTN/` directory. |
+| 1 | **Build context for external sources** | `A-SABR-Python` and `asabr_bdm` are cloned from GitHub during the Docker build, so no local submodule or widened build context is needed. | Resolved: the Dockerfile clones `feat/asabr-bdm` branch of `A-SABR-Python` and `main` of `asabr_bdm` directly. Pin to a commit SHA for reproducible builds once the branches stabilize. |
 | 2 | **BDM secret in debug vs release builds** | µD3TN debug builds may not enforce `-x`. Release builds require it or the BDM connection is rejected. | Test with a debug build first; add `BDM_SECRET` env var and `-x` flag for release builds. |
 | 3 | **IPN EID normalization** | Cross-integration routes to `ipn:4.55`. The BDM must normalize this to `ipn:4.0` via `pyd3tn.eid.get_node_id()` for the EID map lookup to match. | Run BDM with `-vv` and inspect the first dispatch event log line to confirm the normalized EID. |
 | 4 | **FIB link UP timing** | The test sends a bundle shortly after the BDM starts. The link scheduler sends LINK_STATUS_UP immediately for `t=0` contacts, but the FIB update must complete before the bundle arrives. | The BDM readiness probe (grep for "Listening for dispatch events") is a sufficient gate; the link UP is sent before the main loop starts listening. Add a short `sleep 1` after the probe if race conditions appear. |
@@ -469,8 +514,8 @@ The following describes what happens when a bundle is sent from Node A to Node B
 | `tests/interop/asabr/cross-integration.cp` | Contact plan for 4-node cross test |
 | `tests/interop/asabr/cross-node-a.json` | EID map for µD3TN Node A (cross test) |
 | `tests/interop/asabr/cross-node-b.json` | EID map for µD3TN Node B (cross test) |
-| `external/a-sabr-python` | Git submodule (A-SABR Python bindings) |
-| `external/asabr_bdm` | Git submodule (BDM Python package) |
+| `external/a-sabr-python` | Git submodule (A-SABR Python bindings) — optional; the Dockerfile clones directly from GitHub |
+| `external/asabr_bdm` | Git submodule (BDM Python package) — optional; the Dockerfile clones directly from GitHub |
 
 ### Modified files
 
