@@ -38,6 +38,8 @@ pub enum Error {
     PoolFull,
     /// Error code returned by CSPCL that this crate does not know yet
     UnknownError(cspcl_sys::cspcl_error_t),
+    /// Error returned when the address parsing fails
+    ParseAddress,
 }
 
 impl Error {
@@ -92,6 +94,7 @@ impl Error {
             Self::CspCanNotSupported => "CAN support not compiled in",
             Self::CspRouter => "CSP router task start failed",
             Self::PoolFull => "Connection pool full",
+            Self::ParseAddress => "Could not parse csp address",
             Self::UnknownError(_) => "Unknown error",
         }
     }
@@ -115,6 +118,7 @@ impl Error {
             Self::CspCanNotSupported => cspcl_sys::cspcl_error_t_CSPCL_ERR_CSP_CAN_NOT_SUPPORTED,
             Self::CspRouter => cspcl_sys::cspcl_error_t_CSPCL_ERR_CSP_ROUTER,
             Self::PoolFull => cspcl_sys::cspcl_error_t_CSPCL_ERR_POOL_FULL,
+            Self::ParseAddress => 420,
             Self::UnknownError(code) => *code,
         }
     }

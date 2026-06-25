@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use tracing::{debug, error};
 
-use crate::InboundStream;
 use crate::error::{Error, Result};
 use crate::instance::Cspcl;
+use crate::{CspAddress, InboundStream};
 
 impl Cspcl {
     /// Send a bundle to a remote CSP address
@@ -19,22 +19,22 @@ impl Cspcl {
     ///
     /// # Returns
     /// Ok(()) on success, or Err(Error) if the operation failed
-    pub fn send_bundle(&mut self, bundle: &[u8], dest_addr: u8, dest_port: u8) -> Result<()> {
+    pub fn send_bundle(&mut self, bundle: &[u8], dest: CspAddress) -> Result<()> {
         if bundle.is_empty() {
             return Err(Error::InvalidParam);
         }
 
         let mut inner = self.inner_mut();
-        debug!("Sending bundle to {}:{}", dest_addr, dest_port);
-        match cspcl_sys::types::send_bundle(&mut inner, bundle, dest_addr, dest_port)
+        debug!("Sending bundle to {}:{}", dest.addr, dest.port);
+        match cspcl_sys::types::send_bundle(&mut inner, bundle, dest.addr, dest.port)
             .map_err(Error::from_raw)
         {
-            Ok(_) => debug!("Bundle sent to {}:{}", dest_addr, dest_port),
+            Ok(_) => debug!("Bundle sent to {}:{}", dest.addr, dest.port),
             Err(e) => {
                 error!(
                     "Could not send bundle to {}:{} : {}",
-                    dest_addr,
-                    dest_port,
+                    dest.addr,
+                    dest.port,
                     e.to_string()
                 );
                 return Err(e);

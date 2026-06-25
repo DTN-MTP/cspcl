@@ -4,12 +4,14 @@
 //! enabling transmission of BP7 bundles over CSP UDP.
 
 // Module declarations
+mod address;
 mod bundle;
 mod error;
 mod inbound;
 mod instance;
 
 // Public exports
+pub use address::CspAddress;
 pub use cspcl_sys::types::InterfaceConfig as Interface;
 pub use error::{Error, Result};
 pub use inbound::InboundStream;

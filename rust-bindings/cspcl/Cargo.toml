@@ -10,6 +10,7 @@ readme = "README.md"
 keywords = ["cspcl"]
 
 [dependencies]
+bytes = "1.12.0"
 cspcl-sys = { version = "0.3", path = "../cspcl-sys" }
 futures = { version = "0.3", features = ["alloc"] }
 tokio = { version = "1.52.3", features = ["macros", "rt", "time"] }
