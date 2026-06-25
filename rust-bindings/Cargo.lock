@@ -282,6 +282,7 @@ dependencies = [
 name = "cspcl"
 version = "0.4.0"
 dependencies = [
+ "bytes",
  "cspcl-sys",
  "futures",
  "tokio",
@@ -546,7 +547,7 @@ dependencies = [
 [[package]]
 name = "hardy-async"
 version = "0.1.0"
-source = "git+https://github.com/hugoponthieu/hardy.git?branch=cspcl-patches#78c836bd85286bb40797db36bf9f605217410d8e"
+source = "git+https://github.com/ricktaylor/hardy.git#6ca0ad150e66f6ceffa8d70540c25eb2d8ae8b97"
 dependencies = [
  "async-trait",
  "flume",
@@ -562,7 +563,7 @@ dependencies = [
 [[package]]
 name = "hardy-bpa"
 version = "0.1.0"
-source = "git+https://github.com/hugoponthieu/hardy.git?branch=cspcl-patches#78c836bd85286bb40797db36bf9f605217410d8e"
+source = "git+https://github.com/ricktaylor/hardy.git#6ca0ad150e66f6ceffa8d70540c25eb2d8ae8b97"
 dependencies = [
  "arc-swap",
  "base64",
@@ -587,7 +588,7 @@ dependencies = [
 [[package]]
 name = "hardy-bpv7"
 version = "0.5.0"
-source = "git+https://github.com/hugoponthieu/hardy.git?branch=cspcl-patches#78c836bd85286bb40797db36bf9f605217410d8e"
+source = "git+https://github.com/ricktaylor/hardy.git#6ca0ad150e66f6ceffa8d70540c25eb2d8ae8b97"
 dependencies = [
  "aes-gcm",
  "aes-kw",
@@ -611,7 +612,7 @@ dependencies = [
 [[package]]
 name = "hardy-cbor"
 version = "1.0.0"
-source = "git+https://github.com/hugoponthieu/hardy.git?branch=cspcl-patches#78c836bd85286bb40797db36bf9f605217410d8e"
+source = "git+https://github.com/ricktaylor/hardy.git#6ca0ad150e66f6ceffa8d70540c25eb2d8ae8b97"
 dependencies = [
  "half",
  "num-traits",
@@ -623,6 +624,7 @@ dependencies = [
 name = "hardy-cspcl"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "cspcl",
  "futures-util",
  "hardy-async",
@@ -637,7 +639,7 @@ dependencies = [
 [[package]]
 name = "hardy-eid-patterns"
 version = "0.3.0"
-source = "git+https://github.com/hugoponthieu/hardy.git?branch=cspcl-patches#78c836bd85286bb40797db36bf9f605217410d8e"
+source = "git+https://github.com/ricktaylor/hardy.git#6ca0ad150e66f6ceffa8d70540c25eb2d8ae8b97"
 dependencies = [
  "glob",
  "hardy-bpv7",

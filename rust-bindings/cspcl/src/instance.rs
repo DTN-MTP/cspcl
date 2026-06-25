@@ -3,7 +3,10 @@ use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use cspcl_sys::types::AcceptedConn;
 use tokio_util::sync::CancellationToken;
 
-use crate::error::{Error, Result, from_sys_result};
+use crate::{
+    CspAddress,
+    error::{Error, Result, from_sys_result},
+};
 
 /// Safe wrapper for CSPCL instance
 #[derive(Clone)]
@@ -14,10 +17,10 @@ pub struct Cspcl {
 
 impl Cspcl {
     /// Initialize a new CSPCL instance with local CSP address
-    pub fn new(local_addr: u8, local_port: u8, interface: super::Interface) -> Result<Self> {
+    pub fn new(local: CspAddress, interface: super::Interface) -> Result<Self> {
         let config = cspcl_sys::types::CspclConfig {
-            local_addr,
-            csp_port: local_port,
+            local_addr: local.addr,
+            csp_port: local.port,
             interface,
         };
 
@@ -44,11 +47,6 @@ impl Cspcl {
             accepted_conn,
         ))?;
         Ok(accepted_conn)
-    }
-
-    /// Get local CSP address
-    pub fn local_addr(&self) -> u8 {
-        self.inner().local_addr
     }
 
     /// Check if initialized
