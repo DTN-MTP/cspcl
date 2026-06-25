@@ -637,6 +637,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "hardy-cspcla"
+version = "0.1.0"
+
+[[package]]
 name = "hardy-eid-patterns"
 version = "0.3.0"
 source = "git+https://github.com/ricktaylor/hardy.git#6ca0ad150e66f6ceffa8d70540c25eb2d8ae8b97"
