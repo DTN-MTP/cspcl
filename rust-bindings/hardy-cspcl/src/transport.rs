@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cspcl_bindings::{Error as CspclError, InboundStream};
+use cspcl_bindings::{CspAddress, Error as CspclError, InboundStream};
 use hardy_async::sync::spin::RwLock;
 use tracing::debug;
 
@@ -27,13 +27,12 @@ impl Transport {
     pub async fn send_bundle(
         &self,
         payload: impl Into<Vec<u8>>,
-        addr: u8,
-        port: u8,
+        dest: CspAddress,
     ) -> Result<(), Error> {
-        debug!("Try sending bundle to: {}:{}", addr, port);
+        debug!("Try sending bundle to: {}:{}", dest.addr, dest.port);
         self.cspcl
             .write()
-            .send_bundle(&payload.into(), addr, port)
+            .send_bundle(&payload.into(), dest)
             .map_err(Error::Send)
     }
 

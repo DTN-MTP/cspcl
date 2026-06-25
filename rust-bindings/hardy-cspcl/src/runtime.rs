@@ -1,4 +1,4 @@
-use cspcl_bindings::InboundStream;
+use cspcl_bindings::{CspAddress, InboundStream};
 use futures_util::TryStreamExt;
 use hardy_async::CancellationToken;
 use std::{collections::HashMap, sync::Arc};
@@ -6,7 +6,7 @@ use tracing::{debug, info, warn};
 
 use hardy_bpa::{
     Bytes,
-    cla::{ClaAddress, CspAddress, Sink},
+    cla::{ClaAddress, Sink},
 };
 use hardy_bpv7::eid::NodeId;
 use tokio::task::{self, JoinHandle};
@@ -35,8 +35,9 @@ impl Runtime {
 
         let csp_to_addr_iter = self.csp_to_endpoint.iter();
         for csp_node in csp_to_addr_iter {
+            let raw_addr: Bytes = Into::into(*csp_node.0);
             match sink
-                .add_peer(ClaAddress::Csp(*csp_node.0), &[csp_node.1.clone()])
+                .add_peer(ClaAddress::Private(raw_addr), &[csp_node.1.clone()])
                 .await
             {
                 Ok(true) => debug!(
@@ -88,7 +89,11 @@ impl Runtime {
                 };
                 let node_id = csp_to_endpoint.get(&csp_peer_addr);
                 match sink
-                    .dispatch(bundle_data, node_id, Some(&ClaAddress::Csp(csp_peer_addr)))
+                    .dispatch(
+                        bundle_data,
+                        node_id,
+                        Some(&ClaAddress::Private(csp_peer_addr.into())),
+                    )
                     .await
                 {
                     Ok(()) => info!(
