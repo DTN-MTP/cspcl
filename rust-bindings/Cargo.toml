@@ -1,5 +1,8 @@
 [workspace]
 resolver = "3"
-members = ["cspcl", "cspcl-sys", "hardy-cspcl", "hardy-cspcla"]
+members = ["cspcl", "cspcl-sys", "hardy-cspcl", "hardy-cspcl-server"]
 [workspace.package]
 edition = "2024"
+
+[workspace.dependencies]
+clap = { version = "4.6.1", features = ["derive"] }
