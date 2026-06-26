@@ -1,0 +1,10 @@
+[package]
+name = "hardy-cspcl-server"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+hardy-bpa = { git = "https://github.com/ricktaylor/hardy.git" }
+hardy-proto = { git = "https://github.com/ricktaylor/hardy.git" }
+hardy-cspcl = { path = "../hardy-cspcl" }
+clap.workspace = true
