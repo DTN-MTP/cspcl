@@ -1,19 +1,20 @@
 mod cla;
 mod config;
-mod runtime;
+mod dispatcher;
 mod transport;
 
 pub use config::{Config, Interface, PeerConfig};
 
 use cspcl_bindings::CspAddress;
+use hardy_async::CancellationToken;
 use hardy_async::sync::spin::{Once, RwLock};
-use hardy_bpa::bpa::BpaRegistration;
+use hardy_bpa::cla::Sink;
 use hardy_bpv7::eid::NodeId;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::debug;
 
-use crate::runtime::Runtime;
+use crate::dispatcher::Dispatcher;
 use crate::transport::Transport;
 
 #[derive(thiserror::Error, Debug)]
@@ -24,12 +25,16 @@ pub enum Error {
     Registration(#[from] hardy_bpa::cla::Error),
     #[error("could not create cspcl: {0}")]
     CscplInit(#[from] cspcl_bindings::Error),
+    #[error("Could not create dispatcher: {0}")]
+    Dispatcher(String),
 }
 
 pub struct Cla {
+    csp_to_endpoint: HashMap<CspAddress, NodeId>,
     transport: transport::Transport,
-    runtime: RwLock<runtime::Runtime>,
-    sink: Once<Arc<dyn hardy_bpa::cla::Sink>>,
+    cancel_dispatcher: CancellationToken,
+    sink: Once<Arc<dyn Sink>>,
+    dispatcher: Once<Dispatcher>,
 }
 
 impl Cla {
@@ -59,30 +64,43 @@ impl Cla {
             };
             csp_to_endpoint.insert(csp_address, peer.node_id.clone());
         }
-
         let transport = Transport::new(cspcl.clone());
-        let runtime = RwLock::new(Runtime::new(csp_to_endpoint));
 
         Ok(Self {
+            csp_to_endpoint,
             transport,
-            runtime,
+            cancel_dispatcher: CancellationToken::new(),
             sink: Once::new(),
+            dispatcher: Once::new(),
         })
     }
 
-    pub async fn register(
-        self: &Arc<Self>,
-        bpa: &dyn BpaRegistration,
-        name: String,
-        policy: Option<Arc<dyn hardy_bpa::policy::EgressPolicy>>,
-    ) -> Result<(), Error> {
-        bpa.register_cla(name, self.clone(), policy).await?;
-        Ok(())
+    pub fn build_dispatcher(&self) -> Result<&Dispatcher, Error> {
+        self.dispatcher.get().map_or_else(
+            || -> Result<&Dispatcher, Error> {
+                let inbound = self.transport.inbound_stream();
+                let sink = self
+                    .sink
+                    .get()
+                    .ok_or(Error::Dispatcher("Sink is not initialiazed".to_string()))?;
+
+                let dispatcher = self.dispatcher.call_once(|| {
+                    Dispatcher::new(
+                        self.csp_to_endpoint.clone(),
+                        self.cancel_dispatcher.clone(),
+                        inbound,
+                        sink.clone(),
+                    )
+                });
+                Ok(dispatcher)
+            },
+            Ok,
+        )
     }
 
-    pub async fn unregister(&self) {
+    pub async fn cleanup(&self) {
         debug!("Unregistering cspcl...");
         self.transport.cleanup();
-        self.runtime.write().stop();
+        self.cancel_dispatcher.cancel();
     }
 }
