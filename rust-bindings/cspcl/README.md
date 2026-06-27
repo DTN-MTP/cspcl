@@ -14,29 +14,40 @@ Safe Rust bindings for the CubeSat Space Protocol Convergence Layer (CSPCL), ena
 Add to `Cargo.toml`:
 ```toml
 [dependencies]
-cspcl = "0.1"
+cspcl = "0.4"
+futures = "0.3"
 ```
 
 Basic usage:
 ```rust
-use cspcl::Cspcl;
+use cspcl::{CspAddress, Cspcl, Interface};
+use futures::StreamExt;
 
-// Initialize with local CSP address
-let mut cspcl = Cspcl::init(1)?;
-cspcl.open_rx_socket()?;
+// Initialize with the local CSP address and port.
+let local = CspAddress { addr: 1, port: 10 };
+let mut cspcl = Cspcl::new(local, Interface::Loopback)?;
 
-// Send bundle to CSP address 2
+// Send a bundle to a remote CSP address and port.
 let bundle = vec![/* BP7 bundle data */];
-cspcl.send_bundle(&bundle, 2)?;
+let remote = CspAddress { addr: 2, port: 10 };
+cspcl.send_bundle(&bundle, remote)?;
 
-// Receive bundle (5 second timeout)
-let (data, src_addr) = cspcl.recv_bundle(5000)?;
-println!("Received {} bytes from CSP addr {}", data.len(), src_addr);
+// Consume the instance to create an inbound bundle stream.
+let mut inbound = cspcl.inbound();
+while let Some(bundle) = inbound.next().await {
+    let bundle = bundle?;
+    println!(
+        "Received {} bytes from CSP {}:{}",
+        bundle.data.len(),
+        bundle.src_addr,
+        bundle.src_port
+    );
+}
 ```
 
 ## Documentation
 
-See [main repository README](../../README.md) for complete documentation and examples.
+See the crate-level Rust documentation for the current public API.
 
 ## License
 

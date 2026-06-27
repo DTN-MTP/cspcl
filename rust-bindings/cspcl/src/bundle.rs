@@ -14,8 +14,7 @@ impl Cspcl {
     ///
     /// # Arguments
     /// * `bundle` - The serialized bundle data to send
-    /// * `dest_addr` - Destination CSP address
-    /// * `dest_port` - Destination CSP port
+    /// * `dest` - Destination CSP address and port
     ///
     /// # Returns
     /// Ok(()) on success, or Err(Error) if the operation failed

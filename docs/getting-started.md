@@ -99,23 +99,36 @@ Add the dependency:
 
 ```toml
 [dependencies]
-cspcl = "0.1"
+cspcl = "0.4"
+futures = "0.3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
 ```rust
-use cspcl::Cspcl;
+use cspcl::{CspAddress, Cspcl, Interface};
+use futures::StreamExt;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut node = Cspcl::init(1)?;
-    node.open_rx_socket()?;
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let local = CspAddress { addr: 1, port: 10 };
+    let mut node = Cspcl::new(local, Interface::Loopback)?;
 
     // Send
     let bundle: Vec<u8> = vec![/* BP7 bundle bytes */];
-    node.send_bundle(&bundle, 2)?;
+    let remote = CspAddress { addr: 2, port: 10 };
+    node.send_bundle(&bundle, remote)?;
 
-    // Receive (5 s timeout)
-    let (data, src_addr) = node.recv_bundle(5000)?;
-    println!("Received {} bytes from CSP addr {}", data.len(), src_addr);
+    // Receive from the inbound bundle stream.
+    let mut inbound = node.inbound();
+    while let Some(bundle) = inbound.next().await {
+        let bundle = bundle?;
+        println!(
+            "Received {} bytes from CSP {}:{}",
+            bundle.data.len(),
+            bundle.src_addr,
+            bundle.src_port
+        );
+    }
 
     Ok(())
 }
