@@ -44,7 +44,7 @@ impl Stream for InboundStream {
 }
 
 impl InboundStream {
-    pub async fn new(cspcl: Arc<Cspcl>) -> Self {
+    pub fn new(cspcl: Arc<Cspcl>) -> Self {
         let (tx, rx) = mpsc::unbounded();
         debug!("Creating inbound stream");
 

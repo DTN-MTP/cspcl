@@ -44,8 +44,8 @@ impl Cspcl {
         Ok(())
     }
 
-    pub async fn inbound(self) -> InboundStream {
+    pub fn inbound(self) -> InboundStream {
         let cspcl = Arc::new(self);
-        InboundStream::new(cspcl.clone()).await
+        InboundStream::new(cspcl.clone())
     }
 }
