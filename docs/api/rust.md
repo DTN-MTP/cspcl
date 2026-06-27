@@ -14,7 +14,8 @@ The `cspcl` crate provides safe, idiomatic Rust bindings over the C library.
 
 ```toml
 [dependencies]
-cspcl = "0.1"
+cspcl = "0.4"
+futures = "0.3"
 ```
 
 For production use with real libcsp set the `CSP_PATH` environment variable before building:
@@ -35,57 +36,78 @@ pub struct Cspcl { /* ... */ }
 Owns the underlying `cspcl_t` instance. Resources are released automatically when
 the value is dropped.
 
-### `Cspcl::init`
+### `Cspcl::new`
 
 ```rust
-pub fn init(local_addr: u8) -> Result<Self, CspclerError>
+pub fn new(local: CspAddress, interface: Interface) -> Result<Self>
 ```
 
-Initialize CSPCL with the given local CSP node address.
-
-### `open_rx_socket`
-
-```rust
-pub fn open_rx_socket(&mut self) -> Result<(), CspclerError>
-```
-
-Bind the receive socket to the Bundle Protocol port. Call once before `recv_bundle`.
+Initialize CSPCL with the local CSP node address, CSP port, and interface.
 
 ### `send_bundle`
 
 ```rust
-pub fn send_bundle(&self, bundle: &[u8], dest_addr: u8) -> Result<(), CspclerError>
+pub fn send_bundle(&mut self, bundle: &[u8], dest: CspAddress) -> Result<()>
 ```
 
-Send a serialized BP7 bundle to `dest_addr`. Fragmentation via SFP is handled internally.
+Send a serialized BP7 bundle to `dest`. Fragmentation via SFP is handled internally.
 
-### `recv_bundle`
+### `inbound`
 
 ```rust
-pub fn recv_bundle(&self, timeout_ms: u32) -> Result<(Vec<u8>, u8), CspclerError>
+pub fn inbound(self) -> InboundStream
 ```
 
-Receive a complete bundle. Returns `(bundle_bytes, src_addr)`. Blocks until data
-arrives or `timeout_ms` elapses.
+Consume the handle and return a stream of inbound bundles.
+
+### `close_rx_socket`
+
+```rust
+pub fn close_rx_socket(self)
+```
+
+Cancel inbound receive work and close the receive socket.
 
 ---
 
-## Address Translation
+## Public Types
 
 ```rust
-// IPN / DTN endpoint to CSP address
-pub fn endpoint_to_addr(endpoint_id: &str) -> u8
+pub struct CspAddress {
+    pub addr: u8,
+    pub port: u8,
+}
 
-// CSP address to IPN endpoint string ("ipn:X.0")
-pub fn addr_to_endpoint(addr: u8) -> Result<String, CspclerError>
+pub struct Bundle {
+    pub data: Vec<u8>,
+    pub src_addr: u8,
+    pub src_port: u8,
+}
+
+pub enum Interface {
+    Zmq(String),
+    Can(String),
+    Loopback,
+}
 ```
+
+`CspAddress` also converts to and from two-byte `bytes::Bytes` values in
+`[addr, port]` order.
+
+### `InboundStream`
+
+```rust
+pub struct InboundStream { /* ... */ }
+```
+
+Implements `futures::Stream<Item = Result<Bundle>>`.
 
 ---
 
-## `CspclerError`
+## `Error`
 
 ```rust
-pub enum CspclerError {
+pub enum Error {
     InvalidParam,
     NoMemory,
     BundleTooLarge,
@@ -95,7 +117,15 @@ pub enum CspclerError {
     Sfp,
     NotInitialized,
     Connection,
-    Unknown(i32),
+    CspInit,
+    CspStackInit,
+    CspZmqhubInit,
+    CspCanInit,
+    CspCanNotSupported,
+    CspRouter,
+    PoolFull,
+    UnknownError(cspcl_sys::cspcl_error_t),
+    ParseAddress,
 }
 ```
 
@@ -106,24 +136,31 @@ Implements `std::error::Error` and `std::fmt::Display`.
 ## Example
 
 ```rust
-use cspcl::{Cspcl, CspclerError};
+use cspcl::{CspAddress, Cspcl, Error, Interface};
+use futures::StreamExt;
 
-fn transfer_bundle(bundle: &[u8], dest: u8) -> Result<(), CspclerError> {
-    let cspcl = Cspcl::init(1)?;
+fn transfer_bundle(bundle: &[u8], dest: CspAddress) -> Result<(), Error> {
+    let local = CspAddress { addr: 1, port: 10 };
+    let mut cspcl = Cspcl::new(local, Interface::Loopback)?;
     cspcl.send_bundle(bundle, dest)?;
     Ok(())
 }
 
-fn receive_loop() -> Result<(), CspclerError> {
-    let mut cspcl = Cspcl::init(1)?;
-    cspcl.open_rx_socket()?;
+async fn receive_loop() -> Result<(), Error> {
+    let local = CspAddress { addr: 1, port: 10 };
+    let cspcl = Cspcl::new(local, Interface::Loopback)?;
+    let mut inbound = cspcl.inbound();
 
-    loop {
-        match cspcl.recv_bundle(10_000) {
-            Ok((data, src)) => println!("Bundle from {}: {} bytes", src, data.len()),
-            Err(CspclerError::Timeout) => continue,
-            Err(e) => return Err(e),
-        }
+    while let Some(bundle) = inbound.next().await {
+        let bundle = bundle?;
+        println!(
+            "Bundle from {}:{}: {} bytes",
+            bundle.src_addr,
+            bundle.src_port,
+            bundle.data.len()
+        );
     }
+
+    Ok(())
 }
 ```
