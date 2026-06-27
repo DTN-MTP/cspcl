@@ -1,43 +1,52 @@
 use cspcl_bindings::{CspAddress, InboundStream};
 use futures_util::TryStreamExt;
-use hardy_async::CancellationToken;
+use hardy_async::{CancellationToken, JoinHandle};
 use std::{collections::HashMap, sync::Arc};
 use tracing::{debug, info, warn};
 
 use hardy_bpa::{
     Bytes,
-    cla::{ClaAddress, Sink},
+    cla::{self, ClaAddress},
 };
 use hardy_bpv7::eid::NodeId;
-use tokio::task::{self, JoinHandle};
+use tokio::task::{self};
 
-pub struct Runtime {
-    pub csp_to_endpoint: HashMap<CspAddress, NodeId>,
-    polling_task: Option<JoinHandle<()>>,
+pub type DispatcherHandle = JoinHandle<()>;
+
+pub struct Dispatcher {
+    csp_to_endpoint: HashMap<CspAddress, NodeId>,
     cancel_polling_task: CancellationToken,
+    inbound: InboundStream,
+    sink: Arc<dyn cla::Sink>,
 }
 
-impl Runtime {
-    pub fn new(csp_to_endpoint: HashMap<CspAddress, NodeId>) -> Self {
+impl Dispatcher {
+    pub fn new(
+        csp_to_endpoint: HashMap<CspAddress, NodeId>,
+        cancel_polling_task: CancellationToken,
+        inbound: InboundStream,
+        sink: Arc<dyn cla::Sink>,
+    ) -> Self {
         Self {
             csp_to_endpoint,
-            polling_task: None,
-            cancel_polling_task: CancellationToken::new(),
+            cancel_polling_task,
+            inbound,
+            sink,
         }
     }
 
-    pub fn stop(&self) {
-        self.cancel_polling_task.cancel();
-    }
-
-    pub async fn start_inbound(&mut self, sink: Arc<dyn Sink>, mut inbound: InboundStream) {
+    pub async fn start_dispatch_inbound_bundle(mut self) -> DispatcherHandle {
         let csp_to_endpoint = self.csp_to_endpoint.clone();
-
         let csp_to_addr_iter = self.csp_to_endpoint.iter();
         for csp_node in csp_to_addr_iter {
             let raw_addr: Bytes = Into::into(*csp_node.0);
-            match sink
-                .add_peer(ClaAddress::Private(raw_addr), &[csp_node.1.clone()])
+            match self
+                .sink
+                .clone()
+                .add_peer(
+                    ClaAddress::Private(raw_addr),
+                    std::slice::from_ref(csp_node.1),
+                )
                 .await
             {
                 Ok(true) => debug!(
@@ -57,13 +66,14 @@ impl Runtime {
         let cancel_token = self.cancel_polling_task.child_token();
 
         info!("Starting polling task of inbound bundle stream");
+        let sink = self.sink.clone();
 
-        let polling_task = task::spawn(async move {
+        task::spawn(async move {
             loop {
                 debug!("Polling Hardy CSPCL inbound stream");
                 let next_bundle = tokio::select! {
                     _ = cancel_token.cancelled() => break,
-                    next_bundle = inbound.try_next() => next_bundle,
+                    next_bundle = self.inbound.try_next() => next_bundle,
                 };
                 let bundle = match next_bundle {
                     Ok(bundle) => match bundle {
@@ -108,7 +118,6 @@ impl Runtime {
                     ),
                 }
             }
-        });
-        self.polling_task = Some(polling_task);
+        })
     }
 }

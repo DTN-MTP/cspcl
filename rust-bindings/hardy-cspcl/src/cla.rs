@@ -3,7 +3,6 @@ use cspcl_bindings::CspAddress;
 use hardy_async::async_trait;
 use hardy_bpa::cla::{self, ClaAddress, ClaAddressType, ForwardBundleResult};
 use hardy_bpv7::eid::NodeId;
-use std::sync::Arc;
 use tracing::warn;
 
 use crate::Cla;
@@ -15,17 +14,11 @@ impl cla::Cla for Cla {
     }
 
     async fn on_register(&self, sink: Box<dyn cla::Sink>, _node_ids: &[NodeId]) {
-        let sink: Arc<dyn cla::Sink> = sink.into();
-        let sink = self.sink.call_once(|| sink);
-        let inbound_stream = self.transport.inbound_stream().await;
-        self.runtime
-            .write()
-            .start_inbound(sink.clone(), inbound_stream)
-            .await;
+        self.sink.call_once(|| sink.into());
     }
 
     async fn on_unregister(&self) {
-        self.unregister().await;
+        self.cleanup().await;
     }
 
     async fn forward(

@@ -36,8 +36,8 @@ impl Transport {
             .map_err(Error::Send)
     }
 
-    pub async fn inbound_stream(&self) -> InboundStream {
-        self.cspcl.read().clone().inbound().await
+    pub fn inbound_stream(&self) -> InboundStream {
+        self.cspcl.read().clone().inbound()
     }
 
     pub fn cleanup(&self) {
