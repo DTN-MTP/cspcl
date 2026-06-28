@@ -6,3 +6,4 @@ edition = "2024"
 
 [workspace.dependencies]
 clap = { version = "4.6.1", features = ["derive"] }
+thiserror = "2.0.18"
