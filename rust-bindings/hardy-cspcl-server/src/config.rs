@@ -6,11 +6,11 @@ use clap::Parser;
 #[group(id = "cspcla")]
 pub struct Config {
     #[arg(long, default_value = "~/.config/cspcl/config.yaml")]
-    config_path: std::path::PathBuf,
+    pub config_path: std::path::PathBuf,
     #[arg(long, default_value = "127.0.0.1:51052")]
-    bpa_addr: SocketAddr,
+    pub bpa_addr: SocketAddr,
     #[command(flatten)]
-    cspcl_config: hardy_cspcl::Config,
+    pub cspcl_config: hardy_cspcl::Config,
 }
 
 #[cfg(test)]
