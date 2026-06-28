@@ -8,3 +8,4 @@ hardy-bpa = { git = "https://github.com/ricktaylor/hardy.git" }
 hardy-proto = { git = "https://github.com/ricktaylor/hardy.git" }
 hardy-cspcl = { path = "../hardy-cspcl" }
 clap.workspace = true
+thiserror.workspace = true
