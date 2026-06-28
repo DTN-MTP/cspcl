@@ -1,15 +1,16 @@
 mod cla;
 mod config;
 mod error;
-mod register;
 
-use crate::error::ServerError;
+use crate::{
+    cla::create_cla,
+    error::ServerError::{self},
+};
 use clap::Parser;
 
 fn main() -> Result<(), ServerError> {
-    let conf = config::Config::parse();
-
-    dbg!(conf);
+    let config = config::Config::parse();
+    let _ = create_cla(config.cspcl_config)?;
     println!("Hello, world!");
     Ok(())
 }
