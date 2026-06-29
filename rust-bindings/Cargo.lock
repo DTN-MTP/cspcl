@@ -833,7 +833,9 @@ dependencies = [
  "hardy-bpa",
  "hardy-cspcl",
  "hardy-proto",
+ "serde",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]

@@ -7,7 +7,7 @@ use clap::Parser;
 pub struct Config {
     #[arg(long, default_value = "~/.config/cspcl/config.yaml")]
     pub config_path: std::path::PathBuf,
-    #[arg(long, default_value = "127.0.0.1:51052")]
+    #[arg(long, default_value = "http://127.0.0.1:51052")]
     pub bpa_addr: SocketAddr,
     #[command(flatten)]
     pub cspcl_config: hardy_cspcl::Config,

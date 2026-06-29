@@ -1,6 +1,9 @@
 mod cla;
 mod config;
 mod error;
+mod register;
+
+use std::sync::Arc;
 
 use crate::{
     cla::create_cla,
@@ -8,9 +11,11 @@ use crate::{
 };
 use clap::Parser;
 
-fn main() -> Result<(), ServerError> {
+#[tokio::main]
+async fn main() -> Result<(), ServerError> {
     let config = config::Config::parse();
-    let _ = create_cla(config.cspcl_config)?;
-    println!("Hello, world!");
+    let cla = Arc::new(create_cla(config.cspcl_config)?);
+    register::register_cla_to_remote_bpa(cla.clone(), config.bpa_addr).await?;
+    cla.start_dispatcher()?.await;
     Ok(())
 }

@@ -9,3 +9,5 @@ hardy-proto = { git = "https://github.com/ricktaylor/hardy.git" }
 hardy-cspcl = { path = "../hardy-cspcl" }
 clap.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
+serde.workspace = true
