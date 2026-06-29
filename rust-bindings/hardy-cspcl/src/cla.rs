@@ -15,6 +15,9 @@ impl cla::Cla for Cla {
 
     async fn on_register(&self, sink: Box<dyn cla::Sink>, _node_ids: &[NodeId]) {
         self.sink.call_once(|| sink.into());
+        self.register_peers()
+            .await
+            .expect("Sink must be registered at this point");
     }
 
     async fn on_unregister(&self) {
