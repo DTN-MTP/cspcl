@@ -1,0 +1,14 @@
+local-addr: 1
+port: 1
+bpa-addr: http://127.0.0.1:51052
+interface: can
+interface-name: vcan0
+
+peers:
+  - node-id: ipn:2.0
+    addr: 2
+    port: 1
+
+  - node-id: ipn:3.0
+    addr: 3
+    port: 1

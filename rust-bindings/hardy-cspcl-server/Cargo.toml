@@ -6,8 +6,9 @@ edition.workspace = true
 [dependencies]
 hardy-bpa = { git = "https://github.com/ricktaylor/hardy.git" }
 hardy-proto = { git = "https://github.com/ricktaylor/hardy.git" }
-hardy-cspcl = { path = "../hardy-cspcl" }
+hardy-cspcl = { path = "../hardy-cspcl", features = ["serde"] }
 clap.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 serde.workspace = true
+serde-saphyr = "0.0.28"
