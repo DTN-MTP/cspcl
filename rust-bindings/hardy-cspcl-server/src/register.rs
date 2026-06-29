@@ -1,12 +1,12 @@
-use hardy_bpa::{bpa::BpaRegistration, policy::EgressPolicy};
+use hardy_bpa::bpa::BpaRegistration;
 use hardy_proto::client::RemoteBpa;
-use std::{net::SocketAddr, sync::Arc};
+use std::sync::Arc;
 
 use crate::error::ServerError;
 
 pub async fn register_cla_to_remote_bpa(
     cla: Arc<hardy_cspcl::Cla>,
-    bpa_addr: SocketAddr,
+    bpa_addr: String,
 ) -> Result<(), ServerError> {
     let bpa = RemoteBpa::new(bpa_addr.to_string());
 
