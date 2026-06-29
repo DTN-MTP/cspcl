@@ -6,4 +6,6 @@ pub enum ServerError {
     ParseConfig(#[from] clap::Error),
     #[error("Could not build cla: {0}")]
     CreateCla(#[from] hardy_cspcl::Error),
+    #[error("Could not register cla: {0}")]
+    RegisterCla(#[from] hardy_bpa::cla::Error),
 }

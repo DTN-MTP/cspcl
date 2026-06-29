@@ -5,5 +5,7 @@ members = ["cspcl", "cspcl-sys", "hardy-cspcl", "hardy-cspcl-server"]
 edition = "2024"
 
 [workspace.dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
 clap = { version = "4.6.1", features = ["derive"] }
 thiserror = "2.0.18"
+tokio = { version = "1.51.1", features = ["time"] }
