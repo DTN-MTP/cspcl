@@ -3,16 +3,18 @@ mod config;
 mod dispatcher;
 mod transport;
 
+use bytes::Bytes;
 pub use config::{Config, Interface, PeerConfig};
 
 use cspcl_bindings::CspAddress;
 use hardy_async::CancellationToken;
 use hardy_async::sync::spin::{Once, RwLock};
-use hardy_bpa::cla::Sink;
+use hardy_bpa::cla::{ClaAddress, Sink};
 use hardy_bpv7::eid::NodeId;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::debug;
+use tokio::task::JoinHandle;
+use tracing::{debug, warn};
 
 use crate::dispatcher::Dispatcher;
 use crate::transport::Transport;
@@ -27,6 +29,8 @@ pub enum Error {
     CscplInit(#[from] cspcl_bindings::Error),
     #[error("Could not create dispatcher: {0}")]
     Dispatcher(String),
+    #[error("Sink is not registered")]
+    Sink,
 }
 
 pub struct Cla {
@@ -34,7 +38,6 @@ pub struct Cla {
     transport: transport::Transport,
     cancel_dispatcher: CancellationToken,
     sink: Once<Arc<dyn Sink>>,
-    dispatcher: Once<Dispatcher>,
 }
 
 impl Cla {
@@ -71,31 +74,51 @@ impl Cla {
             transport,
             cancel_dispatcher: CancellationToken::new(),
             sink: Once::new(),
-            dispatcher: Once::new(),
         })
     }
 
-    pub fn build_dispatcher(&self) -> Result<&Dispatcher, Error> {
-        self.dispatcher.get().map_or_else(
-            || -> Result<&Dispatcher, Error> {
-                let inbound = self.transport.inbound_stream();
-                let sink = self
-                    .sink
-                    .get()
-                    .ok_or(Error::Dispatcher("Sink is not initialiazed".to_string()))?;
+    fn sink(&self) -> Result<Arc<dyn Sink>, Error> {
+        self.sink.get().cloned().ok_or(Error::Sink)
+    }
 
-                let dispatcher = self.dispatcher.call_once(|| {
-                    Dispatcher::new(
-                        self.csp_to_endpoint.clone(),
-                        self.cancel_dispatcher.clone(),
-                        inbound,
-                        sink.clone(),
-                    )
-                });
-                Ok(dispatcher)
-            },
-            Ok,
+    pub fn start_dispatcher(&self) -> Result<JoinHandle<()>, Error> {
+        let inbound = self.transport.inbound_stream();
+        let sink = self.sink()?;
+        Ok(Dispatcher::new(
+            self.csp_to_endpoint.clone(),
+            self.cancel_dispatcher.clone(),
+            inbound,
+            sink.clone(),
         )
+        .start_dispatch_inbound_bundle())
+    }
+
+    async fn register_peers(&self) -> Result<(), Error> {
+        let sink = self.sink()?;
+
+        for csp_node in self.csp_to_endpoint.clone().iter() {
+            match sink
+                .add_peer(
+                    ClaAddress::Private(Into::<Bytes>::into(*csp_node.0)),
+                    std::slice::from_ref(csp_node.1),
+                )
+                .await
+            {
+                Ok(true) => debug!(
+                    "Registered CSP peer {}:{} as {}",
+                    csp_node.0.addr, csp_node.0.port, csp_node.1
+                ),
+                Ok(false) => debug!(
+                    "CSP peer {}:{} was already registered",
+                    csp_node.0.addr, csp_node.0.port
+                ),
+                Err(e) => warn!(
+                    "Failed to register CSP peer {}:{} as {}: {e}",
+                    csp_node.0.addr, csp_node.0.port, csp_node.1
+                ),
+            }
+        }
+        Ok(())
     }
 
     pub async fn cleanup(&self) {

@@ -35,34 +35,8 @@ impl Dispatcher {
         }
     }
 
-    pub async fn start_dispatch_inbound_bundle(mut self) -> DispatcherHandle {
+    pub fn start_dispatch_inbound_bundle(mut self) -> DispatcherHandle {
         let csp_to_endpoint = self.csp_to_endpoint.clone();
-        let csp_to_addr_iter = self.csp_to_endpoint.iter();
-        for csp_node in csp_to_addr_iter {
-            let raw_addr: Bytes = Into::into(*csp_node.0);
-            match self
-                .sink
-                .clone()
-                .add_peer(
-                    ClaAddress::Private(raw_addr),
-                    std::slice::from_ref(csp_node.1),
-                )
-                .await
-            {
-                Ok(true) => debug!(
-                    "Registered CSP peer {}:{} as {}",
-                    csp_node.0.addr, csp_node.0.port, csp_node.1
-                ),
-                Ok(false) => debug!(
-                    "CSP peer {}:{} was already registered",
-                    csp_node.0.addr, csp_node.0.port
-                ),
-                Err(e) => warn!(
-                    "Failed to register CSP peer {}:{} as {}: {e}",
-                    csp_node.0.addr, csp_node.0.port, csp_node.1
-                ),
-            }
-        }
         let cancel_token = self.cancel_polling_task.child_token();
 
         info!("Starting polling task of inbound bundle stream");
