@@ -12,3 +12,4 @@ thiserror.workspace = true
 tokio.workspace = true
 serde.workspace = true
 serde-saphyr = "0.0.28"
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
