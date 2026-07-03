@@ -47,7 +47,7 @@ Initialize CSPCL with the local CSP node address, CSP port, and interface.
 ### `send_bundle`
 
 ```rust
-pub fn send_bundle(&mut self, bundle: &[u8], dest: CspAddress) -> Result<()>
+pub fn send_bundle(&self, bundle: &[u8], dest: CspAddress) -> Result<()>
 ```
 
 Send a serialized BP7 bundle to `dest`. Fragmentation via SFP is handled internally.
@@ -55,15 +55,15 @@ Send a serialized BP7 bundle to `dest`. Fragmentation via SFP is handled interna
 ### `inbound`
 
 ```rust
-pub fn inbound(self) -> InboundStream
+pub fn inbound(self: Arc<Self>) -> InboundStream
 ```
 
-Consume the handle and return a stream of inbound bundles.
+Share the handle with a stream of inbound bundles.
 
 ### `close_rx_socket`
 
 ```rust
-pub fn close_rx_socket(self)
+pub fn close_rx_socket(&self)
 ```
 
 Cancel inbound receive work and close the receive socket.
@@ -138,18 +138,19 @@ Implements `std::error::Error` and `std::fmt::Display`.
 ```rust
 use cspcl::{CspAddress, Cspcl, Error, Interface};
 use futures::StreamExt;
+use std::sync::Arc;
 
 fn transfer_bundle(bundle: &[u8], dest: CspAddress) -> Result<(), Error> {
     let local = CspAddress { addr: 1, port: 10 };
-    let mut cspcl = Cspcl::new(local, Interface::Loopback)?;
+    let cspcl = Cspcl::new(local, Interface::Loopback)?;
     cspcl.send_bundle(bundle, dest)?;
     Ok(())
 }
 
 async fn receive_loop() -> Result<(), Error> {
     let local = CspAddress { addr: 1, port: 10 };
-    let cspcl = Cspcl::new(local, Interface::Loopback)?;
-    let mut inbound = cspcl.inbound();
+    let cspcl = Arc::new(Cspcl::new(local, Interface::Loopback)?);
+    let mut inbound = Arc::clone(&cspcl).inbound();
 
     while let Some(bundle) = inbound.next().await {
         let bundle = bundle?;

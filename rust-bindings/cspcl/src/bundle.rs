@@ -18,7 +18,7 @@ impl Cspcl {
     ///
     /// # Returns
     /// Ok(()) on success, or Err(Error) if the operation failed
-    pub fn send_bundle(&mut self, bundle: &[u8], dest: CspAddress) -> Result<()> {
+    pub fn send_bundle(&self, bundle: &[u8], dest: CspAddress) -> Result<()> {
         if bundle.is_empty() {
             return Err(Error::InvalidParam);
         }
@@ -43,8 +43,7 @@ impl Cspcl {
         Ok(())
     }
 
-    pub fn inbound(self) -> InboundStream {
-        let cspcl = Arc::new(self);
-        InboundStream::new(cspcl.clone())
+    pub fn inbound(self: Arc<Self>) -> InboundStream {
+        InboundStream::new(self)
     }
 }

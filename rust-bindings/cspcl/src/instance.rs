@@ -9,7 +9,17 @@ use crate::{
 };
 
 /// Safe wrapper for CSPCL instance
-#[derive(Clone)]
+///
+/// `Cspcl` owns the underlying C resource and must not be cloned into another
+/// Rust owner that would also run cleanup on drop.
+///
+/// ```compile_fail
+/// use cspcl::Cspcl;
+///
+/// fn duplicate_cleanup_owner(cspcl: Cspcl) {
+///     let _clone = cspcl.clone();
+/// }
+/// ```
 pub struct Cspcl {
     inner: Arc<RwLock<cspcl_sys::cspcl_t>>,
     inbound_shutdown: CancellationToken,
@@ -33,7 +43,7 @@ impl Cspcl {
     }
 
     /// Close the receive socket
-    pub fn close_rx_socket(self) {
+    pub fn close_rx_socket(&self) {
         self.inbound_shutdown.cancel();
         let mut cspcl = self.inner_mut();
         cspcl_sys::types::close_rx_socket(&mut cspcl);

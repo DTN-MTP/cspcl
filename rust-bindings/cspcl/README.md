@@ -22,18 +22,19 @@ Basic usage:
 ```rust
 use cspcl::{CspAddress, Cspcl, Interface};
 use futures::StreamExt;
+use std::sync::Arc;
 
 // Initialize with the local CSP address and port.
 let local = CspAddress { addr: 1, port: 10 };
-let mut cspcl = Cspcl::new(local, Interface::Loopback)?;
+let cspcl = Arc::new(Cspcl::new(local, Interface::Loopback)?);
 
 // Send a bundle to a remote CSP address and port.
 let bundle = vec![/* BP7 bundle data */];
 let remote = CspAddress { addr: 2, port: 10 };
 cspcl.send_bundle(&bundle, remote)?;
 
-// Consume the instance to create an inbound bundle stream.
-let mut inbound = cspcl.inbound();
+// Share the instance with an inbound bundle stream.
+let mut inbound = Arc::clone(&cspcl).inbound();
 while let Some(bundle) = inbound.next().await {
     let bundle = bundle?;
     println!(

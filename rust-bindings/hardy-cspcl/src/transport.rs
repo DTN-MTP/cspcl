@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use cspcl_bindings::{CspAddress, Error as CspclError, InboundStream};
-use hardy_async::sync::spin::RwLock;
 use tracing::debug;
 
 #[derive(Debug, thiserror::Error)]
@@ -16,11 +15,11 @@ pub enum Error {
 
 #[derive(Clone)]
 pub struct Transport {
-    cspcl: Arc<RwLock<cspcl_bindings::Cspcl>>,
+    cspcl: Arc<cspcl_bindings::Cspcl>,
 }
 
 impl Transport {
-    pub fn new(cspcl: Arc<RwLock<cspcl_bindings::Cspcl>>) -> Self {
+    pub fn new(cspcl: Arc<cspcl_bindings::Cspcl>) -> Self {
         Self { cspcl }
     }
 
@@ -31,17 +30,15 @@ impl Transport {
     ) -> Result<(), Error> {
         debug!("Try sending bundle to: {}:{}", dest.addr, dest.port);
         self.cspcl
-            .write()
             .send_bundle(&payload.into(), dest)
             .map_err(Error::Send)
     }
 
     pub fn inbound_stream(&self) -> InboundStream {
-        self.cspcl.read().clone().inbound()
+        Arc::clone(&self.cspcl).inbound()
     }
 
     pub fn cleanup(&self) {
-        let cspcl = self.cspcl.write();
-        drop(cspcl);
+        self.cspcl.close_rx_socket();
     }
 }
