@@ -107,11 +107,12 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```rust
 use cspcl::{CspAddress, Cspcl, Interface};
 use futures::StreamExt;
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let local = CspAddress { addr: 1, port: 10 };
-    let mut node = Cspcl::new(local, Interface::Loopback)?;
+    let node = Arc::new(Cspcl::new(local, Interface::Loopback)?);
 
     // Send
     let bundle: Vec<u8> = vec![/* BP7 bundle bytes */];
@@ -119,7 +120,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     node.send_bundle(&bundle, remote)?;
 
     // Receive from the inbound bundle stream.
-    let mut inbound = node.inbound();
+    let mut inbound = Arc::clone(&node).inbound();
     while let Some(bundle) = inbound.next().await {
         let bundle = bundle?;
         println!(

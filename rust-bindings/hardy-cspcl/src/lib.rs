@@ -8,7 +8,7 @@ pub use config::{Config, Interface, PeerConfig};
 
 use cspcl_bindings::CspAddress;
 use hardy_async::CancellationToken;
-use hardy_async::sync::spin::{Once, RwLock};
+use hardy_async::sync::spin::Once;
 use hardy_bpa::cla::{ClaAddress, Sink};
 use hardy_bpv7::eid::NodeId;
 use std::collections::HashMap;
@@ -47,7 +47,7 @@ impl Cla {
             Interface::Can => cspcl_bindings::Interface::Can(config.interface_name.clone()),
         };
 
-        let cspcl = Arc::new(RwLock::new(
+        let cspcl = Arc::new(
             cspcl_bindings::Cspcl::new(
                 CspAddress {
                     addr: config.local_addr,
@@ -56,7 +56,7 @@ impl Cla {
                 interface,
             )
             .map_err(|e: cspcl_bindings::Error| Error::CscplInit(e))?,
-        ));
+        );
 
         let peers = config.peers.clone();
         let mut csp_to_endpoint = HashMap::<CspAddress, NodeId>::new();
