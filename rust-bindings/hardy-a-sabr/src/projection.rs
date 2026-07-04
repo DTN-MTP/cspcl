@@ -1,4 +1,12 @@
+use a_sabr::errors::ASABRError;
+use hardy_bpa::routing::RouteAction;
 use hardy_eid_patterns::EidPattern;
+
+use crate::{
+    engine::{ShadowEngineConfig, compute_first_hop},
+    routes::ProjectedRoute,
+    topology::TopologySnapshot,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RepresentativeBundle {
@@ -28,4 +36,40 @@ pub struct DestinationProjection {
 pub struct ProjectionConfig {
     pub bundle: RepresentativeBundle,
     pub destinations: Vec<DestinationProjection>,
+}
+
+pub fn project_routes(
+    topology: &TopologySnapshot,
+    engine_config: &ShadowEngineConfig,
+    config: &ProjectionConfig,
+    source: u16,
+    now: f64,
+) -> Result<Vec<ProjectedRoute>, ASABRError> {
+    let mut routes = Vec::new();
+
+    for destination in &config.destinations {
+        let Some(next_hop) = compute_first_hop(
+            topology,
+            engine_config,
+            source,
+            destination.asabr_destination,
+            now,
+            &config.bundle,
+        )?
+        else {
+            continue;
+        };
+
+        let Some(next_hop_eid) = topology.hardy_eid_for(next_hop) else {
+            continue;
+        };
+
+        routes.push(ProjectedRoute {
+            pattern: destination.pattern.clone(),
+            action: RouteAction::Via(next_hop_eid),
+            priority: destination.route_priority,
+        });
+    }
+
+    Ok(routes)
 }
