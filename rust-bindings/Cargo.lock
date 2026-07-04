@@ -545,6 +545,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hardy-a-sabr"
+version = "0.1.0"
+dependencies = [
+ "hardy-async",
+ "hardy-bpa",
+ "hardy-bpv7",
+]
+
+[[package]]
 name = "hardy-async"
 version = "0.1.0"
 source = "git+https://github.com/ricktaylor/hardy.git#6ca0ad150e66f6ceffa8d70540c25eb2d8ae8b97"

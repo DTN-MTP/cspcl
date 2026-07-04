@@ -1,5 +1,11 @@
 [workspace]
 resolver = "3"
 members = ["cspcl", "cspcl-sys", "hardy-a-sabr", "hardy-cspcl"]
+
 [workspace.package]
 edition = "2024"
+
+[workspace.dependencies]
+hardy-bpa = { git = "https://github.com/ricktaylor/hardy.git" }
+hardy-async = { git = "https://github.com/ricktaylor/hardy.git" }
+hardy-bpv7 = { git = "https://github.com/ricktaylor/hardy.git" }
