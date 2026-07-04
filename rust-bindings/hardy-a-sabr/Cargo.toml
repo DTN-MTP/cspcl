@@ -4,6 +4,7 @@ version = "0.1.0"
 edition.workspace = true
 
 [dependencies]
+hardy-eid-patterns = { git = "https://github.com/ricktaylor/hardy.git" }
 hardy-bpa.workspace = true
 hardy-async.workspace = true
 hardy-bpv7.workspace = true

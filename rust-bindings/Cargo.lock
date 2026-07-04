@@ -551,6 +551,7 @@ dependencies = [
  "hardy-async",
  "hardy-bpa",
  "hardy-bpv7",
+ "hardy-eid-patterns",
 ]
 
 [[package]]
