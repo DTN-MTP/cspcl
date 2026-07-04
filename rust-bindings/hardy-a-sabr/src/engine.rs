@@ -1,6 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use a_sabr::{
+    bundle::Bundle,
     contact::{Contact, ContactInfo},
     contact_manager::legacy::evl::EVLManager,
     contact_plan::ContactPlan,
@@ -8,11 +9,11 @@ use a_sabr::{
     node::{Node, NodeInfo},
     node_manager::none::NoManagement,
     route_storage::cache::TreeCache,
-    routing::aliases::SpsnHybridParenting,
+    routing::{Router, aliases::SpsnHybridParenting},
     vertex::Vertex,
 };
 
-use crate::topology::TopologySnapshot;
+use crate::{projection::RepresentativeBundle, topology::TopologySnapshot};
 
 pub type ShadowRouter = SpsnHybridParenting<NoManagement, EVLManager>;
 
@@ -102,4 +103,33 @@ pub fn build_shadow_router(
     let route_cache = new_route_cache(config);
 
     ShadowRouter::new(contact_plan, route_cache, config.check_priority)
+}
+
+pub fn compute_first_hop(
+    topology: &TopologySnapshot,
+    config: &ShadowEngineConfig,
+    source: u16,
+    destination: u16,
+    now: f64,
+    representative: &RepresentativeBundle,
+) -> Result<Option<u16>, ASABRError> {
+    let mut router = build_shadow_router(topology, config)?;
+
+    let bundle = Bundle {
+        source,
+        destinations: vec![destination],
+        priority: representative.priority,
+        size: representative.size,
+        expiration: now + representative.expiration_horizon,
+    };
+
+    let excluded_nodes = Vec::new();
+
+    Ok(router
+        .route(source, &bundle, now, &excluded_nodes)?
+        .and_then(|output| {
+            output
+                .lazy_get_for_unicast(destination)
+                .map(|(contact, _route)| contact.borrow().info.rx_node_id)
+        }))
 }
