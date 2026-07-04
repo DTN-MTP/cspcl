@@ -1,4 +1,5 @@
 mod agent;
+pub mod engine;
 pub mod projection;
 mod router;
 pub mod routes;
