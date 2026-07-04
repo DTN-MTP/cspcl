@@ -1,5 +1,5 @@
 [workspace]
 resolver = "3"
-members = ["cspcl", "cspcl-sys", "hardy-cspcl"]
+members = ["cspcl", "cspcl-sys", "hardy-a-sabr", "hardy-cspcl"]
 [workspace.package]
 edition = "2024"
