@@ -50,4 +50,11 @@ impl Router {
             scheduler.update_topology(topology).await
         }
     }
+
+    pub async fn refresh(&self) {
+        let scheduler = self.scheduler.lock().unwrap().clone();
+        if let Some(scheduler) = scheduler {
+            scheduler.refresh().await;
+        }
+    }
 }
