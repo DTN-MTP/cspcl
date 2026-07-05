@@ -54,16 +54,17 @@ pub(crate) struct Scheduler {
     installed: Vec<ProjectedRoute>,
     started_at: tokio::time::Instant,
     safety_tick: Duration,
+    start_time: f64,
 }
 
 impl Scheduler {
     pub(crate) fn new(
         sink: Arc<dyn RoutingSink>,
-
         source: u16,
         topology: TopologySnapshot,
         engine_config: ShadowEngineConfig,
         projection_config: ProjectionConfig,
+        start_time: f64,
     ) -> (Self, SchedulerHandle) {
         let (sender, receiver) = channel::unbounded();
         let cancel = CancellationToken::new();
@@ -78,6 +79,7 @@ impl Scheduler {
             installed: Vec::new(),
             started_at: tokio::time::Instant::now(),
             safety_tick: Duration::from_secs(60),
+            start_time,
         };
 
         let handle = SchedulerHandle { sender, cancel };
@@ -85,7 +87,7 @@ impl Scheduler {
     }
 
     fn now(&self) -> f64 {
-        self.started_at.elapsed().as_secs_f64()
+        self.start_time + self.started_at.elapsed().as_secs_f64()
     }
 
     fn next_boundary_delay(&self, now: f64) -> Option<Duration> {

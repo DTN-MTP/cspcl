@@ -11,6 +11,7 @@ pub struct Router {
     pub(crate) engine_config: ShadowEngineConfig,
     pub(crate) projection_config: ProjectionConfig,
     pub(crate) scheduler: Mutex<Option<SchedulerHandle>>,
+    pub(crate) start_time: f64,
 }
 
 impl Router {
@@ -25,8 +26,15 @@ impl Router {
             engine_config: ShadowEngineConfig::default(),
             projection_config,
             scheduler: Mutex::new(None),
+            start_time: 0.0,
         }
     }
+
+    pub fn with_start_time(mut self, start_time: f64) -> Self {
+        self.start_time = start_time;
+        self
+    }
+
     pub fn with_engine_config(mut self, engine_config: ShadowEngineConfig) -> Self {
         self.engine_config = engine_config;
         self

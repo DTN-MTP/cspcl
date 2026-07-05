@@ -21,6 +21,7 @@ impl RoutingAgent for Router {
             topology,
             self.engine_config.clone(),
             self.projection_config.clone(),
+            self.start_time,
         );
 
         scheduler.start();
