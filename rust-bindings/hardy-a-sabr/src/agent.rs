@@ -6,7 +6,11 @@ use hardy_bpa::{
 };
 use hardy_bpv7::eid::NodeId;
 
-use crate::{refresh::refresh_routes, router::Router};
+use crate::{
+    refresh::refresh_routes,
+    router::Router,
+    routes::{apply_route_diff, diff_routes},
+};
 
 #[async_trait]
 impl RoutingAgent for Router {
@@ -42,6 +46,23 @@ impl RoutingAgent for Router {
     }
 
     async fn on_unregister(&self) {
+        let sink = self.sink.lock().unwrap().clone();
+        let installed = self.installed.lock().unwrap().clone();
+
+        if let Some(sink) = sink {
+            let diff = diff_routes(&installed, &[]);
+
+            if let Err(error) = apply_route_diff(&*sink, &diff).await {
+                eprintln!(
+                    "A-SABR route withdrawal failed:
+              {error:?}"
+                );
+            }
+        }
+
+        let mut stored_installed = self.installed.lock().unwrap();
+        stored_installed.clear();
+
         let mut stored_sink = self.sink.lock().unwrap();
         *stored_sink = None;
     }
