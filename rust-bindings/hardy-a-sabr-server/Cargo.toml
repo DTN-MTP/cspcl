@@ -1,0 +1,15 @@
+[package]
+name = "hardy-a-sabr-server"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+hardy-a-sabr = { path = "../hardy-a-sabr", features = ["serde"] }
+hardy-bpa.workspace = true
+hardy-proto.workspace = true
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
