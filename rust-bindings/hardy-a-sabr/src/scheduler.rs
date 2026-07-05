@@ -9,7 +9,7 @@ use crate::{
     projection::ProjectionConfig,
     refresh::refresh_routes,
     routes::{ProjectedRoute, apply_route_diff, diff_routes},
-    topology::{self, TopologySnapshot},
+    topology::TopologySnapshot,
 };
 
 #[derive(Clone, Debug)]
@@ -53,6 +53,7 @@ pub(crate) struct Scheduler {
     projection_config: ProjectionConfig,
     installed: Vec<ProjectedRoute>,
     started_at: tokio::time::Instant,
+    safety_tick: Duration,
 }
 
 impl Scheduler {
@@ -76,6 +77,7 @@ impl Scheduler {
             projection_config,
             installed: Vec::new(),
             started_at: tokio::time::Instant::now(),
+            safety_tick: Duration::from_secs(60),
         };
 
         let handle = SchedulerHandle { sender, cancel };
@@ -92,6 +94,12 @@ impl Scheduler {
             .map(|boundary| Duration::from_secs_f64((boundary - now).max(0.0)))
     }
 
+    fn next_wakeup_delay(&self, now: f64) -> Duration {
+        self.next_boundary_delay(now)
+            .map(|boundary_delay| boundary_delay.min(self.safety_tick))
+            .unwrap_or(self.safety_tick)
+    }
+
     pub(crate) fn start(self) -> JoinHandle<()> {
         tokio::spawn(async move {
             self.run().await;
@@ -100,30 +108,18 @@ impl Scheduler {
 
     async fn run(mut self) {
         loop {
-            let now = self.now();
+            let delay = self.next_wakeup_delay(self.now());
 
-            match self.next_boundary_delay(now) {
-                Some(delay) => {
-                    tokio::select! {
-                        _ = self.cancel.cancelled() => break,
-                        _ = tokio::time::sleep(delay) =>{
-                        self.refresh(self.now()).await;
-                    }
-                    command = self.receiver.recv() => {
-                            if !self.handle_command(command).await {
-                                break;
-                            }
-                        }
+            tokio::select! {
+                _ = self.cancel.cancelled() => break,
+                _ = tokio::time::sleep(delay) =>{
+                self.refresh(self.now()).await;
+            }
+            command = self.receiver.recv() => {
+                    if !self.handle_command(command).await {
+                        break;
                     }
                 }
-                None => tokio::select! {
-                    _ = self.cancel.cancelled()=> break,
-                    command = self.receiver.recv()=>{
-                        if !self.handle_command(command).await{
-                            break;
-                        }
-                    }
-                },
             }
         }
         self.withdraw().await;
