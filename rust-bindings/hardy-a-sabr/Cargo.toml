@@ -9,3 +9,4 @@ hardy-eid-patterns = { git = "https://github.com/ricktaylor/hardy.git" }
 hardy-bpa.workspace = true
 hardy-async.workspace = true
 hardy-bpv7.workspace = true
+tokio.workspace = true

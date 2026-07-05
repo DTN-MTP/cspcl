@@ -9,3 +9,4 @@ edition = "2024"
 hardy-bpa = { git = "https://github.com/ricktaylor/hardy.git" }
 hardy-async = { git = "https://github.com/ricktaylor/hardy.git" }
 hardy-bpv7 = { git = "https://github.com/ricktaylor/hardy.git" }
+tokio = { version = "1.52.3", features = ["macros", "rt", "time"] }

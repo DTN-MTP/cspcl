@@ -577,6 +577,7 @@ dependencies = [
  "hardy-bpa",
  "hardy-bpv7",
  "hardy-eid-patterns",
+ "tokio",
 ]
 
 [[package]]
