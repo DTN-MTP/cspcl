@@ -13,7 +13,6 @@ serde = ["dep:serde", "hardy-bpv7/serde"]
 instrument = ["tracing/attributes"]
 
 [dependencies]
-tracing = { version = "0.1.44", default-features = false }
 thiserror = "2.0.18"
 serde = { version = "1.0.228", features = ["derive"], optional = true }
 cspcl-bindings = { path = "../cspcl", package = "cspcl" }
@@ -23,3 +22,4 @@ hardy-bpa.workspace = true
 hardy-async.workspace = true
 hardy-bpv7.workspace = true
 tokio.workspace = true
+tracing.workspace = true

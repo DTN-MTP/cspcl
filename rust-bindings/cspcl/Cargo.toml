@@ -13,7 +13,6 @@ keywords = ["cspcl"]
 bytes = "1.12.0"
 cspcl-sys = { version = "0.3", path = "../cspcl-sys" }
 futures = { version = "0.3", features = ["alloc"] }
-tokio.workspace = true
 tokio-util = "0.7"
-trace = "0.1.7"
-tracing = "0.1.44"
+tracing.workspace = true
+tokio.workspace = true

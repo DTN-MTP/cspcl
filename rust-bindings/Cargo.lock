@@ -300,7 +300,6 @@ dependencies = [
  "futures",
  "tokio",
  "tokio-util",
- "trace",
  "tracing",
 ]
 
@@ -578,6 +577,7 @@ dependencies = [
  "hardy-bpv7",
  "hardy-eid-patterns",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -1254,17 +1254,6 @@ dependencies = [
  "futures-util",
  "pin-project-lite",
  "tokio",
-]
-
-[[package]]
-name = "trace"
-version = "0.1.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ad0c048e114d19d1140662762bfdb10682f3bc806d8be18af846600214dd9af"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
 ]
 
 [[package]]
