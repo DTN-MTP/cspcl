@@ -6,49 +6,40 @@ use hardy_bpa::{
 };
 use hardy_bpv7::eid::NodeId;
 
-use crate::{
-    router::Router,
-    routes::{apply_route_diff, diff_routes},
-};
+use crate::{router::Router, scheduler::Scheduler};
 
 #[async_trait]
 impl RoutingAgent for Router {
     async fn on_register(&self, sink: Box<dyn RoutingSink>, _node_ids: &[NodeId]) {
         let sink: Arc<dyn RoutingSink> = sink.into();
 
+        let topology = self.topology.lock().unwrap().clone();
+
+        let (scheduler, handle) = Scheduler::new(
+            sink.clone(),
+            self.source,
+            topology,
+            self.engine_config.clone(),
+            self.projection_config.clone(),
+        );
+
+        scheduler.start();
+
         {
-            let mut stored_sink = self.sink.lock().unwrap();
-            *stored_sink = Some(sink.clone());
+            let mut stored_scheduler = self.scheduler.lock().unwrap();
+            *stored_scheduler = Some(handle.clone());
         }
 
-        if let Err(error) = self.refresh_with_sink(&*sink, 0.0).await {
-            eprintln!(
-                "A-SABR initial route refresh failed:
-          {error:?}"
-            );
-            return;
-        }
+        handle.refresh().await
     }
 
     async fn on_unregister(&self) {
-        let sink = self.sink.lock().unwrap().clone();
-        let installed = self.installed.lock().unwrap().clone();
-
-        if let Some(sink) = sink {
-            let diff = diff_routes(&installed, &[]);
-
-            if let Err(error) = apply_route_diff(&*sink, &diff).await {
-                eprintln!(
-                    "A-SABR route withdrawal failed:
-              {error:?}"
-                );
-            }
+        let scheduler = {
+            let mut stored_scheduler = self.scheduler.lock().unwrap();
+            stored_scheduler.take()
+        };
+        if let Some(scheduler) = scheduler {
+            scheduler.shutdown().await;
         }
-
-        let mut stored_installed = self.installed.lock().unwrap();
-        stored_installed.clear();
-
-        let mut stored_sink = self.sink.lock().unwrap();
-        *stored_sink = None;
     }
 }

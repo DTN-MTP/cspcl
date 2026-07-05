@@ -11,13 +11,14 @@ use crate::{
     topology::TopologySnapshot,
 };
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) enum SchedulerCommand {
     Refresh,
     TopologyChanged(TopologySnapshot),
     Shutdown,
 }
 
+#[derive(Clone)]
 pub(crate) struct SchedulerHandle {
     sender: channel::Sender<SchedulerCommand>,
     cancel: CancellationToken,
