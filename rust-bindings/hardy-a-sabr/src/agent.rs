@@ -22,6 +22,7 @@ impl RoutingAgent for Router {
             self.engine_config.clone(),
             self.projection_config.clone(),
             self.start_time,
+            self.safety_tick,
         );
 
         scheduler.start();

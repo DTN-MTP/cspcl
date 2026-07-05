@@ -65,6 +65,7 @@ impl Scheduler {
         engine_config: ShadowEngineConfig,
         projection_config: ProjectionConfig,
         start_time: f64,
+        safety_tick: Duration,
     ) -> (Self, SchedulerHandle) {
         let (sender, receiver) = channel::unbounded();
         let cancel = CancellationToken::new();
@@ -78,7 +79,7 @@ impl Scheduler {
             projection_config,
             installed: Vec::new(),
             started_at: tokio::time::Instant::now(),
-            safety_tick: Duration::from_secs(60),
+            safety_tick,
             start_time,
         };
 

@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::{sync::Mutex, time::Duration};
 
 use crate::{
     engine::ShadowEngineConfig, projection::ProjectionConfig, scheduler::SchedulerHandle,
@@ -12,6 +12,7 @@ pub struct Router {
     pub(crate) projection_config: ProjectionConfig,
     pub(crate) scheduler: Mutex<Option<SchedulerHandle>>,
     pub(crate) start_time: f64,
+    pub(crate) safety_tick: Duration,
 }
 
 impl Router {
@@ -27,7 +28,13 @@ impl Router {
             projection_config,
             scheduler: Mutex::new(None),
             start_time: 0.0,
+            safety_tick: Duration::from_secs(60),
         }
+    }
+
+    pub fn with_safety_tick(mut self, safety_tick: Duration) -> Self {
+        self.safety_tick = safety_tick;
+        self
     }
 
     pub fn with_start_time(mut self, start_time: f64) -> Self {
