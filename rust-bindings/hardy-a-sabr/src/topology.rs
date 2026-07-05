@@ -1,6 +1,7 @@
 use hardy_bpv7::eid::{Eid, NodeId};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ContactWindow {
     pub tx_node_id: u16,
     pub rx_node_id: u16,
@@ -11,12 +12,14 @@ pub struct ContactWindow {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NodeMapping {
     pub asabr_node_id: u16,
     pub hardy_node_id: NodeId,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TopologySnapshot {
     pub nodes: Vec<NodeMapping>,
     pub contacts: Vec<ContactWindow>,

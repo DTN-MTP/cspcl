@@ -9,6 +9,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RepresentativeBundle {
     pub size: f64,
     pub priority: i8,
@@ -26,6 +27,7 @@ impl Default for RepresentativeBundle {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DestinationProjection {
     pub pattern: EidPattern,
     pub asabr_destination: u16,
@@ -33,6 +35,7 @@ pub struct DestinationProjection {
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ProjectionConfig {
     pub bundle: RepresentativeBundle,
     pub destinations: Vec<DestinationProjection>,

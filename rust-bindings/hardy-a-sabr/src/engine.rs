@@ -18,6 +18,7 @@ use crate::{projection::RepresentativeBundle, topology::TopologySnapshot};
 pub type ShadowRouter = SpsnHybridParenting<NoManagement, EVLManager>;
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ShadowEngineConfig {
     pub check_size: bool,
     pub check_priority: bool,

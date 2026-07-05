@@ -1,4 +1,5 @@
 mod agent;
+pub mod config;
 pub mod engine;
 pub mod projection;
 pub mod refresh;
