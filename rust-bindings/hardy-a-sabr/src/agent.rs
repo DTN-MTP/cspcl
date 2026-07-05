@@ -11,6 +11,15 @@ use crate::{router::Router, scheduler::Scheduler};
 #[async_trait]
 impl RoutingAgent for Router {
     async fn on_register(&self, sink: Box<dyn RoutingSink>, _node_ids: &[NodeId]) {
+        let previous_scheduler = {
+            let mut stored_scheduler = self.scheduler.lock().unwrap();
+            stored_scheduler.take()
+        };
+
+        if let Some(previous_scheduler) = previous_scheduler {
+            previous_scheduler.shutdown().await;
+        }
+
         let sink: Arc<dyn RoutingSink> = sink.into();
 
         let topology = self.topology.lock().unwrap().clone();
