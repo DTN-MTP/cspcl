@@ -5,3 +5,5 @@ pub mod refresh;
 mod router;
 pub mod routes;
 pub mod topology;
+
+pub use router::Router;

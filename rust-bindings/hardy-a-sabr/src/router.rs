@@ -1,4 +1,6 @@
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+
+use hardy_bpa::routing::RoutingSink;
 
 use crate::{
     engine::ShadowEngineConfig, projection::ProjectionConfig, routes::ProjectedRoute,
@@ -11,6 +13,7 @@ pub struct Router {
     pub(crate) engine_config: ShadowEngineConfig,
     pub(crate) projection_config: ProjectionConfig,
     pub(crate) installed: Mutex<Vec<ProjectedRoute>>,
+    pub(crate) sink: Mutex<Option<Arc<dyn RoutingSink>>>,
 }
 
 impl Router {
@@ -25,6 +28,7 @@ impl Router {
             engine_config: ShadowEngineConfig::default(),
             projection_config,
             installed: Mutex::new(Vec::new()),
+            sink: Mutex::new(None),
         }
     }
     pub fn with_engine_config(mut self, engine_config: ShadowEngineConfig) -> Self {
