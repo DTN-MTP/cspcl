@@ -12,9 +12,13 @@
 
 #include "cspcl_config.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include <csp/csp_crc32.h>
+#include <csp/csp_endian.h>
 
 #ifndef FREERTOS
 #include <time.h>
@@ -286,6 +290,12 @@ cspcl_error_t cspcl_init(cspcl_t *cspcl)
       csp_conf.buffers = 100;
       csp_conf.buffer_data_size = 256;
 
+      // static uint32_t csp_rdp_window_size = 4;
+      // static uint32_t csp_rdp_conn_timeout = 10000;
+      // static uint32_t csp_rdp_packet_timeout = 1000;
+      // static uint32_t csp_rdp_delayed_acks = 1;
+      // static uint32_t csp_rdp_ack_timeout = 1000 / 4;
+      // static uint32_t csp_rdp_ack_delay_count = 4 / 2;
       int ret = csp_init(&csp_conf);
       if (ret != CSP_ERR_NONE) {
 #ifndef FREERTOS
@@ -295,6 +305,7 @@ cspcl_error_t cspcl_init(cspcl_t *cspcl)
         return CSPCL_ERR_CSP_STACK_INIT;
       }
 
+      csp_rdp_set_opt(4, 1500, 300, 0, 0, 0);
       /* Initialize the selected interface (global) */
       switch (cspcl->iface_type) {
       case CSP_IFACE_ZMQHUB:
@@ -655,7 +666,8 @@ cspcl_error_t cspcl_accept_conn(cspcl_t *cspcl, csp_conn_t **conn, uint8_t *src_
 
 cspcl_error_t cspcl_recv_bundle_from_conn(csp_conn_t *conn, uint8_t *bundle, size_t *len,
                                           uint8_t *src_addr, uint8_t *src_port,
-                                          uint8_t pkt_src_addr, uint8_t pkt_src_port)
+                                          uint8_t pkt_src_addr, uint8_t pkt_src_port,
+                                          uint32_t ack_timeout_ms)
 {
   if (conn == NULL || bundle == NULL || len == NULL) {
     return CSPCL_ERR_INVALID_PARAM;
@@ -704,10 +716,27 @@ cspcl_error_t cspcl_recv_bundle_from_conn(csp_conn_t *conn, uint8_t *bundle, siz
     *src_port = pkt_src_port;
   }
 
+  cspcl_ack_t ack;
+  ack.magic = 0xAC;
+  ack.totalsize = csp_hton32((uint32_t) datasize);
+  ack.crc32 = csp_hton32(csp_crc32_memory(data, (uint32_t) datasize));
+  csp_packet_t *pkt = csp_buffer_get(sizeof(ack));
+
+  if (pkt != NULL) {
+    uint64_t pkt_size = sizeof(ack);
+    memcpy(pkt->data, &ack, pkt_size);
+    pkt->length = pkt_size;
+    if (!csp_send(conn, pkt, ack_timeout_ms)) {
+      csp_buffer_free(pkt);
+      return CSPCL_OK;
+    } else {
+      return CSPCL_ERR_SEND_ACK;
+    }
+  } else
+    return CSPCL_ERR_SEND_ACK;
+
   /* Free SFP-allocated memory */
   csp_free(data);
-
-  return CSPCL_OK;
 }
 
 cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len, uint8_t *src_addr,
@@ -732,7 +761,7 @@ cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len, ui
   }
 
   cspcl_error_t recv_err = cspcl_recv_bundle_from_conn(conn, bundle, len, src_addr, src_port,
-                                                       pkt_src_addr, pkt_src_port);
+                                                       pkt_src_addr, pkt_src_port, 500);
   if (recv_err != CSPCL_OK) {
     return recv_err;
   }

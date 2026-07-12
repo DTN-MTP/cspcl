@@ -87,6 +87,7 @@ typedef enum {
   CSPCL_ERR_CSP_SEND,              /**< CSP send failed */
   CSPCL_ERR_CSP_RECV,              /**< CSP receive failed */
   CSPCL_ERR_TIMEOUT,               /**< Operation timed out */
+  CSPCL_ERR_SEND_ACK,              /**< Could not send ACK when recv bundle */
   CSPCL_ERR_SFP,                   /**< SFP fragmentation/reassembly error */
   CSPCL_ERR_NOT_INITIALIZED,       /**< CSPCL not initialized */
   CSPCL_ERR_CONNECTION,            /**< CSP connection error */
@@ -143,6 +144,12 @@ typedef struct {
   uint32_t max_conn_age_ms;      /**< Max connection age in ms (0 = disabled) */
   cspcl_conn_pool_stats_t stats; /**< Pool operation counters */
 } cspcl_conn_pool_t;
+
+typedef struct __attribute__((packed)) {
+  uint8_t magic;      /* fixed sentinel, e.g. 0xAC — reject anything else */
+  uint32_t totalsize; /* bytes reassembled */
+  uint32_t crc32;     /* CRC32 over the reassembled bundle */
+} cspcl_ack_t;        /* 9 bytes, one packet */
 
 /*===========================================================================*/
 /* CSPCL Instance                                                             */
@@ -307,11 +314,13 @@ cspcl_error_t cspcl_accept_conn(cspcl_t *cspcl, csp_conn_t **conn, uint8_t *src_
  * @param src_port     Pointer to store source CSP port (can be NULL)
  * @param pkt_src_addr Source CSP address associated with the connection
  * @param pkt_src_port Source CSP port associated with the connection
+ * @param ack_timeout_ms Timeout in milliseconds for the ack
  * @return CSPCL_OK on success, error code otherwise
  */
 cspcl_error_t cspcl_recv_bundle_from_conn(csp_conn_t *conn, uint8_t *bundle, size_t *len,
                                           uint8_t *src_addr, uint8_t *src_port,
-                                          uint8_t pkt_src_addr, uint8_t pkt_src_port);
+                                          uint8_t pkt_src_addr, uint8_t pkt_src_port,
+                                          uint32_t ack_timeout_ms);
 
 /**
  * @brief Open and bind server socket for incoming connections
