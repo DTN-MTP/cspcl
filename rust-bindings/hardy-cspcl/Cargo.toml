@@ -18,7 +18,7 @@ hardy-async = { git = "https://github.com/ricktaylor/hardy.git" }
 hardy-bpv7 = { git = "https://github.com/ricktaylor/hardy.git" }
 tracing = { version = "0.1.44", default-features = false }
 thiserror.workspace = true
-tokio = { version = "1.51.1", features = ["time"] }
+tokio = { version = "1.51.1", features = ["rt", "macros", "time"] }
 serde = { version = "1.0.228", features = ["derive"], optional = true }
 cspcl-bindings = { path = "../cspcl", package = "cspcl" }
 futures-util = "0.3.32"

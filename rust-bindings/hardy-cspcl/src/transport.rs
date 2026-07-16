@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use cspcl_bindings::{CspAddress, Error as CspclError, InboundStream};
 use tracing::info;
@@ -13,6 +14,8 @@ pub enum Error {
     Send(#[source] CspclError),
     #[error("transport receive failed: {0}")]
     Recv(#[source] CspclError),
+    #[error("transport ping failed: {0}")]
+    Ping(#[source] CspclError),
 }
 
 #[derive(Clone)]
@@ -40,6 +43,10 @@ impl Transport {
             "CSPCL outbound bundle selected for send"
         );
         self.cspcl.send_bundle(&payload, dest).map_err(Error::Send)
+    }
+
+    pub fn ping(&self, dest_addr: u8, timeout: Duration) -> Result<(), Error> {
+        self.cspcl.ping(dest_addr, timeout).map_err(Error::Ping)
     }
 
     pub fn inbound_stream(&self) -> InboundStream {

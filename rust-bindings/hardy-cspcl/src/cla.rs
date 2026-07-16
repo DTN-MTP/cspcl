@@ -37,7 +37,20 @@ impl cla::Cla for Cla {
         let csp_addr = CspAddress::try_from(raw_addr.clone())
             .map_err(|e| cla::Error::Internal(Box::new(e)))?;
 
-        match self.transport.send_bundle(bundle, csp_addr).await {
+        let result = self.transport.send_bundle(bundle, csp_addr).await;
+
+        if let Some(peer) = self.peers.get(&csp_addr) {
+            match &result {
+                Ok(_) => peer.liveness.on_send_success(),
+                Err(_) => {
+                    if peer.liveness.on_send_failure(self.failure_threshold) {
+                        self.spawn_recovery(csp_addr, peer);
+                    }
+                }
+            }
+        }
+
+        match result {
             Ok(_) => Ok(ForwardBundleResult::Sent),
             Err(e) => {
                 warn!(
