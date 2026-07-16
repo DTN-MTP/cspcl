@@ -2,6 +2,7 @@ mod bundle_debug;
 mod cla;
 mod config;
 mod dispatcher;
+mod liveness;
 mod transport;
 
 use bytes::Bytes;
