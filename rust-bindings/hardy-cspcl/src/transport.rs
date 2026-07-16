@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use cspcl_bindings::{CspAddress, Error as CspclError, InboundStream};
-use tracing::debug;
+use tracing::info;
+
+use crate::bundle_debug::bundle_label;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -28,10 +30,16 @@ impl Transport {
         payload: impl Into<Vec<u8>>,
         dest: CspAddress,
     ) -> Result<(), Error> {
-        debug!("Try sending bundle to: {}:{}", dest.addr, dest.port);
-        self.cspcl
-            .send_bundle(&payload.into(), dest)
-            .map_err(Error::Send)
+        let payload = payload.into();
+        let label = bundle_label(&payload);
+        info!(
+            csp_addr = dest.addr,
+            csp_port = dest.port,
+            bundle_len = payload.len(),
+            bundle = %label,
+            "CSPCL outbound bundle selected for send"
+        );
+        self.cspcl.send_bundle(&payload, dest).map_err(Error::Send)
     }
 
     pub fn inbound_stream(&self) -> InboundStream {

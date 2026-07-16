@@ -51,12 +51,7 @@ impl Cspcl {
 
     pub(crate) fn poll_connection(&self) -> Result<AcceptedConn> {
         let mut cspcl = self.inner_mut();
-        let accepted_conn = from_sys_result(cspcl_sys::types::accept_conn(&mut cspcl, 10))?;
-        from_sys_result(cspcl_sys::types::conn_pool_add_accepted(
-            &mut cspcl,
-            accepted_conn,
-        ))?;
-        Ok(accepted_conn)
+        from_sys_result(cspcl_sys::types::accept_conn(&mut cspcl, 10))
     }
 
     /// Check if initialized

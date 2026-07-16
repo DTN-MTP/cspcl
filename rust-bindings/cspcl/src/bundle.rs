@@ -23,9 +23,15 @@ impl Cspcl {
             return Err(Error::InvalidParam);
         }
 
-        let mut inner = self.inner_mut();
+        let inner_guard = self.inner();
+        let inner = (&*inner_guard as *const cspcl_sys::cspcl_t).cast_mut();
+        drop(inner_guard);
+
         debug!("Sending bundle to {}:{}", dest.addr, dest.port);
-        match cspcl_sys::types::send_bundle(&mut inner, bundle, dest.addr, dest.port)
+        // The C send path serializes connection-pool access internally. Avoid
+        // holding the Rust write lock while libcsp/RDP waits or retransmits, so
+        // inbound accept can keep polling the RX socket.
+        match unsafe { cspcl_sys::types::send_bundle_ptr(inner, bundle, dest.addr, dest.port) }
             .map_err(Error::from_raw)
         {
             Ok(_) => debug!("Bundle sent to {}:{}", dest.addr, dest.port),

@@ -11,6 +11,8 @@ use hardy_bpa::{
 use hardy_bpv7::eid::NodeId;
 use tokio::task::{self};
 
+use crate::bundle_debug::bundle_label;
+
 pub type DispatcherHandle = JoinHandle<()>;
 
 pub struct Dispatcher {
@@ -62,8 +64,10 @@ impl Dispatcher {
                         continue;
                     }
                 };
-                debug!(
+                let label = bundle_label(&bundle.data);
+                info!(
                     len = bundle.data.len(),
+                    bundle = %label,
                     "New bundle in inbound stream from {}:{}", bundle.src_addr, bundle.src_port
                 );
                 let bundle_data: Bytes = bundle.data.into();

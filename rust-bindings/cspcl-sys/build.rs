@@ -138,4 +138,3 @@ fn generate_bindings(header: &Path, source_dir: &Path, libcsp: &Libcsp) {
         .write_to_file(out_dir.join("bindings.rs"))
         .expect("couldn't write bindings");
 }
-

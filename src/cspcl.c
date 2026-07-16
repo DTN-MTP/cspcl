@@ -19,6 +19,7 @@
 
 #include <csp/csp_crc32.h>
 #include <csp/csp_endian.h>
+#include <csp/csp_types.h>
 
 #ifndef FREERTOS
 #include <time.h>
@@ -290,12 +291,9 @@ cspcl_error_t cspcl_init(cspcl_t *cspcl)
       csp_conf.buffers = 100;
       csp_conf.buffer_data_size = 256;
 
-      // static uint32_t csp_rdp_window_size = 4;
-      // static uint32_t csp_rdp_conn_timeout = 10000;
-      // static uint32_t csp_rdp_packet_timeout = 1000;
-      // static uint32_t csp_rdp_delayed_acks = 1;
-      // static uint32_t csp_rdp_ack_timeout = 1000 / 4;
-      // static uint32_t csp_rdp_ack_delay_count = 4 / 2;
+      csp_rdp_set_opt(CSPCL_RDP_WINDOW_SIZE, CSPCL_RDP_CONN_TIMEOUT_MS,
+                      CSPCL_RDP_PACKET_TIMEOUT_MS, CSPCL_RDP_DELAYED_ACKS,
+                      CSPCL_RDP_ACK_TIMEOUT_MS, CSPCL_RDP_ACK_DELAY_COUNT);
       int ret = csp_init(&csp_conf);
       if (ret != CSP_ERR_NONE) {
 #ifndef FREERTOS
@@ -305,7 +303,6 @@ cspcl_error_t cspcl_init(cspcl_t *cspcl)
         return CSPCL_ERR_CSP_STACK_INIT;
       }
 
-      csp_rdp_set_opt(4, 1500, 300, 0, 0, 0);
       /* Initialize the selected interface (global) */
       switch (cspcl->iface_type) {
       case CSP_IFACE_ZMQHUB:
@@ -528,14 +525,35 @@ cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle, size_t le
 
   if (ret != CSP_ERR_NONE) {
     cspcl_pool_invalidate_locked(pool, dest_addr, dest_port);
+    (void) cspcl_pool_unlock(pool);
+    return CSPCL_ERR_CSP_SEND;
   }
+
+  csp_packet_t *pkt = csp_read(conn, 500);
+  if (pkt == NULL) {
+    cspcl_pool_invalidate_locked(pool, dest_addr, dest_port);
+    (void) cspcl_pool_unlock(pool);
+    return CSPCL_ERR_ACK_TIMEOUT;
+  }
+
+  bool ack_ok = false;
+  if (pkt->length == sizeof(cspcl_ack_t)) {
+    cspcl_ack_t *ack = (cspcl_ack_t *) pkt->data;
+    ack_ok = (ack->magic == 0xAC) && (csp_ntoh32(ack->totalsize) == (uint32_t) len) &&
+             (csp_ntoh32(ack->crc32) == csp_crc32_memory(bundle, (uint32_t) len));
+  }
+
+  if (!ack_ok) {
+    csp_buffer_free(pkt);
+    cspcl_pool_invalidate_locked(pool, dest_addr, dest_port);
+    (void) cspcl_pool_unlock(pool);
+    return CSPCL_ERR_ACK;
+  }
+
+  csp_buffer_free(pkt);
 
   if (cspcl_pool_unlock(pool) != 0) {
     CSPCL_LOG("pool unlock failed after send");
-  }
-
-  if (ret != CSP_ERR_NONE) {
-    return CSPCL_ERR_CSP_SEND;
   }
 
   return CSPCL_OK;
@@ -722,21 +740,24 @@ cspcl_error_t cspcl_recv_bundle_from_conn(csp_conn_t *conn, uint8_t *bundle, siz
   ack.crc32 = csp_hton32(csp_crc32_memory(data, (uint32_t) datasize));
   csp_packet_t *pkt = csp_buffer_get(sizeof(ack));
 
-  if (pkt != NULL) {
-    uint64_t pkt_size = sizeof(ack);
-    memcpy(pkt->data, &ack, pkt_size);
-    pkt->length = pkt_size;
-    if (!csp_send(conn, pkt, ack_timeout_ms)) {
-      csp_buffer_free(pkt);
-      return CSPCL_OK;
-    } else {
-      return CSPCL_ERR_SEND_ACK;
-    }
-  } else
+  if (pkt == NULL) {
+    csp_free(data);
     return CSPCL_ERR_SEND_ACK;
+  }
 
-  /* Free SFP-allocated memory */
+  uint64_t pkt_size = sizeof(ack);
+  memcpy(pkt->data, &ack, pkt_size);
+  pkt->length = pkt_size;
+
+  int send_res = CSPCL_ERR_SEND_ACK;
+  if (csp_send(conn, pkt, ack_timeout_ms)) {
+    send_res = CSPCL_OK;
+  } else {
+    csp_buffer_free(pkt);
+  }
+
   csp_free(data);
+  return send_res;
 }
 
 cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len, uint8_t *src_addr,

@@ -133,6 +133,15 @@ pub fn send_bundle(cspcl: &mut cspcl_t, bundle: &[u8], dest_addr: u8, dest_port:
     ok_or_err(primitive::send_bundle(cspcl, bundle, dest_addr, dest_port))
 }
 
+pub unsafe fn send_bundle_ptr(
+    cspcl: *mut cspcl_t,
+    bundle: &[u8],
+    dest_addr: u8,
+    dest_port: u8,
+) -> Result<()> {
+    ok_or_err(unsafe { primitive::send_bundle_ptr(cspcl, bundle, dest_addr, dest_port) })
+}
+
 pub fn recv_bundle(
     cspcl: &mut cspcl_t,
     buffer: &mut [u8],

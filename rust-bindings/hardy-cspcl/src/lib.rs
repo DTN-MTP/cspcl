@@ -1,3 +1,4 @@
+mod bundle_debug;
 mod cla;
 mod config;
 mod dispatcher;

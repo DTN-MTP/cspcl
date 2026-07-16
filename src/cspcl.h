@@ -87,6 +87,8 @@ typedef enum {
   CSPCL_ERR_CSP_SEND,              /**< CSP send failed */
   CSPCL_ERR_CSP_RECV,              /**< CSP receive failed */
   CSPCL_ERR_TIMEOUT,               /**< Operation timed out */
+  CSPCL_ERR_ACK_TIMEOUT,           /**< Ack while sending a bundle timed out */
+  CSPCL_ERR_ACK,                   /**< Ack failed for a sent bundle */
   CSPCL_ERR_SEND_ACK,              /**< Could not send ACK when recv bundle */
   CSPCL_ERR_SFP,                   /**< SFP fragmentation/reassembly error */
   CSPCL_ERR_NOT_INITIALIZED,       /**< CSPCL not initialized */

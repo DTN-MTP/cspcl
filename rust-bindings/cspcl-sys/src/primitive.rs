@@ -31,6 +31,15 @@ pub fn send_bundle(
     unsafe { cspcl_send_bundle(cspcl, bundle.as_ptr(), bundle.len(), dest_addr, dest_port) }
 }
 
+pub unsafe fn send_bundle_ptr(
+    cspcl: *mut cspcl_t,
+    bundle: &[u8],
+    dest_addr: u8,
+    dest_port: u8,
+) -> cspcl_error_t {
+    unsafe { cspcl_send_bundle(cspcl, bundle.as_ptr(), bundle.len(), dest_addr, dest_port) }
+}
+
 pub fn recv_bundle(
     cspcl: &mut cspcl_t,
     buffer: &mut [u8],
@@ -91,6 +100,7 @@ pub unsafe fn recv_bundle_from_conn(
             &mut src_port,
             pkt_src_addr,
             pkt_src_port,
+            500,
         )
     };
     (code, len, src_addr, src_port)

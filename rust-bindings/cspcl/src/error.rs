@@ -40,6 +40,9 @@ pub enum Error {
     UnknownError(cspcl_sys::cspcl_error_t),
     /// Error returned when the address parsing fails
     ParseAddress,
+    AckTimeout,
+    Ack,
+    SendAck,
 }
 
 impl Error {
@@ -62,6 +65,9 @@ impl Error {
             cspcl_sys::cspcl_error_t_CSPCL_ERR_CSP_CAN_NOT_SUPPORTED => Self::CspCanNotSupported,
             cspcl_sys::cspcl_error_t_CSPCL_ERR_CSP_ROUTER => Self::CspRouter,
             cspcl_sys::cspcl_error_t_CSPCL_ERR_POOL_FULL => Self::PoolFull,
+            cspcl_sys::cspcl_error_t_CSPCL_ERR_ACK => Self::Ack,
+            cspcl_sys::cspcl_error_t_CSPCL_ERR_ACK_TIMEOUT => Self::AckTimeout,
+            cspcl_sys::cspcl_error_t_CSPCL_ERR_SEND_ACK => Self::SendAck,
             unknown => Self::UnknownError(unknown),
         }
     }
@@ -95,6 +101,9 @@ impl Error {
             Self::CspRouter => "CSP router task start failed",
             Self::PoolFull => "Connection pool full",
             Self::ParseAddress => "Could not parse csp address",
+            Self::AckTimeout => "Did not received ack bundle fast enough",
+            Self::Ack => "Something went wrong while receiving ack for a sent bundle",
+            Self::SendAck => "Could not send ack after receiving a bundle",
             Self::UnknownError(_) => "Unknown error",
         }
     }
@@ -118,6 +127,9 @@ impl Error {
             Self::CspCanNotSupported => cspcl_sys::cspcl_error_t_CSPCL_ERR_CSP_CAN_NOT_SUPPORTED,
             Self::CspRouter => cspcl_sys::cspcl_error_t_CSPCL_ERR_CSP_ROUTER,
             Self::PoolFull => cspcl_sys::cspcl_error_t_CSPCL_ERR_POOL_FULL,
+            Self::SendAck => cspcl_sys::cspcl_error_t_CSPCL_ERR_SEND_ACK,
+            Self::AckTimeout => cspcl_sys::cspcl_error_t_CSPCL_ERR_ACK_TIMEOUT,
+            Self::Ack => cspcl_sys::cspcl_error_t_CSPCL_ERR_ACK,
             Self::ParseAddress => 420,
             Self::UnknownError(code) => *code,
         }

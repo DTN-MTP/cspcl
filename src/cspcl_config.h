@@ -38,6 +38,36 @@
 #define CSPCL_CSP_TIMEOUT_MS 1000
 #endif
 
+/** RDP window size for new outgoing connections */
+#ifndef CSPCL_RDP_WINDOW_SIZE
+#define CSPCL_RDP_WINDOW_SIZE 4
+#endif
+
+/** RDP connection timeout in milliseconds */
+#ifndef CSPCL_RDP_CONN_TIMEOUT_MS
+#define CSPCL_RDP_CONN_TIMEOUT_MS 1500
+#endif
+
+/** RDP retransmission interval in milliseconds */
+#ifndef CSPCL_RDP_PACKET_TIMEOUT_MS
+#define CSPCL_RDP_PACKET_TIMEOUT_MS 300
+#endif
+
+/** Enable delayed RDP acknowledgements */
+#ifndef CSPCL_RDP_DELAYED_ACKS
+#define CSPCL_RDP_DELAYED_ACKS 0
+#endif
+
+/** RDP delayed ACK timeout in milliseconds */
+#ifndef CSPCL_RDP_ACK_TIMEOUT_MS
+#define CSPCL_RDP_ACK_TIMEOUT_MS 0
+#endif
+
+/** RDP delayed ACK packet count */
+#ifndef CSPCL_RDP_ACK_DELAY_COUNT
+#define CSPCL_RDP_ACK_DELAY_COUNT 0
+#endif
+
 /** CSP connection options for outbound connections (bitmask of CSP_O_*) */
 #ifndef CSPCL_CSP_CONN_OPTIONS
 #define CSPCL_CSP_CONN_OPTIONS CSP_O_RDP
