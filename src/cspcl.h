@@ -266,6 +266,21 @@ cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle, size_t le
                                 uint8_t dest_addr, uint8_t dest_port);
 
 /**
+ * @brief Probe reachability of a remote CSP node via CSP ping (CMP echo).
+ *
+ * Transport-level liveness check, independent of bundle traffic. Any libcsp
+ * node running the standard service handler answers automatically, so this is
+ * interoperable across CSPCL implementations.
+ *
+ * @param cspcl       Initialized CSPCL instance.
+ * @param dest_addr   Destination CSP node address.
+ * @param timeout_ms  Time to wait for the echo reply, in milliseconds.
+ * @return CSPCL_OK if the node replied; CSPCL_ERR_TIMEOUT if it did not in
+ *         time; CSPCL_ERR_INVALID_PARAM / CSPCL_ERR_NOT_INITIALIZED on misuse.
+ */
+cspcl_error_t cspcl_ping(cspcl_t *cspcl, uint8_t dest_addr, uint32_t timeout_ms);
+
+/**
  * @brief Receive a BP7 bundle from CSP
  *
  * This function accepts incoming CSP connections and uses SFP

@@ -51,6 +51,12 @@ static struct {
  */
 int g_csp_sfp_send_fail = 0;
 
+/**
+ * Set to non-zero to make csp_ping return a failure (unreachable node).
+ * Reset to 0 to simulate a reachable node. Used for failure-injection tests.
+ */
+int g_csp_ping_fail = 0;
+
 /*===========================================================================*/
 /* Core stack API                                                            */
 /*===========================================================================*/
@@ -95,6 +101,16 @@ int csp_rtable_set(uint8_t addr, uint8_t netmask, csp_iface_t *ifc, uint16_t via
   (void) ifc;
   (void) via;
   return CSP_ERR_NONE;
+}
+
+int csp_ping(uint8_t node, uint32_t timeout, unsigned int size, uint8_t opts)
+{
+  (void) node;
+  (void) timeout;
+  (void) size;
+  (void) opts;
+  /* Real csp_ping returns round-trip time in ms (>= 0), or < 0 on failure. */
+  return g_csp_ping_fail ? -1 : 1;
 }
 
 int csp_zmqhub_init(uint8_t addr, const char *server, uint16_t rx_filter, csp_iface_t **iface)

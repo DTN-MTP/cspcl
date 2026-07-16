@@ -559,6 +559,26 @@ cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle, size_t le
   return CSPCL_OK;
 }
 
+cspcl_error_t cspcl_ping(cspcl_t *cspcl, uint8_t dest_addr, uint32_t timeout_ms)
+{
+  if (cspcl == NULL) {
+    return CSPCL_ERR_INVALID_PARAM;
+  }
+
+  if (!cspcl->initialized) {
+    return CSPCL_ERR_NOT_INITIALIZED;
+  }
+
+  /* csp_ping returns the round-trip time in ms (>= 0) on success, < 0 on
+   * failure/timeout. A 1-byte payload is enough to confirm the node answers. */
+  int rtt = csp_ping(dest_addr, timeout_ms, 1, CSP_O_NONE);
+  if (rtt < 0) {
+    return CSPCL_ERR_TIMEOUT;
+  }
+
+  return CSPCL_OK;
+}
+
 /**
  * @brief Open and bind a server socket for incoming connections
  *

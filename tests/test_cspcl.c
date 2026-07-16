@@ -588,6 +588,65 @@ static int test_constants(void)
 }
 
 /*===========================================================================*/
+/* Test: Ping                                                                 */
+/*===========================================================================*/
+
+static int test_ping_null_param(void)
+{
+  ASSERT_EQ(cspcl_ping(NULL, 2, 1000), CSPCL_ERR_INVALID_PARAM);
+  TEST_PASS();
+  return 0;
+}
+
+static int test_ping_not_initialized(void)
+{
+  cspcl_t cspcl = {0};
+  /* initialized flag is 0 -> must reject before touching CSP */
+  ASSERT_EQ(cspcl_ping(&cspcl, 2, 1000), CSPCL_ERR_NOT_INITIALIZED);
+  TEST_PASS();
+  return 0;
+}
+
+static int test_ping_reachable(void)
+{
+  cspcl_t cspcl = {0};
+  cspcl.local_addr = 1;
+  cspcl.csp_port = 10;
+  cspcl.iface_type = CSP_IFACE_LOOPBACK;
+  ASSERT_EQ(cspcl_init(&cspcl), CSPCL_OK);
+
+#ifdef USING_CSP_STUBS
+  extern int g_csp_ping_fail;
+  g_csp_ping_fail = 0;
+#endif
+  ASSERT_EQ(cspcl_ping(&cspcl, 2, 1000), CSPCL_OK);
+
+  cspcl_cleanup(&cspcl);
+  TEST_PASS();
+  return 0;
+}
+
+static int test_ping_unreachable(void)
+{
+  cspcl_t cspcl = {0};
+  cspcl.local_addr = 1;
+  cspcl.csp_port = 10;
+  cspcl.iface_type = CSP_IFACE_LOOPBACK;
+  ASSERT_EQ(cspcl_init(&cspcl), CSPCL_OK);
+
+#ifdef USING_CSP_STUBS
+  extern int g_csp_ping_fail;
+  g_csp_ping_fail = 1;
+  ASSERT_EQ(cspcl_ping(&cspcl, 2, 1000), CSPCL_ERR_TIMEOUT);
+  g_csp_ping_fail = 0;
+#endif
+
+  cspcl_cleanup(&cspcl);
+  TEST_PASS();
+  return 0;
+}
+
+/*===========================================================================*/
 /* Main Test Runner                                                           */
 /*===========================================================================*/
 
@@ -636,6 +695,12 @@ static test_case_t tests[] = {
 
     /* Constant tests */
     {"test_constants", test_constants},
+
+    /* Ping tests */
+    {"test_ping_null_param", test_ping_null_param},
+    {"test_ping_not_initialized", test_ping_not_initialized},
+    {"test_ping_reachable", test_ping_reachable},
+    {"test_ping_unreachable", test_ping_unreachable},
 
     {NULL, NULL}};
 

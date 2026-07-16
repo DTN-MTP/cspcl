@@ -102,6 +102,16 @@ void csp_rdp_set_opt(unsigned int window_size, unsigned int conn_timeout_ms,
                      unsigned int packet_timeout_ms, int delayed_acks, unsigned int ack_timeout,
                      int ack_delay_count);
 
+/**
+ * Probe reachability of a remote CSP node (CMP echo)
+ * @param node Destination CSP node address
+ * @param timeout Time to wait for the echo reply, in ms
+ * @param size Payload size in bytes
+ * @param opts Connection options
+ * @return Round-trip time in ms (>= 0) on success, < 0 on failure/timeout
+ */
+int csp_ping(uint8_t node, uint32_t timeout, unsigned int size, uint8_t opts);
+
 /*===========================================================================*/
 /* CSP Buffer API                                                             */
 /*===========================================================================*/
