@@ -142,6 +142,10 @@ pub unsafe fn send_bundle_ptr(
     ok_or_err(unsafe { primitive::send_bundle_ptr(cspcl, bundle, dest_addr, dest_port) })
 }
 
+pub unsafe fn ping_ptr(cspcl: *mut cspcl_t, dest_addr: u8, timeout_ms: u32) -> Result<()> {
+    ok_or_err(unsafe { primitive::ping_ptr(cspcl, dest_addr, timeout_ms) })
+}
+
 pub fn recv_bundle(
     cspcl: &mut cspcl_t,
     buffer: &mut [u8],

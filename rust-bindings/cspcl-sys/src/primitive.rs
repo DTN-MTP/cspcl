@@ -2,8 +2,8 @@ use std::ffi::CStr;
 
 use crate::{
     csp_conn_t, cspcl_accept_conn, cspcl_cleanup, cspcl_close_rx_socket, cspcl_conn_pool_add,
-    cspcl_conn_pool_t, cspcl_error_t, cspcl_init, cspcl_recv_bundle, cspcl_recv_bundle_from_conn,
-    cspcl_send_bundle, cspcl_strerror, cspcl_t,
+    cspcl_conn_pool_t, cspcl_error_t, cspcl_init, cspcl_ping, cspcl_recv_bundle,
+    cspcl_recv_bundle_from_conn, cspcl_send_bundle, cspcl_strerror, cspcl_t,
 };
 
 pub fn init(cspcl: &mut cspcl_t) -> cspcl_error_t {
@@ -38,6 +38,10 @@ pub unsafe fn send_bundle_ptr(
     dest_port: u8,
 ) -> cspcl_error_t {
     unsafe { cspcl_send_bundle(cspcl, bundle.as_ptr(), bundle.len(), dest_addr, dest_port) }
+}
+
+pub unsafe fn ping_ptr(cspcl: *mut cspcl_t, dest_addr: u8, timeout_ms: u32) -> cspcl_error_t {
+    unsafe { cspcl_ping(cspcl, dest_addr, timeout_ms) }
 }
 
 pub fn recv_bundle(

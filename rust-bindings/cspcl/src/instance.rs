@@ -49,6 +49,19 @@ impl Cspcl {
         cspcl_sys::types::close_rx_socket(&mut cspcl);
     }
 
+    /// Probe reachability of a remote CSP node (transport-level liveness).
+    ///
+    /// Returns `Ok(())` if the node replied within `timeout`, `Err(Error::Timeout)`
+    /// if not. Blocking — call from a blocking context (e.g. `spawn_blocking`).
+    pub fn ping(&self, dest_addr: u8, timeout: std::time::Duration) -> Result<()> {
+        let inner_guard = self.inner();
+        let inner = (&*inner_guard as *const cspcl_sys::cspcl_t).cast_mut();
+        drop(inner_guard);
+
+        let timeout_ms = timeout.as_millis().min(u32::MAX as u128) as u32;
+        unsafe { cspcl_sys::types::ping_ptr(inner, dest_addr, timeout_ms) }.map_err(Error::from_raw)
+    }
+
     pub(crate) fn poll_connection(&self) -> Result<AcceptedConn> {
         let mut cspcl = self.inner_mut();
         from_sys_result(cspcl_sys::types::accept_conn(&mut cspcl, 10))
