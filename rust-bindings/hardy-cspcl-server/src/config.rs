@@ -92,4 +92,36 @@ peers:
         assert_eq!(config.cspcl_config.peers[0].addr, 2);
         assert_eq!(config.cspcl_config.peers[0].port, 1);
     }
+
+    #[test]
+    fn liveness_tunables_default_when_absent_from_yaml() {
+        let path = std::env::temp_dir().join(format!(
+            "hardy-cspcl-server-defaults-{}.yaml",
+            std::process::id()
+        ));
+        fs::write(
+            &path,
+            "\
+local-addr: 7
+port: 9
+interface: loopback
+interface-name: loopback
+peers:
+  - node-id: ipn:2.0
+    addr: 2
+    port: 1
+",
+        )
+        .expect("write test config");
+
+        let config = load_server_config(&path).expect("load server config");
+        let _ = fs::remove_file(&path);
+
+        // Omitted tunables must fall back to the field-level serde defaults,
+        // NOT u32::default() (0), which flatten + container-default would give.
+        assert_eq!(config.cspcl_config.failure_threshold, 3);
+        assert_eq!(config.cspcl_config.ping_timeout_ms, 1000);
+        assert_eq!(config.cspcl_config.default_heartbeat_interval_s, 5);
+        assert_eq!(config.cspcl_config.peers[0].heartbeat_interval, None);
+    }
 }
