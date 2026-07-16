@@ -438,14 +438,14 @@ static int test_recv_bundle_from_conn_invalid_params(void)
   uint8_t src_addr = 0;
   uint8_t src_port = 0;
 
-  ASSERT_EQ(cspcl_recv_bundle_from_conn(NULL, bundle, &len, &src_addr, &src_port, 1, 2),
+  ASSERT_EQ(cspcl_recv_bundle_from_conn(NULL, bundle, &len, &src_addr, &src_port, 1, 2, 1000),
             CSPCL_ERR_INVALID_PARAM);
-  ASSERT_EQ(
-      cspcl_recv_bundle_from_conn((csp_conn_t *) bundle, NULL, &len, &src_addr, &src_port, 1, 2),
-      CSPCL_ERR_INVALID_PARAM);
-  ASSERT_EQ(
-      cspcl_recv_bundle_from_conn((csp_conn_t *) bundle, bundle, NULL, &src_addr, &src_port, 1, 2),
-      CSPCL_ERR_INVALID_PARAM);
+  ASSERT_EQ(cspcl_recv_bundle_from_conn((csp_conn_t *) bundle, NULL, &len, &src_addr, &src_port, 1,
+                                        2, 1000),
+            CSPCL_ERR_INVALID_PARAM);
+  ASSERT_EQ(cspcl_recv_bundle_from_conn((csp_conn_t *) bundle, bundle, NULL, &src_addr, &src_port,
+                                        1, 2, 1000),
+            CSPCL_ERR_INVALID_PARAM);
 
   TEST_PASS();
   return 0;

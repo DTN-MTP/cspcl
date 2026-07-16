@@ -76,6 +76,18 @@ int csp_route_start_task(unsigned int stack_size, unsigned int prio)
   return CSP_ERR_NONE;
 }
 
+void csp_rdp_set_opt(unsigned int window_size, unsigned int conn_timeout_ms,
+                     unsigned int packet_timeout_ms, int delayed_acks, unsigned int ack_timeout,
+                     int ack_delay_count)
+{
+  (void) window_size;
+  (void) conn_timeout_ms;
+  (void) packet_timeout_ms;
+  (void) delayed_acks;
+  (void) ack_timeout;
+  (void) ack_delay_count;
+}
+
 int csp_rtable_set(uint8_t addr, uint8_t netmask, csp_iface_t *ifc, uint16_t via)
 {
   (void) addr;
@@ -98,6 +110,44 @@ int csp_zmqhub_init(uint8_t addr, const char *server, uint16_t rx_filter, csp_if
   }
 
   return CSP_ERR_NONE;
+}
+
+/*===========================================================================*/
+/* Endian / CRC helpers                                                       */
+/*===========================================================================*/
+
+/* Declared by the real libcsp headers (csp/csp_endian.h, csp/csp_crc32.h),
+ * which are picked up transitively since this stub tree does not shadow
+ * them. Only definitions are needed here. */
+
+uint32_t csp_hton32(uint32_t h32)
+{
+  return ((h32 & 0x000000FFu) << 24) | ((h32 & 0x0000FF00u) << 8) |
+         ((h32 & 0x00FF0000u) >> 8) | ((h32 & 0xFF000000u) >> 24);
+}
+
+uint32_t csp_ntoh32(uint32_t n32)
+{
+  return csp_hton32(n32);
+}
+
+uint32_t csp_crc32_memory(const uint8_t *addr, uint32_t length)
+{
+  uint32_t crc = 0xFFFFFFFFu;
+
+  if (addr == NULL) {
+    return 0;
+  }
+
+  for (uint32_t i = 0; i < length; i++) {
+    crc ^= addr[i];
+    for (int bit = 0; bit < 8; bit++) {
+      uint32_t mask = (uint32_t) (-(int32_t) (crc & 1u));
+      crc = (crc >> 1) ^ (0xEDB88320u & mask);
+    }
+  }
+
+  return crc ^ 0xFFFFFFFFu;
 }
 
 /*===========================================================================*/

@@ -89,6 +89,19 @@ void csp_conf_get_defaults(csp_conf_t *conf);
 int csp_init(const csp_conf_t *conf);
 int csp_route_start_task(unsigned int stack_size, unsigned int prio);
 
+/**
+ * Configure global RDP protocol parameters (stubbed, no-op)
+ * @param window_size Window size for new outgoing connections
+ * @param conn_timeout_ms Connection timeout in ms
+ * @param packet_timeout_ms Retransmission interval in ms
+ * @param delayed_acks Enable delayed acknowledgements
+ * @param ack_timeout Delayed ACK timeout in ms
+ * @param ack_delay_count Delayed ACK packet count
+ */
+void csp_rdp_set_opt(unsigned int window_size, unsigned int conn_timeout_ms,
+                     unsigned int packet_timeout_ms, int delayed_acks, unsigned int ack_timeout,
+                     int ack_delay_count);
+
 /*===========================================================================*/
 /* CSP Buffer API                                                             */
 /*===========================================================================*/
