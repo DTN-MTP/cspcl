@@ -1,4 +1,5 @@
 use thiserror::Error;
+use tokio::task::JoinError;
 
 #[derive(Error, Debug)]
 pub enum ServerError {
@@ -12,4 +13,6 @@ pub enum ServerError {
     CreateCla(#[from] hardy_cspcl::Error),
     #[error("Could not register cla: {0}")]
     RegisterCla(#[from] hardy_bpa::cla::Error),
+    #[error("The dispatching task stopped: {0}")]
+    Dispatching(#[from] JoinError),
 }
