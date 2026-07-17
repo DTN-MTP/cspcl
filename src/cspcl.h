@@ -69,6 +69,16 @@ extern "C" {
 /** Maximum number of cached outbound CSP connections */
 #define CSPCL_CONN_POOL_SIZE 16
 
+/** Maximum number of live inbound CSP connections kept open for reading.
+ *  Senders pool their outbound connections and reuse them for multiple
+ *  bundles, so the receiver must keep accepted connections open and keep
+ *  reading from them instead of closing after the first bundle. */
+#define CSPCL_RX_CONN_TABLE_SIZE 8
+
+/** How long cspcl_recv_bundle() polls csp_accept() for new inbound
+ *  connections when it already has live connections to read from */
+#define CSPCL_RX_ACCEPT_POLL_MS 100
+
 /** CSP connection timeout in milliseconds */
 #define CSPCL_CSP_TIMEOUT_MS 1000
 
@@ -144,6 +154,20 @@ typedef struct {
   cspcl_conn_pool_stats_t stats; /**< Pool operation counters */
 } cspcl_conn_pool_t;
 
+/**
+ * @brief Live inbound connection kept open across cspcl_recv_bundle() calls
+ *
+ * Senders reuse pooled connections for multiple bundles, so accepted
+ * connections must stay open and be polled for further bundles.
+ */
+typedef struct {
+  bool used;
+  csp_conn_t *conn;
+  uint8_t src_addr;
+  uint8_t src_port;
+  uint32_t last_active; /**< Monotonic tick at last received bundle, for LRU eviction */
+} cspcl_rx_conn_entry_t;
+
 /*===========================================================================*/
 /* CSPCL Instance                                                             */
 /*===========================================================================*/
@@ -173,6 +197,10 @@ typedef struct {
 
   /* Internal outbound CSP connection pool */
   cspcl_conn_pool_t conn_pool;
+
+  /* Live inbound connections being polled for bundles */
+  cspcl_rx_conn_entry_t rx_conns[CSPCL_RX_CONN_TABLE_SIZE];
+  uint32_t rx_tick; /**< Monotonic counter for inbound LRU eviction */
 
   csp_iface_t *active_iface;
 } cspcl_t;
@@ -366,6 +394,136 @@ cspcl_error_t cspcl_addr_to_endpoint(uint8_t addr, char *endpoint, size_t len);
  * @return Human-readable error string
  */
 const char *cspcl_strerror(cspcl_error_t err);
+
+/*===========================================================================*/
+/* PHASE 2: Unified Address Parsing API                                      */
+/*===========================================================================*/
+
+/**
+ * @brief Parse CSP address from string in multiple formats
+ *
+ * Supports formats:
+ *   - IPN scheme: "ipn:X.Y" → address X
+ *   - DTN scheme: "dtn://nodeX" or "dtn://a.dtn/..." → address
+ *   - CSP scheme: "csp:X" or "csp:X,Y" → address X (port extracted separately)
+ *   - Bare integer: "42" → address 42
+ *
+ * @param addr_string  Input address string
+ * @param dest_port    Output CSP port (may be NULL; defaults to CSPCL_PORT_BP)
+ * @return CSP address (0-255), or 0 on parse error
+ *
+ * @note Returns 0 on error, which is also a valid address. Use with caution
+ *       for address 0. Check the string first with cspcl_is_valid_address_string().
+ */
+uint8_t cspcl_parse_address(const char *addr_string, uint8_t *dest_port);
+
+/**
+ * @brief Validate that an address string parses to a valid address
+ *
+ * Distinguishes between "0" (valid) and unparseable strings.
+ *
+ * @param addr_string   Input address string
+ * @param parsed_addr   Address returned by cspcl_parse_address()
+ * @return true if string is valid, false otherwise
+ */
+bool cspcl_is_valid_address_string(const char *addr_string, uint8_t parsed_addr);
+
+/**
+ * @brief Extract CSP port from address string (if present)
+ *
+ * Supports formats:
+ *   - "csp:X,Y" → port Y
+ *   - Other formats → CSPCL_PORT_BP (default)
+ *
+ * @param addr_string  Input address string
+ * @return CSP port (0-31 for CSP v1.6), or CSPCL_PORT_BP if not specified
+ */
+uint8_t cspcl_parse_port(const char *addr_string);
+
+/**
+ * @brief Identify the addressing scheme used in a string
+ *
+ * Useful for logging and debugging integration-specific address issues.
+ *
+ * @param addr_string  Input address string
+ * @param scheme_out   Output scheme name (e.g., "ipn", "dtn", "csp", "bare")
+ * @param scheme_len   Buffer length for scheme_out
+ * @return CSPCL_OK on success, error code otherwise
+ */
+cspcl_error_t cspcl_identify_address_scheme(const char *addr_string,
+                                           char *scheme_out, size_t scheme_len);
+
+/*===========================================================================*/
+/* PHASE 3: Error Categorization API                                         */
+/*===========================================================================*/
+
+/**
+ * @brief Error category enumeration
+ *
+ * Groups detailed error codes into broader categories for integration-specific
+ * handling without losing information.
+ */
+typedef enum {
+  CSPCL_ERRCATEGORY_OK = 0,        /** No error */
+  CSPCL_ERRCATEGORY_PARAM,         /** Invalid parameter (caller error) */
+  CSPCL_ERRCATEGORY_RESOURCE,      /** Out of memory or resource exhausted */
+  CSPCL_ERRCATEGORY_TIMEOUT,       /** Operation timed out (retryable) */
+  CSPCL_ERRCATEGORY_CSP,           /** CSP/transport layer error */
+  CSPCL_ERRCATEGORY_FATAL,         /** Unrecoverable error */
+} cspcl_error_category_t;
+
+/**
+ * @brief Categorize CSPCL error for integration-specific handling
+ *
+ * Maps detailed CSPCL errors to broader categories that integrations
+ * can map to their own error schemes without losing information.
+ *
+ * @param err CSPCL error code
+ * @return Error category (see cspcl_error_category_t)
+ */
+cspcl_error_category_t cspcl_categorize_error(cspcl_error_t err);
+
+/**
+ * @brief Check if error is retryable
+ *
+ * Some errors (timeout, pool full) may succeed on retry.
+ * Others (invalid param, not initialized) will always fail.
+ *
+ * @param err CSPCL error code
+ * @return true if operation should be retried, false if it will always fail
+ */
+bool cspcl_error_is_retryable(cspcl_error_t err);
+
+/*===========================================================================*/
+/* PHASE 4: Interface Parsing API                                            */
+/*===========================================================================*/
+
+/**
+ * @brief Parse and validate interface specification string
+ *
+ * Supports formats:
+ *   - "zmqhub" → use default localhost
+ *   - "zmqhub:hostname" → use custom host
+ *   - "can" → use default CAN interface
+ *   - "can:vcan0" → use specific CAN interface
+ *   - "loopback" → loopback mode
+ *
+ * @param iface_spec      Interface specification string
+ * @param cspcl           CSPCL instance to configure (modified in-place)
+ * @return CSPCL_OK on success, error code otherwise
+ */
+cspcl_error_t cspcl_parse_interface_spec(const char *iface_spec, cspcl_t *cspcl);
+
+/**
+ * @brief Get current interface type as human-readable string
+ *
+ * @param cspcl CSPCL instance
+ * @param buf   Output buffer
+ * @param len   Buffer length
+ * @return CSPCL_OK on success, error code otherwise
+ */
+cspcl_error_t cspcl_interface_type_to_string(const cspcl_t *cspcl,
+                                            char *buf, size_t len);
 
 #ifdef __cplusplus
 }

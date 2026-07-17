@@ -12,6 +12,7 @@
 
 #include "cspcl_config.h"
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -266,6 +267,9 @@ cspcl_error_t cspcl_init(cspcl_t *cspcl)
       return pool_err;
     }
 
+    memset(cspcl->rx_conns, 0, sizeof(cspcl->rx_conns));
+    cspcl->rx_tick = 0;
+
 #ifndef FREERTOS
     pthread_mutex_lock(&g_cspcl_global_lock);
 #endif
@@ -276,15 +280,16 @@ cspcl_error_t cspcl_init(cspcl_t *cspcl)
       csp_conf_get_defaults(&csp_conf);
       csp_conf.address = cspcl->local_addr;
       csp_conf.hostname = "ud3tn";
-      csp_conf.model = "csp-cla";
-      csp_conf.revision = "1.0";
-      csp_conf.conn_max = CSPCL_CONN_POOL_SIZE + 4; /* Must exceed pool size */
-      csp_conf.conn_queue_length = 100;
-      csp_conf.fifo_length = 25;
-      csp_conf.port_max_bind = 31;
-      csp_conf.rdp_max_window = 20;
-      csp_conf.buffers = 100;
-      csp_conf.buffer_data_size = 256;
+      csp_conf.model = CSPCL_CSP_MODEL;
+      csp_conf.revision = CSPCL_CSP_REVISION;
+      /* Must cover outbound pool + held inbound connections */
+      csp_conf.conn_max = CSPCL_CONN_POOL_SIZE + CSPCL_RX_CONN_TABLE_SIZE + 4;
+      csp_conf.conn_queue_length = CSPCL_CSP_CONN_QUEUE_LENGTH;
+      csp_conf.fifo_length = CSPCL_CSP_FIFO_LENGTH;
+      csp_conf.port_max_bind = CSPCL_CSP_PORT_MAX_BIND;
+      csp_conf.rdp_max_window = CSPCL_CSP_RDP_MAX_WINDOW;
+      csp_conf.buffers = CSPCL_CSP_BUFFERS;
+      csp_conf.buffer_data_size = CSPCL_CSP_BUFFER_DATA_SIZE;
 
       int ret = csp_init(&csp_conf);
       if (ret != CSP_ERR_NONE) {
@@ -399,6 +404,15 @@ void cspcl_cleanup(cspcl_t *cspcl)
   /* Close server socket */
   cspcl_close_rx_socket(cspcl);
   cspcl_release_conn_pool(cspcl);
+
+  /* Close live inbound connections */
+  for (size_t i = 0; i < CSPCL_RX_CONN_TABLE_SIZE; i++) {
+    if (cspcl->rx_conns[i].used && cspcl->rx_conns[i].conn != NULL) {
+      csp_close(cspcl->rx_conns[i].conn);
+    }
+    cspcl->rx_conns[i].conn = NULL;
+    cspcl->rx_conns[i].used = false;
+  }
 
   cspcl->initialized = false;
 }
@@ -516,7 +530,16 @@ cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle, size_t le
   int ret = csp_sfp_send(conn, bundle, (unsigned int) len, CSPCL_MAX_PAYLOAD, CSPCL_CSP_TIMEOUT_MS);
 
   if (ret != CSP_ERR_NONE) {
+    /* The pooled connection may be stale (e.g. peer restarted and the RDP
+     * stack closed it as unresponsive). Reconnect and retry once. */
     cspcl_pool_invalidate_locked(pool, dest_addr, dest_port);
+    conn = cspcl_pool_get_or_create_locked(pool, dest_addr, dest_port);
+    if (conn != NULL) {
+      ret = csp_sfp_send(conn, bundle, (unsigned int) len, CSPCL_MAX_PAYLOAD, CSPCL_CSP_TIMEOUT_MS);
+      if (ret != CSP_ERR_NONE) {
+        cspcl_pool_invalidate_locked(pool, dest_addr, dest_port);
+      }
+    }
   }
 
   if (cspcl_pool_unlock(pool) != 0) {
@@ -553,14 +576,8 @@ cspcl_error_t cspcl_open_rx_socket(cspcl_t *cspcl)
   pthread_mutex_lock(&g_cspcl_global_lock);
 #endif
 
-  /* Reuse the process-wide RX socket if it already exists. */
-  if (g_cspcl_global_rx_socket != NULL) {
-    if (g_cspcl_global_rx_port != cspcl->csp_port) {
-#ifndef FREERTOS
-      pthread_mutex_unlock(&g_cspcl_global_lock);
-#endif
-      return CSPCL_ERR_CSPINIT;
-    }
+  /* Reuse the process-wide RX socket if it exists AND matches our port */
+  if (g_cspcl_global_rx_socket != NULL && g_cspcl_global_rx_port == cspcl->csp_port) {
     cspcl->rx_socket = g_cspcl_global_rx_socket;
 #ifndef FREERTOS
     pthread_mutex_unlock(&g_cspcl_global_lock);
@@ -568,22 +585,21 @@ cspcl_error_t cspcl_open_rx_socket(cspcl_t *cspcl)
     return CSPCL_OK;
   }
 
+  /* Unlock global lock - we're creating instance-specific socket */
+#ifndef FREERTOS
+  pthread_mutex_unlock(&g_cspcl_global_lock);
+#endif
+
   /* Create socket for connection-oriented mode */
   csp_socket_t *sock = csp_socket(CSPCL_CSP_SOCKET_OPTIONS);
   if (sock == NULL) {
-#ifndef FREERTOS
-    pthread_mutex_unlock(&g_cspcl_global_lock);
-#endif
     return CSPCL_ERR_NO_MEMORY;
   }
 
-  /* Bind to BP port */
+  /* Bind to receiving port */
   int bind_result = csp_bind(sock, cspcl->csp_port);
   if (bind_result != CSP_ERR_NONE) {
     csp_close(sock);
-#ifndef FREERTOS
-    pthread_mutex_unlock(&g_cspcl_global_lock);
-#endif
     return CSPCL_ERR_CSP_RECV;
   }
 
@@ -591,19 +607,10 @@ cspcl_error_t cspcl_open_rx_socket(cspcl_t *cspcl)
   int listen_result = csp_listen(sock, 5);
   if (listen_result != CSP_ERR_NONE) {
     csp_close(sock);
-#ifndef FREERTOS
-    pthread_mutex_unlock(&g_cspcl_global_lock);
-#endif
     return CSPCL_ERR_CSP_RECV;
   }
 
-  g_cspcl_global_rx_socket = sock;
-  g_cspcl_global_rx_port = cspcl->csp_port;
   cspcl->rx_socket = sock;
-
-#ifndef FREERTOS
-  pthread_mutex_unlock(&g_cspcl_global_lock);
-#endif
   return CSPCL_OK;
 }
 
@@ -653,9 +660,10 @@ cspcl_error_t cspcl_accept_conn(cspcl_t *cspcl, csp_conn_t **conn, uint8_t *src_
   return CSPCL_OK;
 }
 
-cspcl_error_t cspcl_recv_bundle_from_conn(csp_conn_t *conn, uint8_t *bundle, size_t *len,
-                                          uint8_t *src_addr, uint8_t *src_port,
-                                          uint8_t pkt_src_addr, uint8_t pkt_src_port)
+static cspcl_error_t cspcl_recv_from_conn_timeout(csp_conn_t *conn, uint8_t *bundle, size_t *len,
+                                                  uint8_t *src_addr, uint8_t *src_port,
+                                                  uint8_t pkt_src_addr, uint8_t pkt_src_port,
+                                                  uint32_t timeout_ms)
 {
   if (conn == NULL || bundle == NULL || len == NULL) {
     return CSPCL_ERR_INVALID_PARAM;
@@ -668,10 +676,7 @@ cspcl_error_t cspcl_recv_bundle_from_conn(csp_conn_t *conn, uint8_t *bundle, siz
   void *data = NULL;
   int datasize = 0;
 
-  int ret = csp_sfp_recv(conn, &data, &datasize, CSPCL_SFP_TIMEOUT_MS);
-
-  /* Close connection */
-  // csp_close(conn);
+  int ret = csp_sfp_recv(conn, &data, &datasize, timeout_ms);
 
   if (ret != CSP_ERR_NONE) {
     if (data != NULL) {
@@ -710,6 +715,61 @@ cspcl_error_t cspcl_recv_bundle_from_conn(csp_conn_t *conn, uint8_t *bundle, siz
   return CSPCL_OK;
 }
 
+cspcl_error_t cspcl_recv_bundle_from_conn(csp_conn_t *conn, uint8_t *bundle, size_t *len,
+                                          uint8_t *src_addr, uint8_t *src_port,
+                                          uint8_t pkt_src_addr, uint8_t pkt_src_port)
+{
+  return cspcl_recv_from_conn_timeout(conn, bundle, len, src_addr, src_port, pkt_src_addr,
+                                      pkt_src_port, CSPCL_SFP_TIMEOUT_MS);
+}
+
+/**
+ * @brief Store a newly accepted inbound connection in the RX table
+ *
+ * A peer that reconnects (same address and port) replaces its previous
+ * entry; the stale connection is closed. When the table is full the
+ * least-recently-active entry is evicted.
+ */
+static void cspcl_rx_table_store(cspcl_t *cspcl, csp_conn_t *conn, uint8_t src_addr,
+                                 uint8_t src_port)
+{
+  size_t slot = CSPCL_RX_CONN_TABLE_SIZE;
+
+  for (size_t i = 0; i < CSPCL_RX_CONN_TABLE_SIZE; i++) {
+    cspcl_rx_conn_entry_t *e = &cspcl->rx_conns[i];
+    if (e->used && e->src_addr == src_addr && e->src_port == src_port) {
+      /* Peer reconnected - its old connection is dead on their side */
+      if (e->conn != NULL && e->conn != conn) {
+        csp_close(e->conn);
+      }
+      slot = i;
+      break;
+    }
+    if (!e->used && slot == CSPCL_RX_CONN_TABLE_SIZE) {
+      slot = i;
+    }
+  }
+
+  if (slot == CSPCL_RX_CONN_TABLE_SIZE) {
+    /* Table full - evict least-recently-active entry */
+    slot = 0;
+    for (size_t i = 1; i < CSPCL_RX_CONN_TABLE_SIZE; i++) {
+      if (cspcl->rx_conns[i].last_active < cspcl->rx_conns[slot].last_active) {
+        slot = i;
+      }
+    }
+    if (cspcl->rx_conns[slot].conn != NULL) {
+      csp_close(cspcl->rx_conns[slot].conn);
+    }
+  }
+
+  cspcl->rx_conns[slot].used = true;
+  cspcl->rx_conns[slot].conn = conn;
+  cspcl->rx_conns[slot].src_addr = src_addr;
+  cspcl->rx_conns[slot].src_port = src_port;
+  cspcl->rx_conns[slot].last_active = ++cspcl->rx_tick;
+}
+
 cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len, uint8_t *src_addr,
                                 uint8_t *src_port, uint32_t timeout_ms)
 {
@@ -721,28 +781,103 @@ cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len, ui
     return CSPCL_ERR_NOT_INITIALIZED;
   }
 
-  csp_conn_t *conn = NULL;
-  uint8_t pkt_src_addr = 0;
-  uint8_t pkt_src_port = 0;
+  if (timeout_ms == 0) {
+    timeout_ms = CSPCL_CSP_TIMEOUT_MS;
+  }
+
+  size_t max_len = *len;
+
+  size_t live = 0;
+  for (size_t i = 0; i < CSPCL_RX_CONN_TABLE_SIZE; i++) {
+    if (cspcl->rx_conns[i].used) {
+      live++;
+    }
+  }
+
+  /* Poll for new inbound connections. With live connections to service we
+   * only poll briefly; otherwise accept() gets the whole timeout. Senders
+   * pool and reuse their outbound connection, so most bundles arrive on an
+   * already-accepted connection rather than a new one. */
+  uint32_t accept_timeout = timeout_ms;
+  if (live > 0) {
+    accept_timeout =
+        timeout_ms / 2 < CSPCL_RX_ACCEPT_POLL_MS ? timeout_ms / 2 : CSPCL_RX_ACCEPT_POLL_MS;
+  }
+
+  csp_conn_t *new_conn = NULL;
+  uint8_t new_src_addr = 0;
+  uint8_t new_src_port = 0;
   cspcl_error_t accept_err =
-      cspcl_accept_conn(cspcl, &conn, &pkt_src_addr, &pkt_src_port, timeout_ms);
-  if (accept_err != CSPCL_OK) {
+      cspcl_accept_conn(cspcl, &new_conn, &new_src_addr, &new_src_port, accept_timeout);
+  if (accept_err == CSPCL_OK) {
+    cspcl_rx_table_store(cspcl, new_conn, new_src_addr, new_src_port);
+    live = 0;
+    for (size_t i = 0; i < CSPCL_RX_CONN_TABLE_SIZE; i++) {
+      if (cspcl->rx_conns[i].used) {
+        live++;
+      }
+    }
+  } else if (accept_err != CSPCL_ERR_TIMEOUT) {
     *len = 0;
     return accept_err;
   }
 
-  cspcl_error_t recv_err = cspcl_recv_bundle_from_conn(conn, bundle, len, src_addr, src_port,
-                                                       pkt_src_addr, pkt_src_port);
-  if (recv_err != CSPCL_OK) {
-    return recv_err;
+  if (live == 0) {
+    *len = 0;
+    return CSPCL_ERR_TIMEOUT;
   }
 
-  int add_res = cspcl_conn_pool_add(&cspcl->conn_pool, pkt_src_addr, pkt_src_port, conn);
-  if (add_res != CSPCL_OK) {
-    return add_res;
+  /* Poll live connections for a bundle, splitting the remaining time
+   * between them. Round-robin start index keeps one busy peer from
+   * starving the others. */
+  uint32_t read_timeout = (timeout_ms - accept_timeout) / (uint32_t) live;
+  if (read_timeout < 50) {
+    read_timeout = 50;
   }
 
-  return CSPCL_OK;
+  size_t start = cspcl->rx_tick % CSPCL_RX_CONN_TABLE_SIZE;
+  for (size_t n = 0; n < CSPCL_RX_CONN_TABLE_SIZE; n++) {
+    size_t i = (start + n) % CSPCL_RX_CONN_TABLE_SIZE;
+    cspcl_rx_conn_entry_t *e = &cspcl->rx_conns[i];
+    if (!e->used) {
+      continue;
+    }
+
+    *len = max_len;
+    cspcl_error_t recv_err = cspcl_recv_from_conn_timeout(
+        e->conn, bundle, len, src_addr, src_port, e->src_addr, e->src_port, read_timeout);
+
+    if (recv_err == CSPCL_OK) {
+      e->last_active = ++cspcl->rx_tick;
+      return CSPCL_OK;
+    }
+
+    if (recv_err != CSPCL_ERR_TIMEOUT) {
+      /* Connection is broken - drop it; the peer will reconnect */
+      csp_close(e->conn);
+      e->conn = NULL;
+      e->used = false;
+    }
+  }
+
+  *len = 0;
+  return CSPCL_ERR_TIMEOUT;
+}
+
+/**
+ * @brief Debug: Dump connection pool status
+ */
+static void cspcl_debug_pool_status(cspcl_conn_pool_t *pool)
+{
+  if (pool == NULL || !pool->initialized) {
+    return;
+  }
+
+  for (size_t i = 0; i < CSPCL_CONN_POOL_SIZE; i++) {
+    if (pool->entries[i].used && pool->entries[i].conn != NULL) {
+      /* Pool entry exists: addr=%u, port=%u */
+    }
+  }
 }
 
 void cspcl_conn_pool_get_stats(const cspcl_conn_pool_t *pool, cspcl_conn_pool_stats_t *stats)
@@ -809,6 +944,258 @@ cspcl_error_t cspcl_addr_to_endpoint(uint8_t addr, char *endpoint, size_t len)
   }
 
   return CSPCL_OK;
+}
+
+/*===========================================================================*/
+/* PHASE 2: Unified Address Parsing Implementation                           */
+/*===========================================================================*/
+
+uint8_t cspcl_parse_address(const char *addr_string, uint8_t *dest_port)
+{
+  if (!addr_string) {
+    return 0;
+  }
+
+  /* Try CSP scheme first: "csp:X" or "csp:X,Y" */
+  if (strncmp(addr_string, "csp:", 4) == 0) {
+    const char *addr_str = addr_string + 4;
+    int addr = atoi(addr_str);
+    if (addr >= 0 && addr <= 255) {
+      if (dest_port) {
+        uint8_t port = cspcl_parse_port(addr_string);
+        *dest_port = port;
+      }
+      return (uint8_t) addr;
+    }
+  }
+
+  /* Try IPN scheme: "ipn:X.Y" */
+  if (strncmp(addr_string, "ipn:", 4) == 0) {
+    int node = 0;
+    if (sscanf(addr_string + 4, "%d", &node) == 1 && node >= 0 && node <= 255) {
+      if (dest_port)
+        *dest_port = CSPCL_PORT_BP;
+      return (uint8_t) node;
+    }
+  }
+
+  /* Try DTN schemes */
+  if (strncmp(addr_string, "dtn://node", 10) == 0) {
+    int node = 0;
+    if (sscanf(addr_string + 10, "%d", &node) == 1 && node >= 0 && node <= 255) {
+      if (dest_port)
+        *dest_port = CSPCL_PORT_BP;
+      return (uint8_t) node;
+    }
+  }
+
+  if (strncmp(addr_string, "dtn://", 6) == 0) {
+    const char *name = addr_string + 6;
+    if (name[0] != '\0' && name[1] == '.' && strncmp(name + 2, "dtn/", 4) == 0) {
+      char label = name[0];
+      if (label >= 'a' && label <= 'z') {
+        if (dest_port)
+          *dest_port = CSPCL_PORT_BP;
+        return (uint8_t) (label - 'a' + 1);
+      }
+    }
+  }
+
+  /* Try bare integer: "42" */
+  int addr = atoi(addr_string);
+  if (addr >= 0 && addr <= 255) {
+    if (dest_port)
+      *dest_port = CSPCL_PORT_BP;
+    return (uint8_t) addr;
+  }
+
+  return 0;
+}
+
+bool cspcl_is_valid_address_string(const char *addr_string, uint8_t parsed_addr)
+{
+  if (parsed_addr != 0 || !addr_string) {
+    return parsed_addr != 0;
+  }
+
+  /* Check if string is literally "0" or "csp:0" or "ipn:0.X" etc */
+  if (strcmp(addr_string, "0") == 0)
+    return true;
+  if (strcmp(addr_string, "csp:0") == 0)
+    return true;
+  if (strncmp(addr_string, "ipn:0.", 6) == 0)
+    return true;
+  if (strcmp(addr_string, "dtn://node0") == 0)
+    return true;
+
+  return false;
+}
+
+uint8_t cspcl_parse_port(const char *addr_string)
+{
+  if (!addr_string) {
+    return CSPCL_PORT_BP;
+  }
+
+  if (strncmp(addr_string, "csp:", 4) == 0) {
+    const char *comma = strchr(addr_string + 4, ',');
+    if (comma) {
+      int port = atoi(comma + 1);
+      if (port >= 0 && port <= 31) {
+        return (uint8_t) port;
+      }
+    }
+  }
+
+  return CSPCL_PORT_BP;
+}
+
+cspcl_error_t cspcl_identify_address_scheme(const char *addr_string, char *scheme_out,
+                                            size_t scheme_len)
+{
+  if (!addr_string || !scheme_out || scheme_len < 5) {
+    return CSPCL_ERR_INVALID_PARAM;
+  }
+
+  if (strncmp(addr_string, "ipn:", 4) == 0) {
+    strncpy(scheme_out, "ipn", scheme_len - 1);
+    scheme_out[scheme_len - 1] = '\0';
+    return CSPCL_OK;
+  }
+
+  if (strncmp(addr_string, "dtn://", 6) == 0) {
+    strncpy(scheme_out, "dtn", scheme_len - 1);
+    scheme_out[scheme_len - 1] = '\0';
+    return CSPCL_OK;
+  }
+
+  if (strncmp(addr_string, "csp:", 4) == 0) {
+    strncpy(scheme_out, "csp", scheme_len - 1);
+    scheme_out[scheme_len - 1] = '\0';
+    return CSPCL_OK;
+  }
+
+  /* Check if it's a bare integer */
+  if (addr_string[0] >= '0' && addr_string[0] <= '9') {
+    strncpy(scheme_out, "bare", scheme_len - 1);
+    scheme_out[scheme_len - 1] = '\0';
+    return CSPCL_OK;
+  }
+
+  return CSPCL_ERR_INVALID_PARAM;
+}
+
+/*===========================================================================*/
+/* PHASE 3: Error Categorization Implementation                              */
+/*===========================================================================*/
+
+cspcl_error_category_t cspcl_categorize_error(cspcl_error_t err)
+{
+  switch (err) {
+  case CSPCL_OK:
+    return CSPCL_ERRCATEGORY_OK;
+
+  case CSPCL_ERR_INVALID_PARAM:
+    return CSPCL_ERRCATEGORY_PARAM;
+
+  case CSPCL_ERR_NO_MEMORY:
+  case CSPCL_ERR_POOL_FULL:
+    return CSPCL_ERRCATEGORY_RESOURCE;
+
+  case CSPCL_ERR_TIMEOUT:
+    return CSPCL_ERRCATEGORY_TIMEOUT;
+
+  case CSPCL_ERR_CSP_SEND:
+  case CSPCL_ERR_CSP_RECV:
+  case CSPCL_ERR_CONNECTION:
+  case CSPCL_ERR_SFP:
+    return CSPCL_ERRCATEGORY_CSP;
+
+  case CSPCL_ERR_BUNDLE_TOO_LARGE:
+  case CSPCL_ERR_NOT_INITIALIZED:
+  case CSPCL_ERR_CSPINIT:
+  case CSPCL_ERR_CSP_STACK_INIT:
+  case CSPCL_ERR_CSP_ZMQHUB_INIT:
+  case CSPCL_ERR_CSP_CAN_INIT:
+  case CSPCL_ERR_CSP_CAN_NOT_SUPPORTED:
+  case CSPCL_ERR_CSP_ROUTER:
+  default:
+    return CSPCL_ERRCATEGORY_FATAL;
+  }
+}
+
+bool cspcl_error_is_retryable(cspcl_error_t err)
+{
+  return err == CSPCL_ERR_TIMEOUT || err == CSPCL_ERR_POOL_FULL || err == CSPCL_ERR_CSP_SEND ||
+         err == CSPCL_ERR_CSP_RECV;
+}
+
+/*===========================================================================*/
+/* PHASE 4: Interface Parsing Implementation                                 */
+/*===========================================================================*/
+
+cspcl_error_t cspcl_parse_interface_spec(const char *iface_spec, cspcl_t *cspcl)
+{
+  if (!iface_spec || !cspcl) {
+    return CSPCL_ERR_INVALID_PARAM;
+  }
+
+  if (strncmp(iface_spec, "zmqhub:", 7) == 0) {
+    cspcl->iface_type = CSP_IFACE_ZMQHUB;
+    strncpy(cspcl->zmqhub_addr, iface_spec + 7, CSPCL_IFACE_PARAM_MAX - 1);
+    cspcl->zmqhub_addr[CSPCL_IFACE_PARAM_MAX - 1] = '\0';
+    return CSPCL_OK;
+  }
+
+  if (strcmp(iface_spec, "zmqhub") == 0) {
+    cspcl->iface_type = CSP_IFACE_ZMQHUB;
+    strncpy(cspcl->zmqhub_addr, CSPCL_ZMQHUB_ADDR_DEFAULT, CSPCL_IFACE_PARAM_MAX - 1);
+    cspcl->zmqhub_addr[CSPCL_IFACE_PARAM_MAX - 1] = '\0';
+    return CSPCL_OK;
+  }
+
+  if (strncmp(iface_spec, "can:", 4) == 0) {
+    cspcl->iface_type = CSP_IFACE_CAN;
+    strncpy(cspcl->can_iface, iface_spec + 4, CSPCL_IFACE_PARAM_MAX - 1);
+    cspcl->can_iface[CSPCL_IFACE_PARAM_MAX - 1] = '\0';
+    return CSPCL_OK;
+  }
+
+  if (strcmp(iface_spec, "can") == 0) {
+    cspcl->iface_type = CSP_IFACE_CAN;
+    strncpy(cspcl->can_iface, CSPCL_CAN_IFACE_DEFAULT, CSPCL_IFACE_PARAM_MAX - 1);
+    cspcl->can_iface[CSPCL_IFACE_PARAM_MAX - 1] = '\0';
+    return CSPCL_OK;
+  }
+
+  if (strcmp(iface_spec, "loopback") == 0) {
+    cspcl->iface_type = CSP_IFACE_LOOPBACK;
+    return CSPCL_OK;
+  }
+
+  return CSPCL_ERR_INVALID_PARAM;
+}
+
+cspcl_error_t cspcl_interface_type_to_string(const cspcl_t *cspcl, char *buf, size_t len)
+{
+  if (!cspcl || !buf || len < 10) {
+    return CSPCL_ERR_INVALID_PARAM;
+  }
+
+  switch (cspcl->iface_type) {
+  case CSP_IFACE_ZMQHUB:
+    snprintf(buf, len, "zmqhub:%s", cspcl->zmqhub_addr);
+    return CSPCL_OK;
+  case CSP_IFACE_CAN:
+    snprintf(buf, len, "can:%s", cspcl->can_iface);
+    return CSPCL_OK;
+  case CSP_IFACE_LOOPBACK:
+    snprintf(buf, len, "loopback");
+    return CSPCL_OK;
+  default:
+    snprintf(buf, len, "unknown");
+    return CSPCL_ERR_INVALID_PARAM;
+  }
 }
 
 /*===========================================================================*/
