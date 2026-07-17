@@ -6,7 +6,7 @@ use std::time::Duration;
 use hardy_async::CancellationToken;
 use hardy_bpa::cla::{self, ClaAddress};
 use hardy_bpv7::eid::NodeId;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 /// Per-peer liveness state. Lock-free; safe under concurrent `forward()` calls.
 pub struct PeerLiveness {
@@ -94,19 +94,35 @@ pub async fn run_recovery<P, Fut>(
     }
 
     // 3. Re-add the route -> hardy notify_updated -> poll_waiting re-drives.
-    //    Bounded retries: a false/Err here would strand bundles, so don't
-    //    silently no-op.
-    let mut attempts = 0u32;
+    //    The probe above already confirmed the peer is alive, so giving up
+    //    on Err would strand the peer Up with no route (forward() is never
+    //    called for it again, so recovery never re-triggers). Retry
+    //    persistently, bounded only by `cancel`, mirroring the probe loop.
     loop {
         match sink.add_peer(cla_addr.clone(), &node_ids).await {
-            Ok(_) => break,
+            Ok(true) => break,
+            Ok(false) => {
+                // No RIB change: the peer is still registered, which only
+                // happens if the earlier remove_peer failed. There is
+                // nothing to retry, but the peer is registered, so proceed
+                // to reset() below.
+                warn!(
+                    "add_peer for {cla_addr} reported no route change; \
+                     possible stale route from a failed remove_peer"
+                );
+                break;
+            }
             Err(e) => {
-                attempts += 1;
-                warn!("add_peer failed (attempt {attempts}) for {cla_addr}: {e}");
-                if attempts >= 3 {
-                    break;
+                error!("add_peer failed for {cla_addr}: {e}; peer confirmed alive, retrying");
+                tokio::select! {
+                    _ = cancel.cancelled() => {
+                        info!(
+                            "Recovery for {cla_addr} cancelled while re-adding route; leaving bundles Waiting"
+                        );
+                        return;
+                    }
+                    _ = tokio::time::sleep(heartbeat) => {}
                 }
-                tokio::time::sleep(heartbeat).await;
             }
         }
     }
@@ -199,6 +215,10 @@ mod recovery_tests {
     struct MockSink {
         removed: AtomicU32,
         added: AtomicU32,
+        add_attempts: AtomicU32,
+        // Number of leading `add_peer` calls that should fail before
+        // succeeding. Defaults to 0, so existing tests are unaffected.
+        add_fail_remaining: AtomicU32,
     }
 
     #[async_trait]
@@ -217,6 +237,16 @@ mod recovery_tests {
             _cla_addr: ClaAddress,
             _node_ids: &[hardy_bpv7::eid::NodeId],
         ) -> cla::Result<bool> {
+            self.add_attempts.fetch_add(1, Ordering::SeqCst);
+            if self
+                .add_fail_remaining
+                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
+                    if n > 0 { Some(n - 1) } else { None }
+                })
+                .is_ok()
+            {
+                return Err(cla::Error::Disconnected);
+            }
             self.added.fetch_add(1, Ordering::SeqCst);
             Ok(true)
         }
@@ -286,5 +316,40 @@ mod recovery_tests {
 
         assert_eq!(sink.removed.load(Ordering::SeqCst), 1);
         assert_eq!(sink.added.load(Ordering::SeqCst), 0); // never re-added
+    }
+
+    #[tokio::test]
+    async fn recovery_retries_add_peer_persistently_until_success() {
+        let sink = Arc::new(MockSink {
+            // First three add_peer calls fail (past the old give-up cap of
+            // 3 attempts); the fourth succeeds.
+            add_fail_remaining: AtomicU32::new(3),
+            ..Default::default()
+        });
+        let liveness = Arc::new(PeerLiveness::new());
+        assert!(liveness.on_send_failure(1));
+        assert!(liveness.is_recovering());
+
+        let cla_addr = ClaAddress::Private(Bytes::from_static(&[2, 0]));
+        let node_ids = vec!["ipn:2.0".parse().unwrap()];
+        let cancel = hardy_async::CancellationToken::new();
+
+        run_recovery(
+            sink.clone(),
+            cla_addr,
+            node_ids,
+            liveness.clone(),
+            Duration::from_millis(1),
+            cancel,
+            move || async { true }, // probe succeeds immediately
+        )
+        .await;
+
+        // add_peer was retried past the old give-up cap of 3 attempts and
+        // eventually succeeded (peer re-added), and reset() only fired
+        // after that success.
+        assert!(sink.add_attempts.load(Ordering::SeqCst) >= 4);
+        assert_eq!(sink.added.load(Ordering::SeqCst), 1);
+        assert!(!liveness.is_recovering());
     }
 }
