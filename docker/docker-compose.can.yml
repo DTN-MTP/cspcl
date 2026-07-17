@@ -39,10 +39,10 @@ services:
         condition: service_healthy
     environment:
       - CSP_ADDR=1
-      - CSP_PORT=10
+      - CSP_PORT=9
       - TRANSPORT=can
       - UD3TN_EID=dtn://a.dtn/
-      - UD3TN_LOG_LEVEL=${UD3TN_LOG_LEVEL:-}
+      - UD3TN_LOG_LEVEL=${DEBUG:-}
     network_mode: "service:vcan-setup"
     volumes:
       - ud3tn-a-data:/var/run/ud3tn
@@ -71,7 +71,7 @@ services:
       - CSP_PORT=10
       - TRANSPORT=can
       - UD3TN_EID=dtn://b.dtn/
-      - UD3TN_LOG_LEVEL=${UD3TN_LOG_LEVEL:-}
+      - UD3TN_LOG_LEVEL=${DEBUG:-}
     network_mode: "service:vcan-setup"
     volumes:
       - ud3tn-b-data:/var/run/ud3tn
@@ -97,7 +97,7 @@ services:
         condition: service_healthy
     environment:
       - CSP_ADDR=3
-      - CSP_PORT=10
+      - CSP_PORT=11
       - TRANSPORT=can
       - UNIBO_SOCKET=2001
       - UNIBO_NODE_DIR=/tmp/unibo-node1
@@ -128,7 +128,7 @@ services:
         condition: service_healthy
     environment:
       - CSP_ADDR=4
-      - CSP_PORT=10
+      - CSP_PORT=12
       - TRANSPORT=can
       - UNIBO_SOCKET=2002
       - UNIBO_NODE_DIR=/tmp/unibo-node2

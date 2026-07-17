@@ -13,10 +13,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Build Unibo-BP from source for reproducible CI/local images
-ARG UNIBO_BP_REF=main
-RUN git clone --depth 1 --branch ${UNIBO_BP_REF} --recurse-submodules --shallow-submodules \
-    https://gitlab.com/unibo-dtn/unibo-bp.git /opt/unibo-bp-src
+# Build Unibo-BP from source for reproducible CI/local images.
+# Pinned to a known-good commit: upstream main later broke the build
+# (chrono::duration operator<< in unibo-bp-admin needs a newer compiler).
+# UNIBO_BP_REF accepts a commit SHA, branch, or tag.
+ARG UNIBO_BP_REF=922d233307589785706d03422940afd720db65b8
+RUN git init /opt/unibo-bp-src && \
+    cd /opt/unibo-bp-src && \
+    git remote add origin https://gitlab.com/unibo-dtn/unibo-bp.git && \
+    git fetch --depth 1 origin ${UNIBO_BP_REF} && \
+    git checkout --detach FETCH_HEAD && \
+    git submodule update --init --recursive --depth 1
 
 WORKDIR /opt/unibo-bp-src
 RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && \

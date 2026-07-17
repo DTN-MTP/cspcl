@@ -30,6 +30,23 @@
 /* CSPCL library */
 #include "cspcl.h"
 
+/* Configuration defaults (fallback if cspcl_config.h not available in build) */
+#ifndef CSPCL_TX_BUFFER_SIZE
+#define CSPCL_TX_BUFFER_SIZE 65536
+#endif
+#ifndef CSPCL_RX_BUFFER_SIZE
+#define CSPCL_RX_BUFFER_SIZE 65536
+#endif
+#ifndef CSPCL_IFACE_PARAM_MAX
+#define CSPCL_IFACE_PARAM_MAX 64
+#endif
+#ifndef CSPCL_ZMQHUB_ADDR_DEFAULT
+#define CSPCL_ZMQHUB_ADDR_DEFAULT "localhost"
+#endif
+#ifndef CSPCL_CAN_IFACE_DEFAULT
+#define CSPCL_CAN_IFACE_DEFAULT "vcan0"
+#endif
+
 /* libcsp headers for direct CSP stack control */
 #include <csp/csp.h>
 #include <csp/csp_rtable.h>
@@ -54,29 +71,18 @@
 
 static const char *CLA_NAME = "csp";
 
-/** Maximum number of concurrent CSP links */
-#define CSP_MAX_LINKS 16
-
 /** Hash table slots for parameter storage */
 #define CSP_PARAM_HTAB_SLOT_COUNT 8
 
-/** Default CSP port for Bundle Protocol */
-#define CSP_DEFAULT_BP_PORT 10
-
-/** RX buffer size */
-#define CSP_RX_BUFFER_SIZE 65536
-
-/** TX buffer size */
-#define CSP_TX_BUFFER_SIZE 65536
-
-/** Default ZMQHUB server address */
-#define CSP_ZMQHUB_ADDR_DEFAULT "localhost"
-
-/** Default CAN interface name */
-#define CSP_CAN_IFACE_DEFAULT "vcan0"
-
-/** Maximum length for ZMQHUB address or CAN interface name */
-#define CSP_IFACE_PARAM_MAX 64
+/* All other constants now defined in cspcl_config.h:
+ * - CSPCL_MAX_LINKS = CSPCL_MAX_LINKS
+ * - CSP_DEFAULT_BP_PORT = CSPCL_PORT_BP
+ * - CSP_RX_BUFFER_SIZE = CSPCL_RX_BUFFER_SIZE
+ * - CSP_TX_BUFFER_SIZE = CSPCL_TX_BUFFER_SIZE
+ * - CSP_ZMQHUB_ADDR_DEFAULT = CSPCL_ZMQHUB_ADDR_DEFAULT
+ * - CSP_CAN_IFACE_DEFAULT = CSPCL_CAN_IFACE_DEFAULT
+ * - CSP_IFACE_PARAM_MAX = CSPCL_IFACE_PARAM_MAX
+ */
 
 /** Flag to track if CSP has been initialized globally */
 static bool csp_initialized = false;
@@ -193,72 +199,10 @@ static size_t csp_parser_parse(struct parser *parser, const uint8_t *buffer, siz
 /* Helper Functions                                                           */
 /*===========================================================================*/
 
-/**
- * @brief Parse CSP address from CLA address string
- *
- * Expects format: "csp:<addr>" where addr is 0-255
- *
- * @param cla_addr  Full CLA address (e.g., "csp:2")
- * @return CSP address, or 0 on parse error
+/* PHASE 2: Address parsing from cspcl library
+ * Uses cspcl_parse_address(), cspcl_parse_port(), and cspcl_is_valid_address_string()
+ * for standardized address parsing across all integrations
  */
-static uint8_t parse_csp_addr(const char *cla_addr)
-{
-  if (!cla_addr)
-    return 0;
-
-  /* Skip CLA name prefix if present */
-  const char *addr_str = cla_addr;
-  if (strncmp(addr_str, "csp:", 4) == 0) {
-    addr_str += 4;
-  }
-
-  int addr = atoi(addr_str);
-  if (addr < 0 || addr > 255)
-    return 0;
-
-  return (uint8_t) addr;
-}
-
-static bool is_valid_csp_addr_string(const char *cla_addr, uint8_t parsed_addr)
-{
-  if (parsed_addr != 0 || !cla_addr)
-    return parsed_addr != 0;
-
-  const char *addr_str = cla_addr;
-  if (strncmp(addr_str, "csp:", 4) == 0)
-    addr_str += 4;
-
-  return addr_str[0] == '0' && (addr_str[1] == '\0' || addr_str[1] == ',');
-}
-
-/**
- * @brief Parse CSP port from CLA address string
- *
- * Expects format: "csp:<addr>,<port>" or falls back to CSP_DEFAULT_BP_PORT
- *
- * @param cla_addr  Full CLA address (e.g., "csp:2,10")
- * @return CSP port
- */
-static uint8_t parse_csp_port(const char *cla_addr)
-{
-  if (!cla_addr)
-    return CSP_DEFAULT_BP_PORT;
-
-  const char *addr_str = cla_addr;
-  if (strncmp(addr_str, "csp:", 4) == 0)
-    addr_str += 4;
-
-  const char *comma = strchr(addr_str, ',');
-  if (!comma)
-    return CSP_DEFAULT_BP_PORT;
-
-  int port = atoi(comma + 1);
-  if (port < 0 || port > 31)
-    return CSP_DEFAULT_BP_PORT;
-
-  return (uint8_t) port;
-}
-
 
 static char *create_cla_addr(uint8_t csp_addr, uint8_t csp_port)
 {
@@ -285,17 +229,17 @@ static enum ud3tn_result csp_link_init(struct csp_link *link, struct csp_cla_con
   link->dest_port = dest_port;
 
   /* Allocate TX buffer */
-  link->tx_buffer = malloc(CSP_TX_BUFFER_SIZE);
+  link->tx_buffer = malloc(CSPCL_TX_BUFFER_SIZE);
   if (!link->tx_buffer) {
     LOG_ERROR("CSP: Failed to allocate TX buffer");
     cla_link_cleanup(&link->base);
     return UD3TN_FAIL;
   }
   link->tx_buffer_len = 0;
-  link->tx_buffer_capacity = CSP_TX_BUFFER_SIZE;
+  link->tx_buffer_capacity = CSPCL_TX_BUFFER_SIZE;
 
   /* Allocate RX buffer */
-  link->rx_buffer = malloc(CSP_RX_BUFFER_SIZE);
+  link->rx_buffer = malloc(CSPCL_RX_BUFFER_SIZE);
   if (!link->rx_buffer) {
     LOG_ERROR("CSP: Failed to allocate RX buffer");
     free(link->tx_buffer);
@@ -440,7 +384,7 @@ static void launch_connection_management(struct csp_cla_config *config, uint8_t 
 static void csp_rx_task(void *p)
 {
   struct csp_cla_config *const config = p;
-  uint8_t bundle_buffer[CSP_RX_BUFFER_SIZE];
+  uint8_t bundle_buffer[CSPCL_RX_BUFFER_SIZE];
   size_t bundle_len;
   uint8_t src_addr;
   uint8_t src_port;
@@ -455,15 +399,38 @@ static void csp_rx_task(void *p)
                                           &src_port, 1000 /* 1 second timeout */
     );
 
-    if (err == CSPCL_ERR_TIMEOUT)
-      continue;
+    /* Log every 10th iteration to confirm loop is running */
+    static int loop_count = 0;
+    if (++loop_count % 10 == 0) {
+      LOGF_INFO("CSP: RX loop iteration %d, last_err=%d", loop_count, err);
+    }
 
-    if (err != CSPCL_OK) {
-      LOGF_WARN("CSP: RX error: %s", cspcl_strerror(err));
+    if (err == CSPCL_ERR_TIMEOUT) {
+      /* Expected on idle links - no incoming connection */
+      static int timeout_count = 0;
+      if (++timeout_count % 10 == 0) {
+        LOGF_INFO("CSP: RX waiting - socket=%p, init=%d", config->cspcl.rx_socket,
+                  config->cspcl.initialized);
+      }
       continue;
     }
 
-    LOGF_DEBUG("CSP: Received %zu bytes from csp:%u,%u", bundle_len, src_addr, src_port);
+    if (err != CSPCL_OK) {
+      /* Enhanced error logging for diagnosis */
+      if (err == CSPCL_ERR_SFP) {
+        LOGF_WARN("CSP: RX SFP ERROR - Incomplete bundle from csp:%u:%u (fragments missing, "
+                  "discarding)",
+                  src_addr, src_port);
+      } else if (err == CSPCL_ERR_CSP_RECV) {
+        LOGF_WARN("CSP: RX CSP_RECV error - Link issue from csp:%u:%u", src_addr, src_port);
+      } else {
+        LOGF_WARN("CSP: RX error code %d from csp:%u:%u", err, src_addr, src_port);
+      }
+      continue;
+    }
+
+    LOGF_INFO("CSP: RX COMPLETE - Got %zu bytes from csp:%u:%u (all fragments ACK'd)",
+              bundle_len, src_addr, src_port);
 
     /* Look up or create link for this source */
     char *cla_addr = create_cla_addr(src_addr, src_port);
@@ -486,7 +453,7 @@ static void csp_rx_task(void *p)
 
     /* Store received data in link's RX buffer */
     hal_semaphore_take_blocking(param->param_semphr);
-    if (bundle_len <= CSP_RX_BUFFER_SIZE - param->link.rx_buffer_len) {
+    if (bundle_len <= CSPCL_RX_BUFFER_SIZE - param->link.rx_buffer_len) {
       memcpy(param->link.rx_buffer + param->link.rx_buffer_len, bundle_buffer, bundle_len);
       param->link.rx_buffer_len += bundle_len;
     }
@@ -546,13 +513,12 @@ static struct cla_tx_queue csp_cla_get_tx_queue(struct cla_config *config, const
       .tx_queue_sem = NULL,
   };
 
-  uint8_t dest_addr = parse_csp_addr(cla_addr);
-  if (!is_valid_csp_addr_string(cla_addr, dest_addr)) {
+  uint8_t dest_port = CSPCL_PORT_BP;
+  uint8_t dest_addr = cspcl_parse_address(cla_addr, &dest_port);
+  if (!cspcl_is_valid_address_string(cla_addr, dest_addr)) {
     LOGF_WARN("CSP: Invalid CLA address: %s", cla_addr);
     return result;
   }
-
-  uint8_t dest_port = parse_csp_port(cla_addr);
   char *normalized_addr = create_cla_addr(dest_addr, dest_port);
   if (!normalized_addr) {
     return result;
@@ -581,13 +547,12 @@ csp_cla_start_scheduled_contact(struct cla_config *config, const char *eid, cons
   (void) eid;
   struct csp_cla_config *const csp_config = (struct csp_cla_config *) config;
 
-  uint8_t dest_addr = parse_csp_addr(cla_addr);
-  if (!is_valid_csp_addr_string(cla_addr, dest_addr)) {
+  uint8_t dest_port = CSPCL_PORT_BP;
+  uint8_t dest_addr = cspcl_parse_address(cla_addr, &dest_port);
+  if (!cspcl_is_valid_address_string(cla_addr, dest_addr)) {
     LOGF_WARN("CSP: Invalid CLA address for contact: %s", cla_addr);
     return CLA_LINK_UPDATE_FAILED;
   }
-
-  uint8_t dest_port = parse_csp_port(cla_addr);
   char *normalized_addr = create_cla_addr(dest_addr, dest_port);
   if (!normalized_addr) {
     return CLA_LINK_UPDATE_FAILED;
@@ -622,12 +587,12 @@ csp_cla_end_scheduled_contact(struct cla_config *config, const char *eid, const 
 {
   (void) eid;
   struct csp_cla_config *const csp_config = (struct csp_cla_config *) config;
-  uint8_t dest_addr = parse_csp_addr(cla_addr);
-  if (!is_valid_csp_addr_string(cla_addr, dest_addr)) {
+  uint8_t dest_port = CSPCL_PORT_BP;
+  uint8_t dest_addr = cspcl_parse_address(cla_addr, &dest_port);
+  if (!cspcl_is_valid_address_string(cla_addr, dest_addr)) {
     LOGF_WARN("CSP: Invalid CLA address for contact end: %s", cla_addr);
     return CLA_LINK_UPDATE_FAILED;
   }
-  uint8_t dest_port = parse_csp_port(cla_addr);
   char *normalized_addr = create_cla_addr(dest_addr, dest_port);
   if (!normalized_addr) {
     return CLA_LINK_UPDATE_FAILED;
@@ -688,7 +653,8 @@ enum ud3tn_result csp_cla_end_packet(struct cla_link *link)
     return UD3TN_OK;
   }
 
-  LOGF_DEBUG("CSP: Sending %zu bytes to csp:%u", csp_link->tx_buffer_len, csp_link->dest_addr);
+  LOGF_DEBUG("CSP: Sending %zu bytes to csp:%u:%u", csp_link->tx_buffer_len, csp_link->dest_addr,
+             csp_link->dest_port);
 
   /* Send bundle via CSPCL */
   cspcl_error_t err =
@@ -699,11 +665,27 @@ enum ud3tn_result csp_cla_end_packet(struct cla_link *link)
   csp_link->tx_buffer_len = 0;
 
   if (err != CSPCL_OK) {
-    LOGF_WARN("CSP: Failed to send bundle: %s", cspcl_strerror(err));
+    /* Enhanced error logging with diagnostic information */
+    if (err == CSPCL_ERR_TIMEOUT) {
+      LOGF_ERROR("CSP: TX TIMEOUT - No ACKs received from csp:%u:%u (receiver offline or no link)",
+                 csp_link->dest_addr, csp_link->dest_port);
+    } else if (err == CSPCL_ERR_CONNECTION) {
+      LOGF_ERROR("CSP: TX CONNECTION FAILED - Link broken to csp:%u:%u (will reconnect)",
+                 csp_link->dest_addr, csp_link->dest_port);
+    } else if (err == CSPCL_ERR_CSP_SEND) {
+      LOGF_ERROR("CSP: TX CSP_SEND error - CSP layer problem csp:%u:%u", csp_link->dest_addr,
+                 csp_link->dest_port);
+    } else if (err == CSPCL_ERR_BUNDLE_TOO_LARGE) {
+      LOGF_ERROR("CSP: TX BUNDLE TOO LARGE - %zu bytes exceeds max", csp_link->tx_buffer_len);
+    } else {
+      LOGF_WARN("CSP: TX failed - %s", cspcl_strerror(err));
+    }
+
     link->config->vtable->cla_disconnect_handler(link);
     return UD3TN_FAIL;
   }
 
+  LOGF_DEBUG("CSP: TX success - bundle ACK'd by receiver (%zu bytes)", csp_link->tx_buffer_len);
   return UD3TN_OK;
 }
 
@@ -902,15 +884,15 @@ struct cla_config *csp_cla_create(const char *const options[], const size_t opti
   config->cspcl.csp_port = (uint8_t) atoi(options[1]);
 
   config->cspcl.iface_type = CSP_IFACE_ZMQHUB;
-  strncpy(config->cspcl.zmqhub_addr, CSP_ZMQHUB_ADDR_DEFAULT, CSP_IFACE_PARAM_MAX - 1);
-  strncpy(config->cspcl.can_iface, CSP_CAN_IFACE_DEFAULT, CSP_IFACE_PARAM_MAX - 1);
+  strncpy(config->cspcl.zmqhub_addr, CSPCL_ZMQHUB_ADDR_DEFAULT, CSPCL_IFACE_PARAM_MAX - 1);
+  strncpy(config->cspcl.can_iface, CSPCL_CAN_IFACE_DEFAULT, CSPCL_IFACE_PARAM_MAX - 1);
 
   if (option_count >= 3) {
     const char *iface_spec = options[2];
 
     if (strncmp(iface_spec, "zmqhub:", 7) == 0) {
       config->cspcl.iface_type = CSP_IFACE_ZMQHUB;
-      strncpy(config->cspcl.zmqhub_addr, iface_spec + 7, CSP_IFACE_PARAM_MAX - 1);
+      strncpy(config->cspcl.zmqhub_addr, iface_spec + 7, CSPCL_IFACE_PARAM_MAX - 1);
       if (config->cspcl.zmqhub_addr[0] == '\0') {
         LOG_ERROR("CSP: zmqhub:<host> — host must not be empty");
         free(config);
@@ -920,7 +902,7 @@ struct cla_config *csp_cla_create(const char *const options[], const size_t opti
       config->cspcl.iface_type = CSP_IFACE_ZMQHUB;
     } else if (strncmp(iface_spec, "can:", 4) == 0) {
       config->cspcl.iface_type = CSP_IFACE_CAN;
-      strncpy(config->cspcl.can_iface, iface_spec + 4, CSP_IFACE_PARAM_MAX - 1);
+      strncpy(config->cspcl.can_iface, iface_spec + 4, CSPCL_IFACE_PARAM_MAX - 1);
       if (config->cspcl.can_iface[0] == '\0') {
         LOG_ERROR("CSP: can:<iface> — interface name must not be empty");
         free(config);

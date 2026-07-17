@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsocketcan-dev \
     pkg-config \
     wget \
+    can-utils \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -38,6 +39,12 @@ WORKDIR /opt
 
 # Clone and build libcsp v1.6
 RUN git clone --branch v1.6 --depth 1 https://github.com/libcsp/libcsp.git libcsp
+
+# Patch: RDP peer timeout. Upstream v1.6 never times out established
+# connections, so a dead peer causes infinite retransmission and sends
+# into the zombie connection succeed silently.
+COPY docker/base/libcsp-rdp-peer-timeout.patch /tmp/
+RUN git -C /opt/libcsp apply /tmp/libcsp-rdp-peer-timeout.patch
 
 WORKDIR /opt/libcsp
 RUN python3 waf configure \
