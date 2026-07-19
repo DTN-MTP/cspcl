@@ -21,6 +21,7 @@ Full documentation is available at **[dtn-mtp.github.io/cspcl](https://dtn-mtp.g
 | [uD3TN Integration](https://dtn-mtp.github.io/cspcl/integration/ud3tn/) | Use CSPCL inside uD3TN |
 | [Unibo Integration](https://dtn-mtp.github.io/cspcl/integration/unibo/) | Use CSPCL inside Unibo |
 | [Architecture](https://dtn-mtp.github.io/cspcl/architecture/) | Design decisions, SFP fragmentation, protocol stack |
+| [libcsp Patch](https://dtn-mtp.github.io/cspcl/libcsp-patch/) | Required libcsp v1.6 reliability patch: what it fixes, how to apply it in each build mode |
 
 ## Quick Start
 
