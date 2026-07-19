@@ -528,6 +528,11 @@ cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle, size_t le
 
   /* Use CSP's SFP to send the bundle with automatic fragmentation */
   int ret = csp_sfp_send(conn, bundle, (unsigned int) len, CSPCL_MAX_PAYLOAD, CSPCL_CSP_TIMEOUT_MS);
+  if (ret == CSP_ERR_NONE) {
+    /* csp_sfp_send returns once the fragments are queued in the RDP window;
+     * only report success after the peer has acknowledged all of them. */
+    ret = csp_rdp_wait_acked(conn, CSPCL_ACK_TIMEOUT_MS);
+  }
 
   if (ret != CSP_ERR_NONE) {
     /* The pooled connection may be stale (e.g. peer restarted and the RDP
@@ -536,6 +541,9 @@ cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle, size_t le
     conn = cspcl_pool_get_or_create_locked(pool, dest_addr, dest_port);
     if (conn != NULL) {
       ret = csp_sfp_send(conn, bundle, (unsigned int) len, CSPCL_MAX_PAYLOAD, CSPCL_CSP_TIMEOUT_MS);
+      if (ret == CSP_ERR_NONE) {
+        ret = csp_rdp_wait_acked(conn, CSPCL_ACK_TIMEOUT_MS);
+      }
       if (ret != CSP_ERR_NONE) {
         cspcl_pool_invalidate_locked(pool, dest_addr, dest_port);
       }
@@ -546,6 +554,9 @@ cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle, size_t le
     CSPCL_LOG("pool unlock failed after send");
   }
 
+  if (ret == CSP_ERR_TIMEDOUT) {
+    return CSPCL_ERR_TIMEOUT;
+  }
   if (ret != CSP_ERR_NONE) {
     return CSPCL_ERR_CSP_SEND;
   }

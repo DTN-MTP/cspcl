@@ -51,6 +51,12 @@ static struct {
  */
 int g_csp_sfp_send_fail = 0;
 
+/**
+ * Result returned by csp_rdp_wait_acked. Set to CSP_ERR_TIMEDOUT or
+ * CSP_ERR_RESET to simulate a peer that stops acknowledging data.
+ */
+int g_csp_rdp_wait_acked_result = CSP_ERR_NONE;
+
 /*===========================================================================*/
 /* Core stack API                                                            */
 /*===========================================================================*/
@@ -327,6 +333,17 @@ int csp_sfp_send_own_memcpy(csp_conn_t *conn, const void *data, unsigned int dat
   sfp_loopback.pending = 1;
 
   return CSP_ERR_NONE;
+}
+
+int csp_rdp_wait_acked(csp_conn_t *conn, uint32_t timeout_ms)
+{
+  (void) timeout_ms;
+
+  if (conn == NULL) {
+    return CSP_ERR_INVAL;
+  }
+
+  return g_csp_rdp_wait_acked_result;
 }
 
 int csp_sfp_recv_fp(csp_conn_t *conn, void **dataout, int *datasize, uint32_t timeout,

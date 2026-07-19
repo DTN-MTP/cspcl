@@ -16,6 +16,7 @@
 /* Failure injection flag exposed by csp_stub.c (stubs build only) */
 #ifdef USING_CSP_STUBS
 extern int g_csp_sfp_send_fail;
+extern int g_csp_rdp_wait_acked_result;
 #endif
 
 /*===========================================================================*/
@@ -514,6 +515,41 @@ static int test_send_small_bundle(void)
   return 0;
 }
 
+#ifdef USING_CSP_STUBS
+static int test_send_bundle_ack_timeout(void)
+{
+  cspcl_t cspcl = {0};
+  uint8_t bundle[] = "Hello Bundle Protocol!";
+  cspcl_error_t err;
+
+  cspcl.local_addr = 1;
+  cspcl.iface_type = CSP_IFACE_LOOPBACK;
+  cspcl.csp_port = CSPCL_PORT_BP;
+  ASSERT_EQ(cspcl_init(&cspcl), CSPCL_OK);
+
+  /* SFP send succeeds (data queued in the RDP window) but the peer never
+   * acknowledges it: the send must be reported as failed, not OK. */
+  g_csp_rdp_wait_acked_result = CSP_ERR_TIMEDOUT;
+  err = cspcl_send_bundle(&cspcl, bundle, sizeof(bundle), 2, CSPCL_PORT_BP);
+  ASSERT_EQ(err, CSPCL_ERR_TIMEOUT);
+
+  /* Connection closed while waiting for the acknowledgements */
+  g_csp_rdp_wait_acked_result = CSP_ERR_RESET;
+  err = cspcl_send_bundle(&cspcl, bundle, sizeof(bundle), 2, CSPCL_PORT_BP);
+  ASSERT_EQ(err, CSPCL_ERR_CSP_SEND);
+
+  /* Acks arrive again: sends succeed again */
+  g_csp_rdp_wait_acked_result = CSP_ERR_NONE;
+  err = cspcl_send_bundle(&cspcl, bundle, sizeof(bundle), 2, CSPCL_PORT_BP);
+  ASSERT_EQ(err, CSPCL_OK);
+
+  cspcl_cleanup(&cspcl);
+
+  TEST_PASS();
+  return 0;
+}
+#endif
+
 static int test_send_large_bundle(void)
 {
   cspcl_t cspcl = {0};
@@ -632,6 +668,9 @@ static test_case_t tests[] = {
     {"test_recv_bundle_from_conn_invalid_params", test_recv_bundle_from_conn_invalid_params},
     {"test_send_bundle_too_large", test_send_bundle_too_large},
     {"test_send_small_bundle", test_send_small_bundle},
+#ifdef USING_CSP_STUBS
+    {"test_send_bundle_ack_timeout", test_send_bundle_ack_timeout},
+#endif
     {"test_send_large_bundle", test_send_large_bundle},
 
     /* Constant tests */

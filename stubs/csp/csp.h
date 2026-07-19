@@ -58,6 +58,7 @@ typedef struct csp_conn_s csp_conn_t;
 #define CSP_ERR_NOMEM -1
 #define CSP_ERR_INVAL -2
 #define CSP_ERR_TIMEDOUT -3
+#define CSP_ERR_RESET -8
 
 /** CSP priorities */
 #define CSP_PRIO_CRITICAL 0
@@ -273,6 +274,17 @@ static inline int csp_sfp_send(csp_conn_t *conn, const void *data, unsigned int 
 {
   return csp_sfp_send_own_memcpy(conn, data, datasize, mtu, timeout, (csp_memcpy_fnc_t) &memcpy);
 }
+
+/**
+ * Wait until all data sent on an RDP connection has been acknowledged by the
+ * peer. csp_send()/csp_sfp_send() return as soon as packets are queued, so a
+ * successful return does not mean the peer received the data.
+ * @param conn Connection handle
+ * @param timeout_ms Maximum time to wait for the acknowledgements
+ * @return CSP_ERR_NONE if all sent data was acknowledged, CSP_ERR_TIMEDOUT if
+ *         the timeout expired, CSP_ERR_RESET if the connection is/was closed
+ */
+int csp_rdp_wait_acked(csp_conn_t *conn, uint32_t timeout_ms);
 
 /**
  * Receive data using SFP (handles reassembly automatically)

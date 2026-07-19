@@ -72,6 +72,14 @@
 #define CSPCL_SFP_TIMEOUT_MS 5000
 #endif
 
+/** Time to wait for the peer to acknowledge all RDP data after a send.
+ *  csp_sfp_send() returns once the fragments are queued in the RDP window,
+ *  so without this wait a bundle sent to a dead peer is reported as
+ *  delivered even though it never arrives. */
+#ifndef CSPCL_ACK_TIMEOUT_MS
+#define CSPCL_ACK_TIMEOUT_MS 5000
+#endif
+
 /* ========================================================================== */
 /* Logging Configuration                                                      */
 /* ========================================================================== */
