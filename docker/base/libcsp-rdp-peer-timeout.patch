@@ -1,0 +1,108 @@
+diff --git a/include/csp/csp.h b/include/csp/csp.h
+index 959fbd29..694d9eb2 100644
+--- a/include/csp/csp.h
++++ b/include/csp/csp.h
+@@ -457,6 +457,19 @@ void csp_rdp_get_opt(unsigned int *window_size, unsigned int *conn_timeout_ms,
+ 		unsigned int *packet_timeout_ms, unsigned int *delayed_acks,
+ 		unsigned int *ack_timeout, unsigned int *ack_delay_count);
+ 
++/**
++   Wait until all data sent on an RDP connection has been acknowledged by the peer.
++   csp_send()/csp_sfp_send() return as soon as packets are queued for (re)transmission,
++   so a successful return does not mean the peer received the data. Call this after
++   sending to block until every transmitted sequence number has been acknowledged.
++   For non-RDP connections this returns CSP_ERR_NONE immediately.
++   @param[in] conn connection
++   @param[in] timeout_ms maximum time to wait for the acknowledgements
++   @return #CSP_ERR_NONE if all sent data was acknowledged, #CSP_ERR_TIMEDOUT if the
++           timeout expired, #CSP_ERR_RESET if the connection is/was closed.
++*/
++int csp_rdp_wait_acked(csp_conn_t * conn, uint32_t timeout_ms);
++
+ /**
+    Print connection table to stdout.
+ */
+diff --git a/src/transport/csp_rdp.c b/src/transport/csp_rdp.c
+index bd63f96e..3930c6fe 100644
+--- a/src/transport/csp_rdp.c
++++ b/src/transport/csp_rdp.c
+@@ -528,6 +528,22 @@ void csp_rdp_check_timeouts(csp_conn_t * conn) {
+ 		return;
+ 	}
+ 
++	/**
++	 * PEER TIMEOUT:
++	 * An open connection with unacknowledged data and no packets received
++	 * from the peer for conn_timeout is dead. Without this check, client
++	 * connections retransmit forever when the peer disappears, because the
++	 * CONNECTION TIMEOUT above only covers not-yet-accepted connections.
++	 */
++	if (conn->rdp.state == RDP_OPEN && csp_queue_size(conn->rdp.tx_queue) > 0) {
++		if (csp_rdp_time_after(time_now, conn->timestamp + conn->rdp.conn_timeout)) {
++			csp_log_warn("RDP %p: Peer unresponsive (now: %"PRIu32", ts: %"PRIu32", to: %"PRIu32"), closing",
++				conn, time_now, conn->timestamp, conn->rdp.conn_timeout);
++			csp_conn_close(conn, CSP_RDP_CLOSED_BY_USERSPACE | CSP_RDP_CLOSED_BY_PROTOCOL | CSP_RDP_CLOSED_BY_TIMEOUT);
++			return;
++		}
++	}
++
+ 	/**
+ 	 * MESSAGE TIMEOUT:
+ 	 * Check each outgoing message for TX timeout
+@@ -605,6 +621,10 @@ bool csp_rdp_new_packet(csp_conn_t * conn, csp_packet_t * packet) {
+ 			rx_header->rst, rx_header->seq_nr, rx_header->ack_nr,
+ 			packet->length, (unsigned int)(packet->length - sizeof(rdp_header_t)));
+ 
++	/* Any packet from the peer proves the connection is alive. Refresh the
++	 * timestamp used by csp_rdp_check_timeouts() to detect dead peers. */
++	conn->timestamp = csp_get_ms();
++
+ 	/* If a RESET was received. */
+ 	if (rx_header->rst) {
+ 
+@@ -1021,6 +1041,45 @@ int csp_rdp_send(csp_conn_t * conn, csp_packet_t * packet) {
+ 
+ }
+ 
++int csp_rdp_wait_acked(csp_conn_t * conn, uint32_t timeout_ms) {
++
++	if ((conn->opts & CSP_O_RDP) == 0)
++		return CSP_ERR_NONE;
++
++	uint32_t start = csp_get_ms();
++
++	while (1) {
++
++		if (conn->rdp.state != RDP_OPEN) {
++			csp_log_error("RDP %p: Cannot wait for ACKs, connection not open (%d)", conn, conn->rdp.state);
++			return CSP_ERR_RESET;
++		}
++
++		/* All transmitted sequence numbers acknowledged by the peer */
++		if (conn->rdp.snd_una == conn->rdp.snd_nxt)
++			return CSP_ERR_NONE;
++
++		uint32_t elapsed = csp_get_ms() - start;
++
++		if (elapsed >= timeout_ms) {
++			csp_log_warn("RDP %p: Timeout waiting for ACK, una %u, nxt %u",
++					conn, conn->rdp.snd_una, conn->rdp.snd_nxt);
++			return CSP_ERR_TIMEDOUT;
++		}
++
++		/* Sleep until the router task signals progress (ACK processed or
++		 * window updated). The wait is capped so connection state changes
++		 * that do not post tx_wait are still noticed promptly. */
++		uint32_t slice = timeout_ms - elapsed;
++
++		if (slice > 100)
++			slice = 100;
++		csp_bin_sem_wait(&conn->rdp.tx_wait, slice);
++
++	}
++
++}
++
+ int csp_rdp_init(csp_conn_t * conn) {
+ 
+ 	csp_log_protocol("RDP %p: Creating RDP queues", conn);
