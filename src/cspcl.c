@@ -492,6 +492,59 @@ void cspcl_conn_pool_cleanup(cspcl_conn_pool_t *pool)
 }
 
 /*===========================================================================*/
+/* Application-Level Delivery Acknowledgement                                 */
+/*===========================================================================*/
+
+/* csp_sfp_send()/csp_send() only report that data was queued locally (and,
+ * on an RDP connection, accepted into the transmit window) - not that the
+ * peer received it. cspcl confirms real delivery itself: the receiver sends
+ * a small ack packet back on the same connection once it has successfully
+ * reassembled a bundle, and the sender waits for it. This needs nothing
+ * beyond stock CSP connection-oriented sockets (csp_send/csp_read), so it
+ * works against an unmodified libcsp build. */
+
+static int cspcl_send_ack(csp_conn_t *conn)
+{
+  csp_packet_t *packet = csp_buffer_get(1);
+  if (packet == NULL) {
+    return CSP_ERR_NOMEM;
+  }
+
+  packet->data[0] = CSPCL_ACK_MAGIC;
+  packet->length = 1;
+
+  /* csp_send() returns 1 on success, 0 on failure (unlike most other CSP
+   * calls, which return a CSP_ERR_* code). */
+  if (!csp_send(conn, packet, CSPCL_CSP_TIMEOUT_MS)) {
+    csp_buffer_free(packet);
+    return CSP_ERR_TIMEDOUT;
+  }
+
+  return CSP_ERR_NONE;
+}
+
+static int cspcl_wait_ack(csp_conn_t *conn, uint32_t timeout_ms)
+{
+  csp_packet_t *packet = csp_read(conn, timeout_ms);
+  if (packet == NULL) {
+    return CSP_ERR_TIMEDOUT;
+  }
+
+  csp_buffer_free(packet);
+  return CSP_ERR_NONE;
+}
+
+static int cspcl_send_and_confirm(csp_conn_t *conn, const uint8_t *bundle, size_t len)
+{
+  int ret = csp_sfp_send(conn, bundle, (unsigned int) len, CSPCL_MAX_PAYLOAD, CSPCL_CSP_TIMEOUT_MS);
+  if (ret != CSP_ERR_NONE) {
+    return ret;
+  }
+
+  return cspcl_wait_ack(conn, CSPCL_ACK_TIMEOUT_MS);
+}
+
+/*===========================================================================*/
 /* Bundle Transmission Functions                                              */
 /*===========================================================================*/
 
@@ -526,24 +579,17 @@ cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle, size_t le
     return CSPCL_ERR_CONNECTION;
   }
 
-  /* Use CSP's SFP to send the bundle with automatic fragmentation */
-  int ret = csp_sfp_send(conn, bundle, (unsigned int) len, CSPCL_MAX_PAYLOAD, CSPCL_CSP_TIMEOUT_MS);
-  if (ret == CSP_ERR_NONE) {
-    /* csp_sfp_send returns once the fragments are queued in the RDP window;
-     * only report success after the peer has acknowledged all of them. */
-    ret = csp_rdp_wait_acked(conn, CSPCL_ACK_TIMEOUT_MS);
-  }
+  /* Use CSP's SFP to send the bundle, then wait for the receiver's
+   * application-level ack to confirm it actually arrived. */
+  int ret = cspcl_send_and_confirm(conn, bundle, len);
 
   if (ret != CSP_ERR_NONE) {
-    /* The pooled connection may be stale (e.g. peer restarted and the RDP
-     * stack closed it as unresponsive). Reconnect and retry once. */
+    /* The pooled connection may be stale (e.g. peer restarted). Reconnect
+     * and retry once. */
     cspcl_pool_invalidate_locked(pool, dest_addr, dest_port);
     conn = cspcl_pool_get_or_create_locked(pool, dest_addr, dest_port);
     if (conn != NULL) {
-      ret = csp_sfp_send(conn, bundle, (unsigned int) len, CSPCL_MAX_PAYLOAD, CSPCL_CSP_TIMEOUT_MS);
-      if (ret == CSP_ERR_NONE) {
-        ret = csp_rdp_wait_acked(conn, CSPCL_ACK_TIMEOUT_MS);
-      }
+      ret = cspcl_send_and_confirm(conn, bundle, len);
       if (ret != CSP_ERR_NONE) {
         cspcl_pool_invalidate_locked(pool, dest_addr, dest_port);
       }
@@ -622,6 +668,16 @@ cspcl_error_t cspcl_open_rx_socket(cspcl_t *cspcl)
   }
 
   cspcl->rx_socket = sock;
+
+#ifndef FREERTOS
+  pthread_mutex_lock(&g_cspcl_global_lock);
+#endif
+  g_cspcl_global_rx_socket = sock;
+  g_cspcl_global_rx_port = cspcl->csp_port;
+#ifndef FREERTOS
+  pthread_mutex_unlock(&g_cspcl_global_lock);
+#endif
+
   return CSPCL_OK;
 }
 
@@ -722,6 +778,13 @@ static cspcl_error_t cspcl_recv_from_conn_timeout(csp_conn_t *conn, uint8_t *bun
 
   /* Free SFP-allocated memory */
   csp_free(data);
+
+  /* Confirm delivery to the sender. Best-effort: if this is lost, the
+   * sender's wait for it will time out and retry, which is an accepted
+   * trade-off rather than a reason to discard an already-received bundle. */
+  if (cspcl_send_ack(conn) != CSP_ERR_NONE) {
+    CSPCL_LOG("failed to send bundle-received ack");
+  }
 
   return CSPCL_OK;
 }

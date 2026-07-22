@@ -37,14 +37,10 @@ RUN pip3 install --no-cache-dir pyzmq==26.0.3
 # Set working directory
 WORKDIR /opt
 
-# Clone and build libcsp v1.6
+# Clone and build libcsp v1.6 (unmodified - cspcl confirms delivery itself
+# with an application-level ack, see src/cspcl.c, so it needs nothing beyond
+# stock libcsp)
 RUN git clone --branch v1.6 --depth 1 https://github.com/libcsp/libcsp.git libcsp
-
-# Patch: RDP peer timeout. Upstream v1.6 never times out established
-# connections, so a dead peer causes infinite retransmission and sends
-# into the zombie connection succeed silently.
-COPY docker/base/libcsp-rdp-peer-timeout.patch /tmp/
-RUN git -C /opt/libcsp apply /tmp/libcsp-rdp-peer-timeout.patch
 
 WORKDIR /opt/libcsp
 RUN python3 waf configure \

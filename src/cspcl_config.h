@@ -34,8 +34,7 @@
 
 /** CSP socket options for inbound server sockets (bitmask of CSP_SO_*) */
 #ifndef CSPCL_CSP_SOCKET_OPTIONS
-/* Temporarily disabled RDPREQ to diagnose socket acceptance issue */
-#define CSPCL_CSP_SOCKET_OPTIONS 0
+#define CSPCL_CSP_SOCKET_OPTIONS CSP_SO_RDPREQ
 #endif
 
 /* ========================================================================== */
@@ -72,12 +71,21 @@
 #define CSPCL_SFP_TIMEOUT_MS 5000
 #endif
 
-/** Time to wait for the peer to acknowledge all RDP data after a send.
- *  csp_sfp_send() returns once the fragments are queued in the RDP window,
+/** Time to wait for the receiver's application-level "bundle received" ack
+ *  after a send. csp_sfp_send() only reports that data was queued locally,
  *  so without this wait a bundle sent to a dead peer is reported as
  *  delivered even though it never arrives. */
 #ifndef CSPCL_ACK_TIMEOUT_MS
 #define CSPCL_ACK_TIMEOUT_MS 5000
+#endif
+
+/** Marker byte cspcl puts in the application-level ack packet it sends back
+ *  after successfully reassembling a bundle. The value is not required to
+ *  match on the sending side (any packet arriving on the connection at that
+ *  point in the protocol is treated as the ack); this only exists to make
+ *  ack traffic recognizable in traces/dumps. */
+#ifndef CSPCL_ACK_MAGIC
+#define CSPCL_ACK_MAGIC 0xCA
 #endif
 
 /* ========================================================================== */
