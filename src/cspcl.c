@@ -572,28 +572,38 @@ cspcl_error_t cspcl_send_bundle(cspcl_t *cspcl, const uint8_t *bundle, size_t le
     return CSPCL_ERR_CONNECTION;
   }
 
-  /* Reuse pooled connection or open a new one on miss */
-  csp_conn_t *conn = cspcl_pool_get_or_create_locked(pool, dest_addr, dest_port);
-  if (conn == NULL) {
-    (void) cspcl_pool_unlock(pool);
-    return CSPCL_ERR_CONNECTION;
+  /* Send the bundle with one reconnect retry. A pooled connection may be
+   * stale (e.g. the peer restarted), so on failure we invalidate it and try
+   * a fresh connection once. Uses CSP's SFP to send, then waits for the
+   * receiver's application-level ack to confirm it actually arrived. */
+  int ret = CSP_ERR_TIMEDOUT;
+  bool conn_failed = false;
+
+  for (int attempt = 0; attempt < 2; attempt++) {
+    csp_conn_t *conn = cspcl_pool_get_or_create_locked(pool, dest_addr, dest_port);
+    if (conn == NULL) {
+      /* Only a first-attempt failure to obtain a connection is a hard
+       * connection error. If reconnect fails on the retry, fall through and
+       * report the original send failure (which stays retryable). */
+      if (attempt == 0) {
+        conn_failed = true;
+      }
+      break;
+    }
+
+    ret = cspcl_send_and_confirm(conn, bundle, len);
+    if (ret == CSP_ERR_NONE) {
+      break; /* Delivered and acked */
+    }
+
+    /* Stale or broken connection - invalidate so the next attempt (if any)
+     * reconnects, and so a dead connection never lingers in the pool. */
+    cspcl_pool_invalidate_locked(pool, dest_addr, dest_port);
   }
 
-  /* Use CSP's SFP to send the bundle, then wait for the receiver's
-   * application-level ack to confirm it actually arrived. */
-  int ret = cspcl_send_and_confirm(conn, bundle, len);
-
-  if (ret != CSP_ERR_NONE) {
-    /* The pooled connection may be stale (e.g. peer restarted). Reconnect
-     * and retry once. */
-    cspcl_pool_invalidate_locked(pool, dest_addr, dest_port);
-    conn = cspcl_pool_get_or_create_locked(pool, dest_addr, dest_port);
-    if (conn != NULL) {
-      ret = cspcl_send_and_confirm(conn, bundle, len);
-      if (ret != CSP_ERR_NONE) {
-        cspcl_pool_invalidate_locked(pool, dest_addr, dest_port);
-      }
-    }
+  if (conn_failed) {
+    (void) cspcl_pool_unlock(pool);
+    return CSPCL_ERR_CONNECTION;
   }
 
   if (cspcl_pool_unlock(pool) != 0) {
