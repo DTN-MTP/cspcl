@@ -9,7 +9,7 @@ serde = ["dep:serde", "hardy-bpv7/serde", "hardy-eid-patterns/serde"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"], optional = true }
-a_sabr = { git = "https://github.com/DTN-MTP/A-SABR.git" }
+a_sabr = { git = "https://github.com/DTN-MTP/A-SABR.git", rev = "16ffed523bf862ba770bf1b07adc8ee533066f1a" }
 hardy-eid-patterns = { git = "https://github.com/ricktaylor/hardy.git" }
 hardy-bpa.workspace = true
 hardy-async.workspace = true
