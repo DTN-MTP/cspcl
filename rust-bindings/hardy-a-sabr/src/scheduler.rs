@@ -54,7 +54,7 @@ pub(crate) struct Scheduler {
     installed: Vec<ProjectedRoute>,
     started_at: tokio::time::Instant,
     safety_tick: Duration,
-    start_time: f64,
+    start_time: i64,
 }
 
 impl Scheduler {
@@ -64,7 +64,7 @@ impl Scheduler {
         topology: TopologySnapshot,
         engine_config: ShadowEngineConfig,
         projection_config: ProjectionConfig,
-        start_time: f64,
+        start_time: i64,
         safety_tick: Duration,
     ) -> (Self, SchedulerHandle) {
         let (sender, receiver) = channel::unbounded();
@@ -87,17 +87,17 @@ impl Scheduler {
         (scheduler, handle)
     }
 
-    fn now(&self) -> f64 {
-        self.start_time + self.started_at.elapsed().as_secs_f64()
+    fn now(&self) -> i64 {
+        self.start_time + self.started_at.elapsed().as_millis() as i64
     }
 
-    fn next_boundary_delay(&self, now: f64) -> Option<Duration> {
+    fn next_boundary_delay(&self, now: i64) -> Option<Duration> {
         self.topology
             .next_boundary_after(now)
-            .map(|boundary| Duration::from_secs_f64((boundary - now).max(0.0)))
+            .map(|boundary| Duration::from_millis((boundary - now).max(0) as u64))
     }
 
-    fn next_wakeup_delay(&self, now: f64) -> Duration {
+    fn next_wakeup_delay(&self, now: i64) -> Duration {
         self.next_boundary_delay(now)
             .map(|boundary_delay| boundary_delay.min(self.safety_tick))
             .unwrap_or(self.safety_tick)
@@ -128,7 +128,7 @@ impl Scheduler {
         self.withdraw().await;
     }
 
-    async fn refresh(&mut self, now: f64) {
+    async fn refresh(&mut self, now: i64) {
         if let Err(error) = refresh_routes(
             &*self.sink,
             &mut self.installed,

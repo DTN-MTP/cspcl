@@ -33,7 +33,7 @@ pub async fn refresh_routes(
     engine_config: &ShadowEngineConfig,
     projection_config: &ProjectionConfig,
     source: u16,
-    now: f64,
+    now: i64,
 ) -> Result<(), RefreshError> {
     let desired = project_routes(topology, engine_config, projection_config, source, now)?;
     let diff = diff_routes(installed, &desired);

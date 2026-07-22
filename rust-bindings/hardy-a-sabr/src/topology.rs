@@ -5,10 +5,10 @@ use hardy_bpv7::eid::{Eid, NodeId};
 pub struct ContactWindow {
     pub tx_node_id: u16,
     pub rx_node_id: u16,
-    pub start: f64,
-    pub end: f64,
-    pub rate: f64,
-    pub delay: f64,
+    pub start: i64,
+    pub end: i64,
+    pub rate: i64,
+    pub delay: i64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -33,11 +33,11 @@ impl TopologySnapshot {
             .map(|node| node.hardy_node_id.clone().into())
     }
 
-    pub fn next_boundary_after(&self, now: f64) -> Option<f64> {
+    pub fn next_boundary_after(&self, now: i64) -> Option<i64> {
         self.contacts
             .iter()
             .flat_map(|contact| [contact.start, contact.end])
             .filter(|boundary| *boundary > now)
-            .min_by(|a, b| a.total_cmp(b))
+            .min()
     }
 }

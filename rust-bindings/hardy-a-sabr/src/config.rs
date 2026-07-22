@@ -9,7 +9,7 @@ use crate::{
 pub struct RuntimeConfig {
     pub source: u16,
     #[cfg_attr(feature = "serde", serde(default))]
-    pub start_time: f64,
+    pub start_time: i64,
     #[cfg_attr(feature = "serde", serde(default = "default_safety_tick_secs"))]
     pub safety_tick_secs: u64,
     pub topology: TopologySnapshot,

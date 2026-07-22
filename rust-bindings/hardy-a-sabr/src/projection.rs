@@ -11,17 +11,17 @@ use crate::{
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RepresentativeBundle {
-    pub size: f64,
+    pub size: i64,
     pub priority: i8,
-    pub expiration_horizon: f64,
+    pub expiration_horizon: i64,
 }
 
 impl Default for RepresentativeBundle {
     fn default() -> Self {
         Self {
-            size: 1.0,
+            size: 1,
             priority: 0,
-            expiration_horizon: 3600.0,
+            expiration_horizon: 3_600_000,
         }
     }
 }
@@ -46,7 +46,7 @@ pub fn project_routes(
     engine_config: &ShadowEngineConfig,
     config: &ProjectionConfig,
     source: u16,
-    now: f64,
+    now: i64,
 ) -> Result<Vec<ProjectedRoute>, ASABRError> {
     let mut routes = Vec::new();
 
