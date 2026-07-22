@@ -3,12 +3,10 @@ agent_name: "a-sabr"
 
 runtime:
   source: 0
-  start_time: 0.0
+  start_time: 0
   safety_tick_secs: 10
 
   engine:
-    check_size: false
-    check_priority: false
     max_entries: 10
 
   topology:
@@ -20,16 +18,16 @@ runtime:
     contacts:
       - tx_node_id: 0
         rx_node_id: 1
-        start: 0.0
-        end: 60.0
-        rate: 1000000.0
-        delay: 1.0
+        start: 0
+        end: 60000
+        rate: 1000000
+        delay: 1000
 
   projection:
     bundle:
-      size: 1.0
+      size: 1
       priority: 0
-      expiration_horizon: 3600.0
+      expiration_horizon: 3600000
     destinations:
       - pattern: "ipn:1.2.*"
         asabr_destination: 1
