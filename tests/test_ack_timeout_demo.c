@@ -1,8 +1,8 @@
 /**
  * @file test_ack_timeout_demo.c
- * @brief RDP ACK Timeout Demonstration with Logging Simulation
+ * @brief Delivery Ack Timeout Demonstration with Logging Simulation
  *
- * This demo simulates what happens when RDP ACKs timeout.
+ * This demo simulates what happens when the application-level delivery ack times out.
  * Shows the exact logs you would see with real libcsp.
  */
 
@@ -80,7 +80,7 @@ static void demo_scenario_1_success(void)
 {
   printf("\n");
   printf("╔════════════════════════════════════════════════════════════════════════════╗\n");
-  printf("║ SCENARIO 1: Successful Message Delivery (RDP ACKs Received)               ║\n");
+  printf("║ SCENARIO 1: Successful Message Delivery (Ack Received)               ║\n");
   printf("║                                                                            ║\n");
   printf("║ Both sender and receiver running → All ACKs received → SUCCESS (fast)    ║\n");
   printf("╚════════════════════════════════════════════════════════════════════════════╝\n");
@@ -100,7 +100,7 @@ static void demo_scenario_1_success(void)
   log_info("SENDER: Preparing message (512 bytes)");
   sleep(1);
 
-  log_info("SENDER: Sending bundle (3 fragments via RDP)...");
+  log_info("SENDER: Sending bundle (3 fragments)...");
   log_info("SENDER: Fragment 0 (243 bytes): SEQ=0");
   sleep(0.05);
   log_info("SENDER: Waiting for ACK=1 from receiver...");
@@ -167,7 +167,7 @@ static void demo_scenario_2_timeout(void)
   log_error("SENDER: Still no ACK");
 
   log_error("SENDER: TX TIMEOUT - No ACKs received. Waiting for timeout...");
-  log_info("(RDP timeout configured: CSPCL_CSP_TIMEOUT_MS = 1000ms)");
+  log_info("(ack timeout configured: CSPCL_ACK_TIMEOUT_MS = 5000ms)");
   log_info("(Retrying with exponential backoff for ~5 seconds total)");
 
   log_info("SENDER: Attempt 1/5: Waiting for ACKs (1000ms timeout)");
@@ -185,8 +185,8 @@ static void demo_scenario_2_timeout(void)
   log_error("SENDER: TX TIMEOUT - No ACKs received from csp:1 (receiver offline or no "
             "link) ✗");
 
-  printf("\n⏱️  Total time: ~5 seconds (RDP timeout expires, then operation fails)\n");
-  printf("    This demonstrates the RDP timeout mechanism in action!\n\n");
+  printf("\n⏱️  Total time: ~5 seconds (ack timeout expires, then operation fails)\n");
+  printf("    This demonstrates the delivery-ack timeout mechanism in action!\n\n");
 }
 
 /* ========================================================================== */
@@ -252,7 +252,7 @@ static void demo_scenario_3_midway(void)
   printf("\n⏱️  Timeline:\n");
   printf("    - 0.0s: Message 1 sent (FAST - ~0.3s, receiver listening)\n");
   printf("    - 2.5s: Receiver goes down\n");
-  printf("    - 3.5s: Message 2 sent (SLOW - ~5s, waits for RDP timeout)\n");
+  printf("    - 3.5s: Message 2 sent (SLOW - ~5s, waits for ack timeout)\n");
   printf("    - 8.5s: Send fails due to no ACKs\n\n");
 }
 
@@ -321,13 +321,13 @@ int main(void)
 {
   printf("\n");
   printf("╔════════════════════════════════════════════════════════════════════════════╗\n");
-  printf("║  CSPCL RDP ACK Timeout Demonstration                                      ║\n");
+  printf("║  CSPCL Delivery Ack Timeout Demonstration                                      ║\n");
   printf("║                                                                            ║\n");
-  printf("║  Shows REAL log output when RDP timeouts occur (with real libcsp)         ║\n");
+  printf("║  Shows REAL log output when the delivery-ack timeout occurs (with real libcsp)         ║\n");
   printf("║                                                                            ║\n");
   printf("║  Key insights:                                                             ║\n");
   printf("║  • Success: ~100ms (fast - ACKs received immediately)                    ║\n");
-  printf("║  • Timeout: ~5 seconds (slow - waits for RDP timeout)                    ║\n");
+  printf("║  • Timeout: ~5 seconds (slow - waits for ack timeout)                    ║\n");
   printf("║  • You can SEE and COUNT the timeout delay in the logs!                  ║\n");
   printf("╚════════════════════════════════════════════════════════════════════════════╝\n");
 

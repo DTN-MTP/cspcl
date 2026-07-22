@@ -167,9 +167,9 @@ csp_conn_t *csp_connect(uint8_t prio, uint8_t dest, uint8_t dport, uint32_t time
 /**
  * Send packet on connection
  * @param conn Connection handle
- * @param packet Packet to send
- * @param timeout Timeout in ms
- * @return CSP_ERR_NONE on success
+ * @param packet Packet to send, ownership transferred to CSP on success
+ * @param timeout Timeout in ms (unused as of CSP 1.6)
+ * @return 1 on success, 0 on failure (caller must free the packet on failure)
  */
 int csp_send(csp_conn_t *conn, csp_packet_t *packet, uint32_t timeout);
 
@@ -274,17 +274,6 @@ static inline int csp_sfp_send(csp_conn_t *conn, const void *data, unsigned int 
 {
   return csp_sfp_send_own_memcpy(conn, data, datasize, mtu, timeout, (csp_memcpy_fnc_t) &memcpy);
 }
-
-/**
- * Wait until all data sent on an RDP connection has been acknowledged by the
- * peer. csp_send()/csp_sfp_send() return as soon as packets are queued, so a
- * successful return does not mean the peer received the data.
- * @param conn Connection handle
- * @param timeout_ms Maximum time to wait for the acknowledgements
- * @return CSP_ERR_NONE if all sent data was acknowledged, CSP_ERR_TIMEDOUT if
- *         the timeout expired, CSP_ERR_RESET if the connection is/was closed
- */
-int csp_rdp_wait_acked(csp_conn_t *conn, uint32_t timeout_ms);
 
 /**
  * Receive data using SFP (handles reassembly automatically)

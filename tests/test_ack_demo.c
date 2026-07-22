@@ -1,11 +1,11 @@
 /**
  * @file test_ack_demo.c
- * @brief RDP ACK Delivery Demonstration
+ * @brief Delivery Acknowledgement Demonstration
  *
  * Demonstrates:
- * 1. Successful message delivery with RDP ACKs
+ * 1. Successful message delivery with application-level acks
  * 2. Message timeout when receiver thread is stopped
- * 3. RDP automatic retry and recovery
+ * 3. Application-level retry and recovery
  */
 
 #include <assert.h>
@@ -145,14 +145,14 @@ static void *receiver_thread(void *arg)
 }
 
 /* ========================================================================== */
-/* Scenario 1: Successful Delivery with RDP ACKs                            */
+/* Scenario 1: Successful Delivery with Application-Level Acks                            */
 /* ========================================================================== */
 
 static int demo_successful_delivery(void)
 {
   printf("\n");
   printf("╔════════════════════════════════════════════════════════════════════════════╗\n");
-  printf("║ SCENARIO 1: Successful Message Delivery (RDP ACKs Working)                ║\n");
+  printf("║ SCENARIO 1: Successful Message Delivery (Acks Working)                ║\n");
   printf("╚════════════════════════════════════════════════════════════════════════════╝\n");
   printf("\n");
 
@@ -394,14 +394,14 @@ int main(void)
 {
   printf("\n");
   printf("╔════════════════════════════════════════════════════════════════════════════╗\n");
-  printf("║        CSPCL RDP ACK Failure Detection - Interactive Demo                 ║\n");
+  printf("║        CSPCL Delivery Ack Failure Detection - Interactive Demo                 ║\n");
   printf("║                                                                            ║\n");
   printf("║  This demo shows:                                                         ║\n");
   printf("║  1. Successful delivery when receiver is listening (ACKs working)         ║\n");
   printf("║  2. Timeout when receiver is offline (no ACKs received)                  ║\n");
   printf("║  3. Detection of receiver going offline mid-session                      ║\n");
   printf("║                                                                            ║\n");
-  printf("║  Watch the log messages to see RDP ACK behavior in action!              ║\n");
+  printf("║  Watch the log messages to see delivery-ack behavior in action!              ║\n");
   printf("╚════════════════════════════════════════════════════════════════════════════╝\n");
 
   int passed = 0;

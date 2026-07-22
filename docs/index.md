@@ -48,7 +48,7 @@ CSP's small MTU without requiring changes to either stack.
 - [uD3TN Integration]({% link integration/ud3tn.md %}) — use CSPCL inside uD3TN
 - [Unibo Integration]({% link integration/unibo.md %}) — use CSPCL with Unibo-BP
 - [Architecture]({% link architecture.md %}) — design decisions and protocol stack
-- [libcsp Patch]({% link libcsp-patch.md %}) — the reliability patch for libcsp v1.6 and how to apply it in every build mode
+- [Delivery Acknowledgement]({% link delivery-ack.md %}) — how CSPCL confirms bundles actually arrive, without modifying libcsp
 
 ---
 

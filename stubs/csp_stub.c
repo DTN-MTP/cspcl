@@ -52,10 +52,11 @@ static struct {
 int g_csp_sfp_send_fail = 0;
 
 /**
- * Result returned by csp_rdp_wait_acked. Set to CSP_ERR_TIMEDOUT or
- * CSP_ERR_RESET to simulate a peer that stops acknowledging data.
+ * Controls whether csp_read() (used to wait for cspcl's application-level
+ * "bundle received" ack) returns a packet. Set to 0 to simulate a peer that
+ * never acknowledges (offline, unreachable, or the ack was lost).
  */
-int g_csp_rdp_wait_acked_result = CSP_ERR_NONE;
+int g_csp_ack_should_arrive = 1;
 
 /*===========================================================================*/
 /* Core stack API                                                            */
@@ -196,12 +197,17 @@ csp_conn_t *csp_connect(uint8_t prio, uint8_t dest, uint8_t dport, uint32_t time
   return conn;
 }
 
+/* csp_send() returns 1 on success, 0 on failure - unlike most other CSP
+ * calls, which return a CSP_ERR_* code. This stub's only caller is cspcl's
+ * ack-send helper, so "success" here just means the packet was accepted for
+ * sending; whether csp_read() on the peer's side ever sees it is controlled
+ * separately by g_csp_ack_should_arrive. */
 int csp_send(csp_conn_t *conn, csp_packet_t *packet, uint32_t timeout)
 {
   (void) conn;
-  (void) packet;
   (void) timeout;
-  return CSP_ERR_NONE;
+  csp_buffer_free(packet);
+  return 1;
 }
 
 csp_packet_t *csp_read(csp_conn_t *conn, uint32_t timeout)
@@ -209,15 +215,19 @@ csp_packet_t *csp_read(csp_conn_t *conn, uint32_t timeout)
   (void) conn;
   (void) timeout;
 
-  /* Return packet from loopback queue */
-  if (loopback_queue.count > 0) {
-    csp_packet_t *packet = loopback_queue.packets[loopback_queue.tail];
-    loopback_queue.tail = (loopback_queue.tail + 1) % LOOPBACK_QUEUE_SIZE;
-    loopback_queue.count--;
-    return packet;
+  /* This stub's only caller is cspcl's ack-wait helper. There is no real
+   * network here to carry a packet from the peer's csp_send() to this call,
+   * so simulate the outcome directly via the failure-injection flag. */
+  if (!g_csp_ack_should_arrive) {
+    return NULL;
   }
 
-  return NULL;
+  csp_packet_t *packet = csp_buffer_get(1);
+  if (packet != NULL) {
+    packet->data[0] = 0xCA;
+    packet->length = 1;
+  }
+  return packet;
 }
 
 /*===========================================================================*/
@@ -333,17 +343,6 @@ int csp_sfp_send_own_memcpy(csp_conn_t *conn, const void *data, unsigned int dat
   sfp_loopback.pending = 1;
 
   return CSP_ERR_NONE;
-}
-
-int csp_rdp_wait_acked(csp_conn_t *conn, uint32_t timeout_ms)
-{
-  (void) timeout_ms;
-
-  if (conn == NULL) {
-    return CSP_ERR_INVAL;
-  }
-
-  return g_csp_rdp_wait_acked_result;
 }
 
 int csp_sfp_recv_fp(csp_conn_t *conn, void **dataout, int *datasize, uint32_t timeout,

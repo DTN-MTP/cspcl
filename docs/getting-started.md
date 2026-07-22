@@ -11,7 +11,7 @@ permalink: /getting-started/
 
 - CMake 3.10+
 - C11-compatible compiler (gcc / clang)
-- libcsp v1.6 with the CSPCL reliability patch applied — see [libcsp Patch]({% link libcsp-patch.md %})
+- libcsp v1.6, unmodified — see [Delivery Acknowledgement]({% link delivery-ack.md %})
   (not needed for the default stub build)
 - *(Optional)* Python 3 + `pyzmq` for ZMQHUB-based testing
 - *(Optional)* Rust toolchain for Rust bindings
@@ -39,16 +39,15 @@ ctest --verbose
 ### Choosing between a real libcsp and the stubs
 
 CSPCL links either against a real libcsp v1.6 build or against its built-in
-CSP stubs (used by the unit tests). To use a real, [patched]({% link libcsp-patch.md %})
-libcsp checkout:
+CSP stubs (used by the unit tests). To use a real, unmodified libcsp checkout:
 
 ```bash
 cmake -DCSP_REPO_DIR=/path/to/libcsp ..
 ```
 
-`CSP_REPO_DIR` must point to the root of a libcsp repository already built with
-waf (see [libcsp Patch]({% link libcsp-patch.md %}) for the full recipe). If you
-used a custom waf output directory, also set `-DCSP_BUILD_DIR=<path>`.
+`CSP_REPO_DIR` must point to the root of a libcsp v1.6 repository already
+built with waf. If you used a custom waf output directory, also set
+`-DCSP_BUILD_DIR=<path>`.
 
 To build against the stubs instead (no libcsp needed, e.g. for running the
 unit tests):
