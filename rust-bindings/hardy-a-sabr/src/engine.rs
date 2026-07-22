@@ -46,13 +46,15 @@ pub fn build_contact_plan(
 
     nodes.sort_by_key(|(id, _)| *id);
 
-    debug_assert!(
-        nodes
-            .iter()
-            .enumerate()
-            .all(|(index, (id, _))| index as u16 == *id),
-        "asabr_node_id values must be contiguous starting at 0"
-    );
+    if !nodes
+        .iter()
+        .enumerate()
+        .all(|(index, (id, _))| index as u16 == *id)
+    {
+        return Err(ASABRError::ContactPlanError(
+            "asabr_node_id values must be contiguous starting at 0",
+        ));
+    }
 
     let realnodes = nodes.into_iter().map(|(_, node)| node).collect::<Vec<_>>();
 
@@ -154,6 +156,16 @@ mod tests {
         let hop = compute_first_hop(&topology, &config, 0, 2, 0, &representative)
             .expect("routing succeeds");
         assert_eq!(hop, Some(1));
+    }
+
+    #[test]
+    fn non_contiguous_node_ids_error() {
+        // Gap at id 2: sorted realnodes would misalign index != asabr_node_id.
+        let topology = TopologySnapshot {
+            nodes: vec![node(0, "ipn:1.0"), node(1, "ipn:2.0"), node(3, "ipn:4.0")],
+            contacts: vec![],
+        };
+        assert!(build_contact_plan(&topology).is_err());
     }
 
     #[test]
