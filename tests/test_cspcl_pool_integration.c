@@ -76,11 +76,26 @@ static void *discard_thread(void *arg)
 
     void *data = NULL;
     int datasize = 0;
-    (void) csp_sfp_recv(conn, &data, &datasize, CSPCL_SFP_TIMEOUT_MS);
+    int ret = csp_sfp_recv(conn, &data, &datasize, CSPCL_SFP_TIMEOUT_MS);
 
     if (data != NULL) {
       csp_free(data);
     }
+
+    if (ret == CSP_ERR_NONE) {
+      /* Mimic cspcl's own receive path: send the application-level
+       * "bundle received" ack back so cspcl_send_bundle() on the other end
+       * does not time out waiting for it and retry. */
+      csp_packet_t *ack = csp_buffer_get(1);
+      if (ack != NULL) {
+        ack->data[0] = CSPCL_ACK_MAGIC;
+        ack->length = 1;
+        if (!csp_send(conn, ack, CSPCL_CSP_TIMEOUT_MS)) {
+          csp_buffer_free(ack);
+        }
+      }
+    }
+
     csp_close(conn);
   }
   return NULL;
@@ -234,8 +249,11 @@ static int test_pool_cache_stats(void)
 {
   reset_pool();
 
-  /* Obtain a real connection to populate one slot. */
-  csp_conn_t *conn = csp_connect(CSP_PRIO_NORM, 1, 20, CSPCL_CSP_TIMEOUT_MS, CSP_O_NONE);
+  /* Obtain a real connection to populate one slot. Must be RDP: the discard
+   * server's socket requires it (CSPCL_CSP_SOCKET_OPTIONS = CSP_SO_RDPREQ),
+   * so a non-RDP connection would have its packets silently discarded by
+   * the router and the send below would never get its ack. */
+  csp_conn_t *conn = csp_connect(CSP_PRIO_NORM, 1, 20, CSPCL_CSP_TIMEOUT_MS, CSPCL_CSP_CONN_OPTIONS);
   if (conn == NULL) {
     printf("  [SKIP] %s: csp_connect returned NULL\n", __func__);
     return 0;
