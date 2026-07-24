@@ -8,12 +8,12 @@
  * - Phase 4: Interface Parsing API
  */
 
+#include "cspcl.h"
+
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "cspcl.h"
 
 /*===========================================================================*/
 /* Test Utilities                                                             */
@@ -29,7 +29,8 @@
 #define ASSERT_EQUAL(a, b)                                                                         \
   do {                                                                                             \
     if ((a) != (b)) {                                                                              \
-      printf("  [FAIL] %s: expected %d, got %d at line %d\n", __func__, (int)(b), (int)(a), __LINE__); \
+      printf("  [FAIL] %s: expected %d, got %d at line %d\n", __func__, (int) (b), (int) (a),      \
+             __LINE__);                                                                            \
       return 1;                                                                                    \
     }                                                                                              \
   } while (0)
@@ -37,7 +38,7 @@
 #define ASSERT_STR_EQUAL(a, b)                                                                     \
   do {                                                                                             \
     if (strcmp((a), (b)) != 0) {                                                                   \
-      printf("  [FAIL] %s: expected '%s', got '%s' at line %d\n", __func__, (b), (a), __LINE__);  \
+      printf("  [FAIL] %s: expected '%s', got '%s' at line %d\n", __func__, (b), (a), __LINE__);   \
       return 1;                                                                                    \
     }                                                                                              \
   } while (0)
@@ -324,41 +325,40 @@ struct {
   const char *name;
   int (*func)(void);
 } tests[] = {
-  /* Phase 2: Address Parsing */
-  {"test_parse_address_ipn", test_parse_address_ipn},
-  {"test_parse_address_csp", test_parse_address_csp},
-  {"test_parse_address_csp_with_port", test_parse_address_csp_with_port},
-  {"test_parse_address_bare_integer", test_parse_address_bare_integer},
-  {"test_parse_address_dtn_node", test_parse_address_dtn_node},
-  {"test_parse_address_zero", test_parse_address_zero},
-  {"test_is_valid_address_string_zero", test_is_valid_address_string_zero},
-  {"test_is_valid_address_string_invalid", test_is_valid_address_string_invalid},
-  {"test_parse_port_from_csp", test_parse_port_from_csp},
-  {"test_parse_port_default", test_parse_port_default},
-  {"test_identify_address_scheme_ipn", test_identify_address_scheme_ipn},
-  {"test_identify_address_scheme_csp", test_identify_address_scheme_csp},
-  {"test_identify_address_scheme_bare", test_identify_address_scheme_bare},
+    /* Phase 2: Address Parsing */
+    {"test_parse_address_ipn", test_parse_address_ipn},
+    {"test_parse_address_csp", test_parse_address_csp},
+    {"test_parse_address_csp_with_port", test_parse_address_csp_with_port},
+    {"test_parse_address_bare_integer", test_parse_address_bare_integer},
+    {"test_parse_address_dtn_node", test_parse_address_dtn_node},
+    {"test_parse_address_zero", test_parse_address_zero},
+    {"test_is_valid_address_string_zero", test_is_valid_address_string_zero},
+    {"test_is_valid_address_string_invalid", test_is_valid_address_string_invalid},
+    {"test_parse_port_from_csp", test_parse_port_from_csp},
+    {"test_parse_port_default", test_parse_port_default},
+    {"test_identify_address_scheme_ipn", test_identify_address_scheme_ipn},
+    {"test_identify_address_scheme_csp", test_identify_address_scheme_csp},
+    {"test_identify_address_scheme_bare", test_identify_address_scheme_bare},
 
-  /* Phase 3: Error Categorization */
-  {"test_categorize_error_ok", test_categorize_error_ok},
-  {"test_categorize_error_param", test_categorize_error_param},
-  {"test_categorize_error_resource", test_categorize_error_resource},
-  {"test_categorize_error_timeout", test_categorize_error_timeout},
-  {"test_categorize_error_csp", test_categorize_error_csp},
-  {"test_error_is_retryable_timeout", test_error_is_retryable_timeout},
-  {"test_error_is_retryable_not", test_error_is_retryable_not},
+    /* Phase 3: Error Categorization */
+    {"test_categorize_error_ok", test_categorize_error_ok},
+    {"test_categorize_error_param", test_categorize_error_param},
+    {"test_categorize_error_resource", test_categorize_error_resource},
+    {"test_categorize_error_timeout", test_categorize_error_timeout},
+    {"test_categorize_error_csp", test_categorize_error_csp},
+    {"test_error_is_retryable_timeout", test_error_is_retryable_timeout},
+    {"test_error_is_retryable_not", test_error_is_retryable_not},
 
-  /* Phase 4: Interface Parsing */
-  {"test_parse_interface_spec_zmqhub", test_parse_interface_spec_zmqhub},
-  {"test_parse_interface_spec_zmqhub_host", test_parse_interface_spec_zmqhub_host},
-  {"test_parse_interface_spec_can", test_parse_interface_spec_can},
-  {"test_parse_interface_spec_can_device", test_parse_interface_spec_can_device},
-  {"test_parse_interface_spec_loopback", test_parse_interface_spec_loopback},
-  {"test_interface_type_to_string_zmqhub", test_interface_type_to_string_zmqhub},
-  {"test_interface_type_to_string_can", test_interface_type_to_string_can},
+    /* Phase 4: Interface Parsing */
+    {"test_parse_interface_spec_zmqhub", test_parse_interface_spec_zmqhub},
+    {"test_parse_interface_spec_zmqhub_host", test_parse_interface_spec_zmqhub_host},
+    {"test_parse_interface_spec_can", test_parse_interface_spec_can},
+    {"test_parse_interface_spec_can_device", test_parse_interface_spec_can_device},
+    {"test_parse_interface_spec_loopback", test_parse_interface_spec_loopback},
+    {"test_interface_type_to_string_zmqhub", test_interface_type_to_string_zmqhub},
+    {"test_interface_type_to_string_can", test_interface_type_to_string_can},
 
-  {NULL, NULL}
-};
+    {NULL, NULL}};
 
 int main(void)
 {

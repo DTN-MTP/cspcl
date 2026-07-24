@@ -8,6 +8,8 @@
  * 3. Incomplete bundle when receiver is down
  */
 
+#include "cspcl.h"
+
 #include <assert.h>
 #include <pthread.h>
 #include <stdarg.h>
@@ -16,8 +18,6 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
-
-#include "cspcl.h"
 
 /* ========================================================================== */
 /* Test Configuration                                                         */
@@ -122,9 +122,8 @@ static void *receiver_thread(void *arg)
 
     log_info("Node B: Waiting for incoming bundle (timeout=1000ms)...");
 
-    cspcl_error_t err =
-        cspcl_recv_bundle(ctx->cspcl, ctx->buffer, &ctx->received_len, &ctx->src_addr,
-                          &ctx->src_port, 1000);
+    cspcl_error_t err = cspcl_recv_bundle(ctx->cspcl, ctx->buffer, &ctx->received_len,
+                                          &ctx->src_addr, &ctx->src_port, 1000);
 
     if (err == CSPCL_ERR_TIMEOUT) {
       log_info("Node B: No bundle received (idle, expected)");
@@ -220,11 +219,10 @@ static int test_successful_delivery(void)
   /* Test 1a: Send small message */
   log_info("\n=== Test 1a: Sending Small Message ===");
   uint8_t small_bundle[] = TEST_BUNDLE_SMALL;
-  log_info("Node A: Sending %zu bytes to csp:%u (small bundle)", sizeof(small_bundle),
-           NODE_B_ADDR);
+  log_info("Node A: Sending %zu bytes to csp:%u (small bundle)", sizeof(small_bundle), NODE_B_ADDR);
 
-  cspcl_error_t err = cspcl_send_bundle(&node_a, small_bundle, sizeof(small_bundle), NODE_B_ADDR,
-                                        CSP_PORT);
+  cspcl_error_t err =
+      cspcl_send_bundle(&node_a, small_bundle, sizeof(small_bundle), NODE_B_ADDR, CSP_PORT);
 
   if (err == CSPCL_OK) {
     log_success("Node A: TX success - bundle ACK'd by receiver");
@@ -258,8 +256,9 @@ static int test_successful_delivery(void)
     large_bundle[i] = (uint8_t) (i & 0xFF);
   }
 
-  log_info("Node A: Sending %zu bytes to csp:%u (large bundle, %zu fragments)", TEST_BUNDLE_LARGE_SIZE,
-           NODE_B_ADDR, (TEST_BUNDLE_LARGE_SIZE + CSPCL_MAX_PAYLOAD - 1) / CSPCL_MAX_PAYLOAD);
+  log_info("Node A: Sending %zu bytes to csp:%u (large bundle, %zu fragments)",
+           TEST_BUNDLE_LARGE_SIZE, NODE_B_ADDR,
+           (TEST_BUNDLE_LARGE_SIZE + CSPCL_MAX_PAYLOAD - 1) / CSPCL_MAX_PAYLOAD);
 
   err = cspcl_send_bundle(&node_a, large_bundle, TEST_BUNDLE_LARGE_SIZE, NODE_B_ADDR, CSP_PORT);
 
@@ -333,9 +332,8 @@ static int test_receiver_offline(void)
   if (err == CSPCL_OK) {
     log_error("Node A: TX returned OK (unexpected!)");
   } else if (err == CSPCL_ERR_TIMEOUT) {
-    log_error(
-        "Node A: TX TIMEOUT - No ACKs received from csp:%u (receiver offline or no link) ✗",
-        NODE_B_ADDR);
+    log_error("Node A: TX TIMEOUT - No ACKs received from csp:%u (receiver offline or no link) ✗",
+              NODE_B_ADDR);
     log_success("Message delivery failed as expected");
   } else if (err == CSPCL_ERR_CONNECTION) {
     log_error("Node A: TX CONNECTION FAILED - Link broken to csp:%u", NODE_B_ADDR);

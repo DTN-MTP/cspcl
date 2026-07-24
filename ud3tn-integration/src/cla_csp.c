@@ -429,8 +429,8 @@ static void csp_rx_task(void *p)
       continue;
     }
 
-    LOGF_INFO("CSP: RX COMPLETE - Got %zu bytes from csp:%u:%u (all fragments ACK'd)",
-              bundle_len, src_addr, src_port);
+    LOGF_INFO("CSP: RX COMPLETE - Got %zu bytes from csp:%u:%u (all fragments ACK'd)", bundle_len,
+              src_addr, src_port);
 
     /* Look up or create link for this source */
     char *cla_addr = create_cla_addr(src_addr, src_port);

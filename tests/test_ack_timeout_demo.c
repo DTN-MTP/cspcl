@@ -6,14 +6,14 @@
  * Shows the exact logs you would see with real libcsp.
  */
 
+#include "cspcl.h"
+
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
-
-#include "cspcl.h"
 
 /* ========================================================================== */
 /* Enhanced Logging with Timing                                              */
@@ -31,8 +31,8 @@ static void log_with_timing(const char *level, const char *format, va_list args)
   struct timespec now;
   clock_gettime(CLOCK_MONOTONIC, &now);
 
-  double elapsed = (now.tv_sec - demo_start_time.tv_sec) +
-                   (now.tv_nsec - demo_start_time.tv_nsec) / 1e9;
+  double elapsed =
+      (now.tv_sec - demo_start_time.tv_sec) + (now.tv_nsec - demo_start_time.tv_nsec) / 1e9;
 
   printf("[%7.2f] [%s] ", elapsed, level);
   vprintf(format, args);
@@ -323,7 +323,8 @@ int main(void)
   printf("╔════════════════════════════════════════════════════════════════════════════╗\n");
   printf("║  CSPCL Delivery Ack Timeout Demonstration                                      ║\n");
   printf("║                                                                            ║\n");
-  printf("║  Shows REAL log output when the delivery-ack timeout occurs (with real libcsp)         ║\n");
+  printf("║  Shows REAL log output when the delivery-ack timeout occurs (with real libcsp)         "
+         "║\n");
   printf("║                                                                            ║\n");
   printf("║  Key insights:                                                             ║\n");
   printf("║  • Success: ~100ms (fast - ACKs received immediately)                    ║\n");

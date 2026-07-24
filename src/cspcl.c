@@ -928,8 +928,8 @@ cspcl_error_t cspcl_recv_bundle(cspcl_t *cspcl, uint8_t *bundle, size_t *len, ui
     }
 
     *len = max_len;
-    cspcl_error_t recv_err = cspcl_recv_from_conn_timeout(
-        e->conn, bundle, len, src_addr, src_port, e->src_addr, e->src_port, read_timeout);
+    cspcl_error_t recv_err = cspcl_recv_from_conn_timeout(e->conn, bundle, len, src_addr, src_port,
+                                                          e->src_addr, e->src_port, read_timeout);
 
     if (recv_err == CSPCL_OK) {
       e->last_active = ++cspcl->rx_tick;
