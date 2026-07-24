@@ -53,7 +53,7 @@ impl FromStr for PeerConfig {
             .map_err(|err| format!("invalid CSP port: {err}"))?;
 
         if parts.next().is_some() {
-            return Err("expected NODE_ID,ADDR,PORT[,HEARTBEAT_INTERVAL]".to_string());
+            return Err("expected NODE_ID,ADDR,PORT".to_string());
         }
 
         Ok(Self {
@@ -76,7 +76,7 @@ pub struct Config {
     pub interface: Interface,
     #[arg(long, default_value = "vcan0")]
     pub interface_name: String,
-    #[arg(long = "peer", value_name = "NODE_ID,ADDR,PORT[,HEARTBEAT_INTERVAL]")]
+    #[arg(long = "peer", value_name = "NODE_ID,ADDR,PORT")]
     pub peers: Vec<PeerConfig>,
 }
 
@@ -111,7 +111,7 @@ mod tests {
             "--peer",
             "ipn:2.0,2,0",
             "--peer",
-            "ipn:3.0,3,1,60",
+            "ipn:3.0,3,1",
         ]);
 
         assert_eq!(config.peers.len(), 2);
