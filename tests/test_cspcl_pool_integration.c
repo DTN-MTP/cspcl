@@ -253,7 +253,8 @@ static int test_pool_cache_stats(void)
    * server's socket requires it (CSPCL_CSP_SOCKET_OPTIONS = CSP_SO_RDPREQ),
    * so a non-RDP connection would have its packets silently discarded by
    * the router and the send below would never get its ack. */
-  csp_conn_t *conn = csp_connect(CSP_PRIO_NORM, 1, 20, CSPCL_CSP_TIMEOUT_MS, CSPCL_CSP_CONN_OPTIONS);
+  csp_conn_t *conn =
+      csp_connect(CSP_PRIO_NORM, 1, 20, CSPCL_CSP_TIMEOUT_MS, CSPCL_CSP_CONN_OPTIONS);
   if (conn == NULL) {
     printf("  [SKIP] %s: csp_connect returned NULL\n", __func__);
     return 0;

@@ -8,6 +8,8 @@
  * 3. Application-level retry and recovery
  */
 
+#include "cspcl.h"
+
 #include <assert.h>
 #include <pthread.h>
 #include <stdarg.h>
@@ -17,14 +19,12 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "cspcl.h"
-
 /* ========================================================================== */
 /* Test Configuration                                                         */
 /* ========================================================================== */
 
 #define LOCAL_ADDR 1
-#define REMOTE_ADDR 1  /* Loopback to self for demo */
+#define REMOTE_ADDR 1 /* Loopback to self for demo */
 #define CSP_PORT 10
 
 /* ========================================================================== */
@@ -117,8 +117,8 @@ static void *receiver_thread(void *arg)
   while (ctx->running) {
     bundle_len = ctx->buffer_size;
 
-    cspcl_error_t err = cspcl_recv_bundle(ctx->cspcl, ctx->buffer, &bundle_len, &src_addr,
-                                          &src_port, 1000);
+    cspcl_error_t err =
+        cspcl_recv_bundle(ctx->cspcl, ctx->buffer, &bundle_len, &src_addr, &src_port, 1000);
 
     if (err == CSPCL_ERR_TIMEOUT) {
       /* Normal on idle link */

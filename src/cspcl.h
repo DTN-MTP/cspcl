@@ -450,8 +450,8 @@ uint8_t cspcl_parse_port(const char *addr_string);
  * @param scheme_len   Buffer length for scheme_out
  * @return CSPCL_OK on success, error code otherwise
  */
-cspcl_error_t cspcl_identify_address_scheme(const char *addr_string,
-                                           char *scheme_out, size_t scheme_len);
+cspcl_error_t cspcl_identify_address_scheme(const char *addr_string, char *scheme_out,
+                                            size_t scheme_len);
 
 /*===========================================================================*/
 /* PHASE 3: Error Categorization API                                         */
@@ -464,12 +464,12 @@ cspcl_error_t cspcl_identify_address_scheme(const char *addr_string,
  * handling without losing information.
  */
 typedef enum {
-  CSPCL_ERRCATEGORY_OK = 0,        /** No error */
-  CSPCL_ERRCATEGORY_PARAM,         /** Invalid parameter (caller error) */
-  CSPCL_ERRCATEGORY_RESOURCE,      /** Out of memory or resource exhausted */
-  CSPCL_ERRCATEGORY_TIMEOUT,       /** Operation timed out (retryable) */
-  CSPCL_ERRCATEGORY_CSP,           /** CSP/transport layer error */
-  CSPCL_ERRCATEGORY_FATAL,         /** Unrecoverable error */
+  CSPCL_ERRCATEGORY_OK = 0,   /** No error */
+  CSPCL_ERRCATEGORY_PARAM,    /** Invalid parameter (caller error) */
+  CSPCL_ERRCATEGORY_RESOURCE, /** Out of memory or resource exhausted */
+  CSPCL_ERRCATEGORY_TIMEOUT,  /** Operation timed out (retryable) */
+  CSPCL_ERRCATEGORY_CSP,      /** CSP/transport layer error */
+  CSPCL_ERRCATEGORY_FATAL,    /** Unrecoverable error */
 } cspcl_error_category_t;
 
 /**
@@ -522,8 +522,7 @@ cspcl_error_t cspcl_parse_interface_spec(const char *iface_spec, cspcl_t *cspcl)
  * @param len   Buffer length
  * @return CSPCL_OK on success, error code otherwise
  */
-cspcl_error_t cspcl_interface_type_to_string(const cspcl_t *cspcl,
-                                            char *buf, size_t len);
+cspcl_error_t cspcl_interface_type_to_string(const cspcl_t *cspcl, char *buf, size_t len);
 
 #ifdef __cplusplus
 }
