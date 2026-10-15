@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use tokio::task;
 use tracing::{debug, error};
 
 use crate::error::{Error, Result};
@@ -23,11 +24,8 @@ impl Cspcl {
             return Err(Error::InvalidParam);
         }
 
-        let mut inner = self.inner_mut();
         debug!("Sending bundle to {}:{}", dest.addr, dest.port);
-        match cspcl_sys::types::send_bundle(&mut inner, bundle, dest.addr, dest.port)
-            .map_err(Error::from_raw)
-        {
+        match self.send_raw(bundle, dest) {
             Ok(_) => debug!("Bundle sent to {}:{}", dest.addr, dest.port),
             Err(e) => {
                 error!(
@@ -41,6 +39,33 @@ impl Cspcl {
         };
 
         Ok(())
+    }
+
+    /// Send a bundle to a remote CSP address without blocking the async runtime
+    ///
+    /// [`send_bundle`](Self::send_bundle) blocks until the receiver acknowledges
+    /// the bundle, which can take up to twice `CSPCL_ACK_TIMEOUT_MS` when the
+    /// peer is unreachable. This variant runs it on tokio's blocking thread
+    /// pool so that async callers do not stall a runtime worker.
+    ///
+    /// Sends are still serialized: the C connection pool is locked for the
+    /// whole send/ack cycle.
+    ///
+    /// # Panics
+    /// Propagates a panic from the blocking send task.
+    pub async fn send_bundle_async(
+        self: &Arc<Self>,
+        bundle: impl Into<Vec<u8>>,
+        dest: CspAddress,
+    ) -> Result<()> {
+        let bundle = bundle.into();
+        let cspcl = Arc::clone(self);
+        match task::spawn_blocking(move || cspcl.send_bundle(&bundle, dest)).await {
+            Ok(result) => result,
+            Err(e) if e.is_panic() => std::panic::resume_unwind(e.into_panic()),
+            // Blocking tasks are only cancelled when the runtime shuts down.
+            Err(_) => Err(Error::CspSend),
+        }
     }
 
     pub fn inbound(self: Arc<Self>) -> InboundStream {

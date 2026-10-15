@@ -14,7 +14,7 @@ Safe Rust bindings for the CubeSat Space Protocol Convergence Layer (CSPCL), ena
 Add to `Cargo.toml`:
 ```toml
 [dependencies]
-cspcl = "0.4"
+cspcl = "0.5"
 futures = "0.3"
 ```
 
@@ -28,10 +28,11 @@ use std::sync::Arc;
 let local = CspAddress { addr: 1, port: 10 };
 let cspcl = Arc::new(Cspcl::new(local, Interface::Loopback)?);
 
-// Send a bundle to a remote CSP address and port.
+// Send a bundle to a remote CSP address and port. This waits for the peer's
+// ack on tokio's blocking pool; use `send_bundle` outside async code.
 let bundle = vec![/* BP7 bundle data */];
 let remote = CspAddress { addr: 2, port: 10 };
-cspcl.send_bundle(&bundle, remote)?;
+cspcl.send_bundle_async(bundle, remote).await?;
 
 // Share the instance with an inbound bundle stream.
 let mut inbound = Arc::clone(&cspcl).inbound();

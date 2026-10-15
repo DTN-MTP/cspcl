@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Rust: `Cspcl::send_bundle_async` (`cspcl` 0.5.0), which sends without blocking the tokio runtime. `hardy-cspcl` now uses it.
+- Rust: `cspcl-sys` 0.3.1 exposes raw-pointer `send_bundle_raw` / `accept_conn_raw` and `close_conn`.
+
+### Fixed
+- Rust: a node could not accept or acknowledge inbound bundles while one of its own sends was waiting for an ack. Simultaneous sends between two nodes, and sends to self, timed out. `Cspcl` now takes an exclusive lock only for teardown.
+- Rust: accepted inbound connections are no longer added to the outbound connection pool. The pool never reused them and could close one while it was still being read. The inbound listener now owns and closes them.
+
+### Documentation
+- Rust API: document the real libcsp build variables (`CSP_REPO_DIR`, `CSP_INCLUDE_DIR`, `CSP_BUILD_DIR`), replacing the non-existent `CSP_PATH`, and the `-fPIC` requirement.
+
 ## [1.0.0] - 2025-02-28
 
 ### Added

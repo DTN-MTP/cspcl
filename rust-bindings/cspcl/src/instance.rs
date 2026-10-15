@@ -1,4 +1,5 @@
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::cell::UnsafeCell;
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use cspcl_sys::types::AcceptedConn;
 use tokio_util::sync::CancellationToken;
@@ -21,9 +22,22 @@ use crate::{
 /// }
 /// ```
 pub struct Cspcl {
-    inner: Arc<RwLock<cspcl_sys::cspcl_t>>,
+    /// The C instance. It is only ever accessed through raw pointers because
+    /// the C library mutates it from several threads at once (sends lock the
+    /// connection pool internally); never create a Rust reference to it.
+    inner: Box<UnsafeCell<cspcl_sys::cspcl_t>>,
+    /// Guards the C instance's lifecycle. Send and accept are thread-safe in
+    /// C and take the read side, so a long send (waiting for the peer's ack)
+    /// never blocks accepting inbound connections. Calls that tear state down
+    /// take the write side.
+    lifecycle: RwLock<()>,
     inbound_shutdown: CancellationToken,
 }
+
+// SAFETY: all access to `inner` goes through the C library, which is
+// thread-safe for send/accept; teardown is serialized by `lifecycle`.
+unsafe impl Send for Cspcl {}
+unsafe impl Sync for Cspcl {}
 
 impl Cspcl {
     /// Initialize a new CSPCL instance with local CSP address
@@ -36,42 +50,62 @@ impl Cspcl {
 
         let cspcl = cspcl_sys::types::init_from_config(&config).map_err(Error::from_raw)?;
 
-        Ok(Cspcl {
-            inner: Arc::new(RwLock::new(cspcl)),
+        Ok(Self::from_raw_instance(cspcl))
+    }
+
+    fn from_raw_instance(cspcl: cspcl_sys::cspcl_t) -> Self {
+        Cspcl {
+            inner: Box::new(UnsafeCell::new(cspcl)),
+            lifecycle: RwLock::new(()),
             inbound_shutdown: CancellationToken::new(),
-        })
+        }
     }
 
     /// Close the receive socket
     pub fn close_rx_socket(&self) {
         self.inbound_shutdown.cancel();
-        let mut cspcl = self.inner_mut();
-        cspcl_sys::types::close_rx_socket(&mut cspcl);
+        let _guard = self.lifecycle_write();
+        // SAFETY: exclusive lifecycle access.
+        cspcl_sys::types::close_rx_socket(unsafe { &mut *self.inner.get() });
     }
 
+    /// Accept one inbound connection.
+    ///
+    /// The returned connection is owned by the caller, who must close it with
+    /// [`cspcl_sys::types::close_conn`] once done.
     pub(crate) fn poll_connection(&self) -> Result<AcceptedConn> {
-        let mut cspcl = self.inner_mut();
-        let accepted_conn = from_sys_result(cspcl_sys::types::accept_conn(&mut cspcl, 10))?;
-        from_sys_result(cspcl_sys::types::conn_pool_add_accepted(
-            &mut cspcl,
-            accepted_conn,
-        ))?;
-        Ok(accepted_conn)
+        let _guard = self.lifecycle_read();
+        // SAFETY: the instance is alive and not being torn down (read guard);
+        // `cspcl_accept_conn` is safe to call concurrently with sends.
+        from_sys_result(unsafe { cspcl_sys::types::accept_conn_raw(self.inner.get(), 10) })
+    }
+
+    /// Send a serialized bundle, blocking until the peer acknowledges it.
+    pub(crate) fn send_raw(&self, bundle: &[u8], dest: CspAddress) -> Result<()> {
+        let _guard = self.lifecycle_read();
+        // SAFETY: the instance is alive and not being torn down (read guard);
+        // `cspcl_send_bundle` locks the C connection pool internally.
+        unsafe { cspcl_sys::types::send_bundle_raw(self.inner.get(), bundle, dest.addr, dest.port) }
+            .map_err(Error::from_raw)
     }
 
     /// Check if initialized
     pub fn is_initialized(&self) -> bool {
-        self.inner().initialized
+        let _guard = self.lifecycle_read();
+        // SAFETY: `initialized` is only written under the write guard.
+        unsafe { (*self.inner.get()).initialized }
     }
 
-    /// Get mutable reference to inner CSPCL instance (for advanced usage)
-    pub(crate) fn inner_mut(&self) -> RwLockWriteGuard<'_, cspcl_sys::cspcl_t> {
-        self.inner.write().expect("CSPCL instance lock poisoned")
+    fn lifecycle_read(&self) -> RwLockReadGuard<'_, ()> {
+        self.lifecycle
+            .read()
+            .expect("CSPCL lifecycle lock poisoned")
     }
 
-    /// Get immutable reference to inner CSPCL instance (for advanced usage)
-    pub(crate) fn inner(&self) -> RwLockReadGuard<'_, cspcl_sys::cspcl_t> {
-        self.inner.read().expect("CSPCL instance lock poisoned")
+    fn lifecycle_write(&self) -> RwLockWriteGuard<'_, ()> {
+        self.lifecycle
+            .write()
+            .expect("CSPCL lifecycle lock poisoned")
     }
 
     pub(crate) fn inbound_shutdown_token(&self) -> CancellationToken {
@@ -80,18 +114,14 @@ impl Cspcl {
 
     #[cfg(test)]
     fn from_config_without_init_for_test(config: cspcl_sys::types::CspclConfig) -> Self {
-        Cspcl {
-            inner: Arc::new(RwLock::new(cspcl_sys::types::configure(&config))),
-            inbound_shutdown: CancellationToken::new(),
-        }
+        Self::from_raw_instance(cspcl_sys::types::configure(&config))
     }
 }
 
 impl Drop for Cspcl {
     fn drop(&mut self) {
         self.inbound_shutdown.cancel();
-        let mut cspcl = self.inner_mut();
-        cspcl_sys::types::cleanup(&mut cspcl);
+        cspcl_sys::types::cleanup(self.inner.get_mut());
     }
 }
 

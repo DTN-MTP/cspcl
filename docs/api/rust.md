@@ -14,16 +14,36 @@ The `cspcl` crate provides safe, idiomatic Rust bindings over the C library.
 
 ```toml
 [dependencies]
-cspcl = "0.4"
+cspcl = "0.5"
 futures = "0.3"
 ```
 
-For production use with real libcsp set the `CSP_PATH` environment variable before building:
+`cspcl-sys` compiles the C library and links it against libcsp v1.6. Point the
+build at libcsp with either:
+
+- `CSP_REPO_DIR`: a libcsp checkout with `include/` and a `build/` directory
+  containing `libcsp.a` or `libcsp.so` (`CSP_BUILD_DIR` overrides `build/`), or
+- `CSP_INCLUDE_DIR`: the libcsp headers.
 
 ```bash
-export CSP_PATH=/path/to/libcsp
+export CSP_REPO_DIR=/path/to/libcsp
 cargo build --release
 ```
+
+Rust links position-independent executables, so a static `libcsp.a` must be
+built with `-fPIC`. libcsp v1.6 only applies its default flags when `CFLAGS`
+is empty, so pass them all:
+
+```bash
+cd /path/to/libcsp   # checked out at v1.6
+CFLAGS="-std=gnu99 -g -Os -fPIC -Wall -Wextra -Wshadow -Wcast-align -Wwrite-strings -Wno-unused-parameter" \
+  python3.11 waf configure --enable-can-socketcan --enable-if-zmqhub --enable-rdp --with-os=posix
+python3.11 waf build
+```
+
+The build also links `libzmq`, `libsocketcan` and `libbz2`, and bindgen needs
+`libclang`. Building `hardy-cspcl-server` additionally requires `protoc` and
+the protobuf well-known types (`protobuf-devel` / `libprotobuf-dev`).
 
 ---
 
@@ -51,6 +71,29 @@ pub fn send_bundle(&self, bundle: &[u8], dest: CspAddress) -> Result<()>
 ```
 
 Send a serialized BP7 bundle to `dest`. Fragmentation via SFP is handled internally.
+
+This call blocks until the peer acknowledges the bundle (see
+[Delivery Acknowledgement](../../delivery-ack/)), which takes up to twice
+`CSPCL_ACK_TIMEOUT_MS` when the peer is unreachable. Use `send_bundle_async`
+from async code.
+
+### `send_bundle_async`
+
+```rust
+pub async fn send_bundle_async(
+    self: &Arc<Self>,
+    bundle: impl Into<Vec<u8>>,
+    dest: CspAddress,
+) -> Result<()>
+```
+
+Same as `send_bundle`, but runs on tokio's blocking thread pool so it does not
+stall the async runtime. Requires a tokio runtime.
+
+Sending never blocks receiving: inbound connections are accepted and
+acknowledged while a send is waiting for its ack. Sends themselves are
+serialized, because the C connection pool stays locked for the whole
+send/ack cycle.
 
 ### `inbound`
 

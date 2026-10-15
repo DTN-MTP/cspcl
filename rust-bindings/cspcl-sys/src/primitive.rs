@@ -1,9 +1,9 @@
 use std::ffi::CStr;
 
 use crate::{
-    csp_conn_t, cspcl_accept_conn, cspcl_cleanup, cspcl_close_rx_socket, cspcl_conn_pool_add,
-    cspcl_conn_pool_t, cspcl_error_t, cspcl_init, cspcl_recv_bundle, cspcl_recv_bundle_from_conn,
-    cspcl_send_bundle, cspcl_strerror, cspcl_t,
+    csp_close, csp_conn_t, cspcl_accept_conn, cspcl_cleanup, cspcl_close_rx_socket,
+    cspcl_conn_pool_add, cspcl_conn_pool_t, cspcl_error_t, cspcl_init, cspcl_recv_bundle,
+    cspcl_recv_bundle_from_conn, cspcl_send_bundle, cspcl_strerror, cspcl_t,
 };
 
 pub fn init(cspcl: &mut cspcl_t) -> cspcl_error_t {
@@ -24,6 +24,19 @@ pub fn close_rx_socket(cspcl: &mut cspcl_t) {
 
 pub fn send_bundle(
     cspcl: &mut cspcl_t,
+    bundle: &[u8],
+    dest_addr: u8,
+    dest_port: u8,
+) -> cspcl_error_t {
+    unsafe { send_bundle_raw(cspcl, bundle, dest_addr, dest_port) }
+}
+
+/// # Safety
+/// `cspcl` must point to a live, initialized `cspcl_t`. Concurrent calls are
+/// allowed (the C connection pool is mutex-protected), but not concurrently
+/// with init/cleanup.
+pub unsafe fn send_bundle_raw(
+    cspcl: *mut cspcl_t,
     bundle: &[u8],
     dest_addr: u8,
     dest_port: u8,
@@ -56,6 +69,16 @@ pub fn accept_conn(
     cspcl: &mut cspcl_t,
     timeout_ms: u32,
 ) -> (cspcl_error_t, *mut csp_conn_t, u8, u8) {
+    unsafe { accept_conn_raw(cspcl, timeout_ms) }
+}
+
+/// # Safety
+/// `cspcl` must point to a live, initialized `cspcl_t` whose RX socket is
+/// open. Must not run concurrently with init/cleanup/close_rx_socket.
+pub unsafe fn accept_conn_raw(
+    cspcl: *mut cspcl_t,
+    timeout_ms: u32,
+) -> (cspcl_error_t, *mut csp_conn_t, u8, u8) {
     let mut conn = std::ptr::null_mut();
     let mut src_addr = 0;
     let mut src_port = 0;
@@ -64,6 +87,10 @@ pub fn accept_conn(
     (code, conn, src_addr, src_port)
 }
 
+/// # Safety
+/// `pool` must be initialized and `conn` a valid connection. The pool takes
+/// ownership of `conn` and closes it on eviction, invalidation or cleanup, so
+/// the caller must not use or close it afterwards.
 pub unsafe fn conn_pool_add(
     pool: &mut cspcl_conn_pool_t,
     dest_addr: u8,
@@ -73,6 +100,9 @@ pub unsafe fn conn_pool_add(
     unsafe { cspcl_conn_pool_add(pool, dest_addr, dest_port, conn) }
 }
 
+/// # Safety
+/// `conn` must be a valid, open connection that no other thread is reading
+/// from concurrently.
 pub unsafe fn recv_bundle_from_conn(
     conn: *mut csp_conn_t,
     buffer: &mut [u8],
@@ -94,6 +124,14 @@ pub unsafe fn recv_bundle_from_conn(
         )
     };
     (code, len, src_addr, src_port)
+}
+
+/// # Safety
+/// `conn` must be a valid connection that is not used again afterwards.
+pub unsafe fn close_conn(conn: *mut csp_conn_t) {
+    unsafe {
+        csp_close(conn);
+    }
 }
 
 pub fn error_message(code: cspcl_error_t) -> &'static str {
