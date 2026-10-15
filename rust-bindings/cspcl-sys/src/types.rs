@@ -84,6 +84,13 @@ impl AcceptedConn {
 
 impl Drop for AcceptedConn {
     fn drop(&mut self) {
+        // libcsp v1.6 never frees an accepted connection on its own, so this
+        // close is what releases its slot. Once a connection has been queued
+        // for accept, RDP resets and timeouts only mark it closed "by
+        // protocol"; the slot is freed when userspace closes it too
+        // (`csp_rdp_close_internal` waits for CSP_RDP_CLOSED_BY_ALL).
+        // Connections without RDP are only ever closed by userspace.
+        //
         // SAFETY: `conn` is a valid connection owned by this value.
         unsafe { primitive::close_conn(self.conn) }
     }

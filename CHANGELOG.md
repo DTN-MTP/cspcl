@@ -21,8 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Rust: a node could not accept or acknowledge inbound bundles while one of its own sends was waiting for an ack. Simultaneous sends between two nodes, and sends to self, timed out. Sends and accepts no longer share a lock.
 - Rust: accepted inbound connections are no longer added to the outbound connection pool. The pool never reused them and could close one while it was still being read. The inbound listener now owns and closes them.
-- Rust: inbound connections are released when their peer reconnects or after 60 s without a bundle. Before, dead connections were held forever and could exhaust libcsp's connection table.
-- Rust: a `send_bundle_async` future dropped before its send started (e.g. queued behind a slow send) no longer sends the bundle. A send already in progress still runs to completion; this is documented.
+- Rust: inbound connections are released after 60 s without a bundle, when the same address and port connect again, or, beyond 8 open connections (the C receive table size), least recently active first. Before, dead connections were held forever and could exhaust libcsp's connection table. Connections are tracked by address and port, so agents sharing a CSP address do not close each other's connections.
+- Rust: a `send_bundle_async` future dropped before its send started, including while queued behind a slow send, no longer sends the bundle. A send already in progress still runs to completion; this is documented.
+- Rust: dropping an `InboundStream` no longer stops every stream created later on the same `Cspcl`. Only `close_rx_socket` and dropping the instance stop all streams.
 - Rust: inbound listeners keep the `Cspcl` instance alive until they have closed their connection, so the instance is never cleaned up under an open connection.
 
 ### Documentation

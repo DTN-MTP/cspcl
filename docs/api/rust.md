@@ -105,7 +105,12 @@ send/ack cycle.
 pub fn inbound(self: Arc<Self>) -> InboundStream
 ```
 
-Share the handle with a stream of inbound bundles.
+Share the handle with a stream of inbound bundles. Dropping the stream stops
+only that stream; call `inbound` again to receive later.
+
+Up to 8 inbound connections (the C receive table size) are served at once.
+Beyond that, and after 60 s without a bundle, a connection is closed; its
+peer reconnects on its next send.
 
 ### `close_rx_socket`
 
@@ -113,7 +118,8 @@ Share the handle with a stream of inbound bundles.
 pub fn close_rx_socket(&self)
 ```
 
-Cancel inbound receive work and close the receive socket.
+Stop all inbound streams and close the receive socket. Does not wait for sends
+in progress.
 
 ---
 

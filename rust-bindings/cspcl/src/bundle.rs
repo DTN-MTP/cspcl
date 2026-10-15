@@ -23,13 +23,30 @@ impl Cspcl {
     /// # Returns
     /// Ok(()) on success, or Err(Error) if the operation failed
     pub fn send_bundle(&self, bundle: &[u8], dest: CspAddress) -> Result<()> {
+        self.send_bundle_unless_cancelled(bundle, dest, None)
+    }
+
+    fn send_bundle_unless_cancelled(
+        &self,
+        bundle: &[u8],
+        dest: CspAddress,
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<()> {
         if bundle.is_empty() {
             return Err(Error::InvalidParam);
         }
 
         debug!("Sending bundle to {}:{}", dest.addr, dest.port);
-        match self.send_raw(bundle, dest) {
+        match self.send_raw(bundle, dest, cancelled) {
             Ok(_) => debug!("Bundle sent to {}:{}", dest.addr, dest.port),
+            Err(Error::Cancelled) => {
+                // Nobody awaits this result.
+                debug!(
+                    "Send to {}:{} cancelled before it started",
+                    dest.addr, dest.port
+                );
+                return Err(Error::Cancelled);
+            }
             Err(e) => {
                 error!(
                     "Could not send bundle to {}:{} : {}",
@@ -56,7 +73,7 @@ impl Cspcl {
     ///
     /// # Cancellation
     /// Dropping the returned future (e.g. on a timeout) before the send has
-    /// started skips it. A send that has already started cannot be
+    /// started skips it, including while it is queued behind other sends. A send that has already started cannot be
     /// interrupted and runs to completion, so the bundle may still be
     /// delivered: treat a cancelled send as having an unknown outcome. The
     /// receiver must already tolerate duplicates, since a lost ack causes a
@@ -75,15 +92,7 @@ impl Cspcl {
         let _cancel_on_drop = CancelOnDrop(Arc::clone(&cancelled));
 
         let send = task::spawn_blocking(move || {
-            if cancelled.load(Ordering::Acquire) {
-                debug!(
-                    "Send to {}:{} cancelled before it started",
-                    dest.addr, dest.port
-                );
-                // Nobody awaits this result.
-                return Err(Error::Cancelled);
-            }
-            cspcl.send_bundle(&bundle, dest)
+            cspcl.send_bundle_unless_cancelled(&bundle, dest, Some(&cancelled))
         });
 
         flatten_join(send.await)

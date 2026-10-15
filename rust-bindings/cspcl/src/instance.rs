@@ -1,5 +1,8 @@
 use std::cell::UnsafeCell;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{
+    Mutex, MutexGuard, PoisonError,
+    atomic::{AtomicBool, Ordering},
+};
 
 use cspcl_sys::types::AcceptedConn;
 use tokio_util::sync::CancellationToken;
@@ -31,6 +34,11 @@ pub struct Cspcl {
     /// [`close_rx_socket`](Self::close_rx_socket) clears it. Held for at most
     /// one short accept poll, never during a send.
     accept: Mutex<()>,
+    /// Taken by every send before it enters C. `cspcl_send_bundle` already
+    /// serializes all sends of an instance on the C pool mutex, so this adds
+    /// no serialization; it moves the wait to Rust, where a send that was
+    /// cancelled while queued can be skipped before it starts.
+    send: Mutex<()>,
     inbound_shutdown: CancellationToken,
 }
 
@@ -60,6 +68,7 @@ impl Cspcl {
         Cspcl {
             inner: Box::new(UnsafeCell::new(cspcl)),
             accept: Mutex::new(()),
+            send: Mutex::new(()),
             inbound_shutdown: CancellationToken::new(),
         }
     }
@@ -91,7 +100,20 @@ impl Cspcl {
     }
 
     /// Send a serialized bundle, blocking until the peer acknowledges it.
-    pub(crate) fn send_raw(&self, bundle: &[u8], dest: CspAddress) -> Result<()> {
+    ///
+    /// If `cancelled` is set by the time this send's turn comes, the bundle
+    /// is not sent and [`Error::Cancelled`] is returned.
+    pub(crate) fn send_raw(
+        &self,
+        bundle: &[u8],
+        dest: CspAddress,
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<()> {
+        // `()` cannot be left inconsistent by a panic, so ignore poisoning.
+        let _send = self.send.lock().unwrap_or_else(PoisonError::into_inner);
+        if cancelled.is_some_and(|cancelled| cancelled.load(Ordering::Acquire)) {
+            return Err(Error::Cancelled);
+        }
         // SAFETY: the instance is alive (we hold `&self`), and
         // `cspcl_send_bundle` locks the C connection pool internally.
         unsafe { cspcl_sys::types::send_bundle_raw(self.inner.get(), bundle, dest.addr, dest.port) }
@@ -109,6 +131,9 @@ impl Cspcl {
         self.accept.lock().expect("CSPCL accept lock poisoned")
     }
 
+    /// The instance-wide inbound shutdown token. Cancel only through
+    /// [`close_rx_socket`](Self::close_rx_socket) or drop; streams must use
+    /// child tokens.
     pub(crate) fn inbound_shutdown_token(&self) -> CancellationToken {
         self.inbound_shutdown.clone()
     }
