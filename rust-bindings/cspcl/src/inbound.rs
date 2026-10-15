@@ -184,6 +184,9 @@ fn listen_incoming_from_conn(
         }
     }
 
+    // SAFETY: this listener is the sole owner of the accepted connection.
+    unsafe { cspcl_sys::types::close_conn(conn) };
+
     debug!(
         src_addr = conn.src_addr,
         src_port = conn.src_port,

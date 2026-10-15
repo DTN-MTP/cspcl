@@ -6,10 +6,11 @@ use crate::{
 
 pub type Result<T> = std::result::Result<T, cspcl_error_t>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum InterfaceConfig {
     Zmq(String),
     Can(String),
+    #[default]
     Loopback,
 }
 
@@ -23,12 +24,6 @@ impl InterfaceConfig {
     }
 
     pub fn loopback() -> Self {
-        Self::Loopback
-    }
-}
-
-impl Default for InterfaceConfig {
-    fn default() -> Self {
         Self::Loopback
     }
 }
@@ -133,6 +128,17 @@ pub fn send_bundle(cspcl: &mut cspcl_t, bundle: &[u8], dest_addr: u8, dest_port:
     ok_or_err(primitive::send_bundle(cspcl, bundle, dest_addr, dest_port))
 }
 
+/// # Safety
+/// See [`primitive::send_bundle_raw`].
+pub unsafe fn send_bundle_raw(
+    cspcl: *mut cspcl_t,
+    bundle: &[u8],
+    dest_addr: u8,
+    dest_port: u8,
+) -> Result<()> {
+    ok_or_err(unsafe { primitive::send_bundle_raw(cspcl, bundle, dest_addr, dest_port) })
+}
+
 pub fn recv_bundle(
     cspcl: &mut cspcl_t,
     buffer: &mut [u8],
@@ -150,7 +156,13 @@ pub fn recv_bundle(
 }
 
 pub fn accept_conn(cspcl: &mut cspcl_t, timeout_ms: u32) -> Result<AcceptedConn> {
-    let (code, conn, src_addr, src_port) = primitive::accept_conn(cspcl, timeout_ms);
+    unsafe { accept_conn_raw(cspcl, timeout_ms) }
+}
+
+/// # Safety
+/// See [`primitive::accept_conn_raw`].
+pub unsafe fn accept_conn_raw(cspcl: *mut cspcl_t, timeout_ms: u32) -> Result<AcceptedConn> {
+    let (code, conn, src_addr, src_port) = unsafe { primitive::accept_conn_raw(cspcl, timeout_ms) };
     ok_or_err(code)?;
 
     Ok(AcceptedConn {
@@ -160,6 +172,17 @@ pub fn accept_conn(cspcl: &mut cspcl_t, timeout_ms: u32) -> Result<AcceptedConn>
     })
 }
 
+/// Close an accepted connection that is owned by the caller.
+///
+/// # Safety
+/// The connection must not have been handed to the connection pool and must
+/// not be used again afterwards.
+pub unsafe fn close_conn(accepted: AcceptedConn) {
+    unsafe { primitive::close_conn(accepted.conn) }
+}
+
+/// # Safety
+/// See [`primitive::conn_pool_add`].
 pub unsafe fn conn_pool_add(
     pool: &mut cspcl_conn_pool_t,
     dest_addr: u8,

@@ -30,7 +30,8 @@ impl Transport {
     ) -> Result<(), Error> {
         debug!("Try sending bundle to: {}:{}", dest.addr, dest.port);
         self.cspcl
-            .send_bundle(&payload.into(), dest)
+            .send_bundle_async(payload, dest)
+            .await
             .map_err(Error::Send)
     }
 
