@@ -153,17 +153,34 @@ async fn poll_inbound_connections(
         bundle_listeners
             .lock()
             .expect("Inbound bundle listener task set lock poisoned")
-            .spawn_blocking(move || listen_incoming_from_conn(conn, tx, listener_shutdown));
+            .spawn_blocking({
+                let conn = OwnedConn {
+                    conn,
+                    _cspcl: Arc::clone(&cspcl),
+                };
+                move || listen_incoming_from_conn(conn, tx, listener_shutdown)
+            });
     }
 
     debug!("Inbound connection polling task stopped");
 }
 
-fn listen_incoming_from_conn(
+/// An accepted connection together with the instance it belongs to.
+///
+/// Fields drop in declaration order, so the connection is always closed
+/// before the instance can be cleaned up, even if the listener task is
+/// dropped without ever running.
+struct OwnedConn {
     conn: cspcl_sys::types::AcceptedConn,
+    _cspcl: Arc<Cspcl>,
+}
+
+fn listen_incoming_from_conn(
+    owned: OwnedConn,
     tx: mpsc::UnboundedSender<Result<Bundle>>,
     inbound_shutdown: CancellationToken,
 ) {
+    let conn = &owned.conn;
     debug!(
         src_addr = conn.src_addr,
         src_port = conn.src_port,
@@ -177,7 +194,7 @@ fn listen_incoming_from_conn(
             break;
         }
 
-        match recv_bundle_from_conn(&conn) {
+        match recv_bundle_from_conn(conn) {
             Ok(bundle) => {
                 last_bundle = Instant::now();
                 debug!(
@@ -223,7 +240,7 @@ fn listen_incoming_from_conn(
         src_port = conn.src_port,
         "Inbound connection listener task stopped"
     );
-    // Dropping `conn` closes the connection.
+    // Dropping `owned` closes the connection, then releases the instance.
 }
 
 fn recv_bundle_from_conn(conn: &cspcl_sys::types::AcceptedConn) -> Result<Bundle> {
