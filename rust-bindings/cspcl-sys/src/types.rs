@@ -236,18 +236,6 @@ pub unsafe fn conn_pool_add(
     ok_or_err(unsafe { primitive::conn_pool_add(pool, dest_addr, dest_port, conn) })
 }
 
-pub fn conn_pool_add_accepted(cspcl: &mut cspcl_t, accepted: AcceptedConn) -> Result<()> {
-    let (src_addr, src_port) = (accepted.src_addr, accepted.src_port);
-    let conn = accepted.into_raw();
-    // SAFETY: ownership of `conn` passes to the pool on success.
-    let result = unsafe { conn_pool_add(&mut cspcl.conn_pool, src_addr, src_port, conn) };
-    if result.is_err() {
-        // The pool did not take the connection; close it.
-        unsafe { primitive::close_conn(conn) }
-    }
-    result
-}
-
 pub fn recv_bundle_from_conn(accepted: &AcceptedConn) -> Result<ReceivedBundle> {
     let mut buffer = vec![0u8; crate::CSPCL_MAX_BUNDLE_SIZE as usize];
     let (code, len, src_addr, src_port) = unsafe {
