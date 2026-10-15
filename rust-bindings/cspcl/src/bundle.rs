@@ -1,5 +1,9 @@
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
+use tokio::task::{self, JoinError};
 use tracing::{debug, error};
 
 use crate::error::{Error, Result};
@@ -23,11 +27,8 @@ impl Cspcl {
             return Err(Error::InvalidParam);
         }
 
-        let mut inner = self.inner_mut();
         debug!("Sending bundle to {}:{}", dest.addr, dest.port);
-        match cspcl_sys::types::send_bundle(&mut inner, bundle, dest.addr, dest.port)
-            .map_err(Error::from_raw)
-        {
+        match self.send_raw(bundle, dest) {
             Ok(_) => debug!("Bundle sent to {}:{}", dest.addr, dest.port),
             Err(e) => {
                 error!(
@@ -43,7 +44,105 @@ impl Cspcl {
         Ok(())
     }
 
+    /// Send a bundle to a remote CSP address without blocking the async runtime
+    ///
+    /// [`send_bundle`](Self::send_bundle) blocks until the receiver acknowledges
+    /// the bundle, which can take up to twice `CSPCL_ACK_TIMEOUT_MS` when the
+    /// peer is unreachable. This variant runs it on tokio's blocking thread
+    /// pool so that async callers do not stall a runtime worker.
+    ///
+    /// Sends are still serialized: the C connection pool is locked for the
+    /// whole send/ack cycle.
+    ///
+    /// # Cancellation
+    /// Dropping the returned future (e.g. on a timeout) before the send has
+    /// started skips it. A send that has already started cannot be
+    /// interrupted and runs to completion, so the bundle may still be
+    /// delivered: treat a cancelled send as having an unknown outcome. The
+    /// receiver must already tolerate duplicates, since a lost ack causes a
+    /// resend (see the Delivery Acknowledgement docs).
+    ///
+    /// # Panics
+    /// Propagates a panic from the blocking send task.
+    pub async fn send_bundle_async(
+        self: &Arc<Self>,
+        bundle: impl Into<Vec<u8>>,
+        dest: CspAddress,
+    ) -> Result<()> {
+        let bundle = bundle.into();
+        let cspcl = Arc::clone(self);
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let _cancel_on_drop = CancelOnDrop(Arc::clone(&cancelled));
+
+        let send = task::spawn_blocking(move || {
+            if cancelled.load(Ordering::Acquire) {
+                debug!(
+                    "Send to {}:{} cancelled before it started",
+                    dest.addr, dest.port
+                );
+                // Nobody awaits this result.
+                return Err(Error::Cancelled);
+            }
+            cspcl.send_bundle(&bundle, dest)
+        });
+
+        flatten_join(send.await)
+    }
+
     pub fn inbound(self: Arc<Self>) -> InboundStream {
         InboundStream::new(self)
+    }
+}
+
+/// Sets the flag when dropped, i.e. when the `send_bundle_async` future is
+/// dropped before or after completion (setting it afterwards is harmless).
+struct CancelOnDrop(Arc<AtomicBool>);
+
+impl Drop for CancelOnDrop {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
+    }
+}
+
+/// Unwrap the result of a blocking task, propagating its panic.
+///
+/// Blocking tasks are only cancelled when the runtime shuts down; that is
+/// reported as [`Error::Cancelled`], not as a send failure.
+fn flatten_join<T>(joined: std::result::Result<Result<T>, JoinError>) -> Result<T> {
+    match joined {
+        Ok(result) => result,
+        Err(e) if e.is_panic() => std::panic::resume_unwind(e.into_panic()),
+        Err(_) => Err(Error::Cancelled),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn cancelled_task_maps_to_cancelled_error() {
+        let task = tokio::spawn(std::future::pending::<Result<()>>());
+        task.abort();
+        let joined = task.await;
+        assert!(joined.as_ref().is_err_and(JoinError::is_cancelled));
+
+        assert_eq!(flatten_join(joined), Err(Error::Cancelled));
+    }
+
+    #[tokio::test]
+    async fn task_result_is_passed_through() {
+        let ok = tokio::spawn(async { Ok::<_, Error>(7) }).await;
+        assert_eq!(flatten_join(ok), Ok(7));
+
+        let err = tokio::spawn(async { Err::<(), _>(Error::Timeout) }).await;
+        assert_eq!(flatten_join(err), Err(Error::Timeout));
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "boom")]
+    async fn task_panic_is_propagated() {
+        let joined = tokio::spawn(async { panic!("boom") }).await;
+        let _: Result<()> = flatten_join(joined);
     }
 }

@@ -6,10 +6,11 @@ use crate::{
 
 pub type Result<T> = std::result::Result<T, cspcl_error_t>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum InterfaceConfig {
     Zmq(String),
     Can(String),
+    #[default]
     Loopback,
 }
 
@@ -27,12 +28,6 @@ impl InterfaceConfig {
     }
 }
 
-impl Default for InterfaceConfig {
-    fn default() -> Self {
-        Self::Loopback
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CspclConfig {
     pub local_addr: u8,
@@ -40,15 +35,62 @@ pub struct CspclConfig {
     pub interface: InterfaceConfig,
 }
 
-#[derive(Debug, Clone, Copy)]
+/// An accepted inbound CSP connection.
+///
+/// The connection is owned by this value and closed when it is dropped.
+///
+/// It cannot be copied, so it cannot be read after it is closed:
+///
+/// ```compile_fail
+/// use cspcl_sys::types::{AcceptedConn, recv_bundle_from_conn};
+///
+/// fn read_after_close(conn: AcceptedConn) {
+///     let copy = conn;
+///     drop(conn);
+///     let _ = recv_bundle_from_conn(&copy);
+/// }
+/// ```
+///
+/// Nor can two threads receive on it at once:
+///
+/// ```compile_fail
+/// use cspcl_sys::types::{AcceptedConn, recv_bundle_from_conn};
+///
+/// fn concurrent_reads(conn: &AcceptedConn) {
+///     std::thread::scope(|s| {
+///         s.spawn(|| recv_bundle_from_conn(conn));
+///         let _ = recv_bundle_from_conn(conn);
+///     });
+/// }
+/// ```
+#[derive(Debug)]
 pub struct AcceptedConn {
-    pub conn: *mut csp_conn_t,
+    conn: *mut csp_conn_t,
     pub src_addr: u8,
     pub src_port: u8,
 }
 
-// Accepted connections are handed off to a single listener worker, which owns
-// the pointer for receive calls. The pointer must not be used concurrently.
+impl AcceptedConn {
+    /// The underlying CSP connection, still owned by `self`.
+    pub fn as_ptr(&self) -> *mut csp_conn_t {
+        self.conn
+    }
+
+    /// Release ownership of the connection without closing it.
+    pub fn into_raw(self) -> *mut csp_conn_t {
+        std::mem::ManuallyDrop::new(self).conn
+    }
+}
+
+impl Drop for AcceptedConn {
+    fn drop(&mut self) {
+        // SAFETY: `conn` is a valid connection owned by this value.
+        unsafe { primitive::close_conn(self.conn) }
+    }
+}
+
+// SAFETY: the connection is owned by this value and may move between
+// threads. It is not `Sync`, so only one thread can receive on it at a time.
 unsafe impl Send for AcceptedConn {}
 
 #[derive(Debug)]
@@ -129,8 +171,25 @@ pub fn close_rx_socket(cspcl: &mut cspcl_t) {
     primitive::close_rx_socket(cspcl);
 }
 
+/// # Safety
+/// See [`primitive::close_rx_socket_raw`].
+pub unsafe fn close_rx_socket_raw(cspcl: *mut cspcl_t) {
+    unsafe { primitive::close_rx_socket_raw(cspcl) }
+}
+
 pub fn send_bundle(cspcl: &mut cspcl_t, bundle: &[u8], dest_addr: u8, dest_port: u8) -> Result<()> {
     ok_or_err(primitive::send_bundle(cspcl, bundle, dest_addr, dest_port))
+}
+
+/// # Safety
+/// See [`primitive::send_bundle_raw`].
+pub unsafe fn send_bundle_raw(
+    cspcl: *mut cspcl_t,
+    bundle: &[u8],
+    dest_addr: u8,
+    dest_port: u8,
+) -> Result<()> {
+    ok_or_err(unsafe { primitive::send_bundle_raw(cspcl, bundle, dest_addr, dest_port) })
 }
 
 pub fn recv_bundle(
@@ -150,7 +209,13 @@ pub fn recv_bundle(
 }
 
 pub fn accept_conn(cspcl: &mut cspcl_t, timeout_ms: u32) -> Result<AcceptedConn> {
-    let (code, conn, src_addr, src_port) = primitive::accept_conn(cspcl, timeout_ms);
+    unsafe { accept_conn_raw(cspcl, timeout_ms) }
+}
+
+/// # Safety
+/// See [`primitive::accept_conn_raw`].
+pub unsafe fn accept_conn_raw(cspcl: *mut cspcl_t, timeout_ms: u32) -> Result<AcceptedConn> {
+    let (code, conn, src_addr, src_port) = unsafe { primitive::accept_conn_raw(cspcl, timeout_ms) };
     ok_or_err(code)?;
 
     Ok(AcceptedConn {
@@ -160,6 +225,8 @@ pub fn accept_conn(cspcl: &mut cspcl_t, timeout_ms: u32) -> Result<AcceptedConn>
     })
 }
 
+/// # Safety
+/// See [`primitive::conn_pool_add`].
 pub unsafe fn conn_pool_add(
     pool: &mut cspcl_conn_pool_t,
     dest_addr: u8,
@@ -169,20 +236,11 @@ pub unsafe fn conn_pool_add(
     ok_or_err(unsafe { primitive::conn_pool_add(pool, dest_addr, dest_port, conn) })
 }
 
-pub fn conn_pool_add_accepted(cspcl: &mut cspcl_t, accepted: AcceptedConn) -> Result<()> {
-    unsafe {
-        conn_pool_add(
-            &mut cspcl.conn_pool,
-            accepted.src_addr,
-            accepted.src_port,
-            accepted.conn,
-        )
-    }
-}
-
-pub fn recv_bundle_from_conn(accepted: AcceptedConn) -> Result<ReceivedBundle> {
+pub fn recv_bundle_from_conn(accepted: &AcceptedConn) -> Result<ReceivedBundle> {
     let mut buffer = vec![0u8; crate::CSPCL_MAX_BUNDLE_SIZE as usize];
     let (code, len, src_addr, src_port) = unsafe {
+        // SAFETY: `accepted` owns an open connection, and `&AcceptedConn` is not
+        // `Send`, so no other thread receives on it concurrently.
         primitive::recv_bundle_from_conn(
             accepted.conn,
             &mut buffer,

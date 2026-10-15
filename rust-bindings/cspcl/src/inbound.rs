@@ -1,15 +1,24 @@
 use futures::{Stream, channel::mpsc};
 use std::{
+    collections::HashMap,
     pin::Pin,
     sync::{Arc, Mutex},
     task::{Context, Poll},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::task::{self, JoinHandle, JoinSet};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, trace, warn};
 
 use crate::{Bundle, Cspcl, Error, Result};
+
+/// An inbound connection that carried no bundle for this long is closed.
+///
+/// libcsp v1.6 cannot tell whether the peer is still there, so without this a
+/// connection from a peer that went away would be held forever, eventually
+/// exhausting libcsp's fixed connection table. A peer that later reuses its
+/// pooled connection gets an immediate send failure and reconnects.
+const INBOUND_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub struct InboundStream {
     rx: mpsc::UnboundedReceiver<Result<Bundle>>,
@@ -89,6 +98,9 @@ async fn poll_inbound_connections(
 ) {
     debug!("Inbound connection polling task started");
 
+    // Shutdown token of the current listener for each peer CSP address.
+    let mut peer_listeners: HashMap<u8, CancellationToken> = HashMap::new();
+
     loop {
         if inbound_shutdown.is_cancelled() {
             break;
@@ -127,25 +139,55 @@ async fn poll_inbound_connections(
             "New connection made with {}:{}",
             conn.src_addr, conn.src_port
         );
+
+        // A sender keeps one pooled connection per destination, so a new
+        // connection from a peer means it dropped the previous one (failed
+        // send or restart). Release the stale connection.
+        if let Some(previous) = peer_listeners.insert(conn.src_addr, listener_shutdown.clone()) {
+            debug!(
+                src_addr = conn.src_addr,
+                "Peer reconnected, closing its previous inbound connection"
+            );
+            previous.cancel();
+        }
         bundle_listeners
             .lock()
             .expect("Inbound bundle listener task set lock poisoned")
-            .spawn_blocking(move || listen_incoming_from_conn(conn, tx, listener_shutdown));
+            .spawn_blocking({
+                let conn = OwnedConn {
+                    conn,
+                    _cspcl: Arc::clone(&cspcl),
+                };
+                move || listen_incoming_from_conn(conn, tx, listener_shutdown)
+            });
     }
 
     debug!("Inbound connection polling task stopped");
 }
 
-fn listen_incoming_from_conn(
+/// An accepted connection together with the instance it belongs to.
+///
+/// Fields drop in declaration order, so the connection is always closed
+/// before the instance can be cleaned up, even if the listener task is
+/// dropped without ever running.
+struct OwnedConn {
     conn: cspcl_sys::types::AcceptedConn,
+    _cspcl: Arc<Cspcl>,
+}
+
+fn listen_incoming_from_conn(
+    owned: OwnedConn,
     tx: mpsc::UnboundedSender<Result<Bundle>>,
     inbound_shutdown: CancellationToken,
 ) {
+    let conn = &owned.conn;
     debug!(
         src_addr = conn.src_addr,
         src_port = conn.src_port,
         "Inbound connection listener task started"
     );
+
+    let mut last_bundle = Instant::now();
 
     loop {
         if inbound_shutdown.is_cancelled() {
@@ -154,6 +196,7 @@ fn listen_incoming_from_conn(
 
         match recv_bundle_from_conn(conn) {
             Ok(bundle) => {
+                last_bundle = Instant::now();
                 debug!(
                     "Received bundle from {}:{}",
                     bundle.src_addr, bundle.src_port
@@ -166,6 +209,14 @@ fn listen_incoming_from_conn(
             }
             Err(Error::Timeout) => {
                 if inbound_shutdown.is_cancelled() {
+                    break;
+                }
+                if last_bundle.elapsed() >= INBOUND_IDLE_TIMEOUT {
+                    debug!(
+                        src_addr = conn.src_addr,
+                        src_port = conn.src_port,
+                        "Inbound connection idle for {INBOUND_IDLE_TIMEOUT:?}, closing it"
+                    );
                     break;
                 }
                 debug!("Timed out while waiting for new bundle");
@@ -189,9 +240,10 @@ fn listen_incoming_from_conn(
         src_port = conn.src_port,
         "Inbound connection listener task stopped"
     );
+    // Dropping `owned` closes the connection, then releases the instance.
 }
 
-fn recv_bundle_from_conn(conn: cspcl_sys::types::AcceptedConn) -> Result<Bundle> {
+fn recv_bundle_from_conn(conn: &cspcl_sys::types::AcceptedConn) -> Result<Bundle> {
     let received = cspcl_sys::types::recv_bundle_from_conn(conn).map_err(Error::from_raw)?;
 
     Ok(Bundle {
