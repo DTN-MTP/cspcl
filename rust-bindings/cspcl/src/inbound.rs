@@ -177,7 +177,7 @@ fn listen_incoming_from_conn(
             break;
         }
 
-        match recv_bundle_from_conn(conn) {
+        match recv_bundle_from_conn(&conn) {
             Ok(bundle) => {
                 last_bundle = Instant::now();
                 debug!(
@@ -218,17 +218,15 @@ fn listen_incoming_from_conn(
         }
     }
 
-    // SAFETY: this listener is the sole owner of the accepted connection.
-    unsafe { cspcl_sys::types::close_conn(conn) };
-
     debug!(
         src_addr = conn.src_addr,
         src_port = conn.src_port,
         "Inbound connection listener task stopped"
     );
+    // Dropping `conn` closes the connection.
 }
 
-fn recv_bundle_from_conn(conn: cspcl_sys::types::AcceptedConn) -> Result<Bundle> {
+fn recv_bundle_from_conn(conn: &cspcl_sys::types::AcceptedConn) -> Result<Bundle> {
     let received = cspcl_sys::types::recv_bundle_from_conn(conn).map_err(Error::from_raw)?;
 
     Ok(Bundle {
