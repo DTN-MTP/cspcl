@@ -77,8 +77,7 @@ impl Cspcl {
 
     /// Accept one inbound connection.
     ///
-    /// The returned connection is owned by the caller, who must close it with
-    /// [`cspcl_sys::types::close_conn`] once done. Returns
+    /// The returned connection is closed when it is dropped. Returns
     /// [`Error::Timeout`] without accepting once the receive socket is closed.
     pub(crate) fn poll_connection(&self) -> Result<AcceptedConn> {
         let _accept = self.lock_accept();
