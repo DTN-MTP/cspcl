@@ -1,5 +1,5 @@
 use std::cell::UnsafeCell;
-use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use cspcl_sys::types::AcceptedConn;
 use tokio_util::sync::CancellationToken;
@@ -26,16 +26,20 @@ pub struct Cspcl {
     /// the C library mutates it from several threads at once (sends lock the
     /// connection pool internally); never create a Rust reference to it.
     inner: Box<UnsafeCell<cspcl_sys::cspcl_t>>,
-    /// Guards the C instance's lifecycle. Send and accept are thread-safe in
-    /// C and take the read side, so a long send (waiting for the peer's ack)
-    /// never blocks accepting inbound connections. Calls that tear state down
-    /// take the write side.
+    /// Guards the C instance's lifecycle. Send and accept take the read side,
+    /// so a long send (waiting for the peer's ack) never blocks accepting
+    /// inbound connections. Calls that tear state down take the write side.
     lifecycle: RwLock<()>,
+    /// Serializes accepts: `cspcl_accept_conn` (re)opens the receive socket
+    /// and writes `rx_socket` when it is not open, e.g. after
+    /// [`close_rx_socket`](Self::close_rx_socket).
+    accept: Mutex<()>,
     inbound_shutdown: CancellationToken,
 }
 
-// SAFETY: all access to `inner` goes through the C library, which is
-// thread-safe for send/accept; teardown is serialized by `lifecycle`.
+// SAFETY: all access to `inner` goes through the C library. Sends are
+// thread-safe in C (the connection pool has its own mutex), accepts are
+// serialized by `accept`, and teardown is exclusive through `lifecycle`.
 unsafe impl Send for Cspcl {}
 unsafe impl Sync for Cspcl {}
 
@@ -57,6 +61,7 @@ impl Cspcl {
         Cspcl {
             inner: Box::new(UnsafeCell::new(cspcl)),
             lifecycle: RwLock::new(()),
+            accept: Mutex::new(()),
             inbound_shutdown: CancellationToken::new(),
         }
     }
@@ -75,8 +80,10 @@ impl Cspcl {
     /// [`cspcl_sys::types::close_conn`] once done.
     pub(crate) fn poll_connection(&self) -> Result<AcceptedConn> {
         let _guard = self.lifecycle_read();
-        // SAFETY: the instance is alive and not being torn down (read guard);
-        // `cspcl_accept_conn` is safe to call concurrently with sends.
+        let _accept = self.accept.lock().expect("CSPCL accept lock poisoned");
+        // SAFETY: the instance is alive and not being torn down (read guard),
+        // no other accept runs (accept lock), and `cspcl_accept_conn` touches
+        // nothing that sends modify.
         from_sys_result(unsafe { cspcl_sys::types::accept_conn_raw(self.inner.get(), 10) })
     }
 
