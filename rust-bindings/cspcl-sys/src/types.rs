@@ -124,6 +124,12 @@ pub fn close_rx_socket(cspcl: &mut cspcl_t) {
     primitive::close_rx_socket(cspcl);
 }
 
+/// # Safety
+/// See [`primitive::close_rx_socket_raw`].
+pub unsafe fn close_rx_socket_raw(cspcl: *mut cspcl_t) {
+    unsafe { primitive::close_rx_socket_raw(cspcl) }
+}
+
 pub fn send_bundle(cspcl: &mut cspcl_t, bundle: &[u8], dest_addr: u8, dest_port: u8) -> Result<()> {
     ok_or_err(primitive::send_bundle(cspcl, bundle, dest_addr, dest_port))
 }

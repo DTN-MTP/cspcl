@@ -17,6 +17,13 @@ pub fn cleanup(cspcl: &mut cspcl_t) {
 }
 
 pub fn close_rx_socket(cspcl: &mut cspcl_t) {
+    unsafe { close_rx_socket_raw(cspcl) }
+}
+
+/// # Safety
+/// `cspcl` must point to a live `cspcl_t`. Only writes `rx_socket`, so it
+/// must not run concurrently with an accept, but may run during sends.
+pub unsafe fn close_rx_socket_raw(cspcl: *mut cspcl_t) {
     unsafe {
         cspcl_close_rx_socket(cspcl);
     }
@@ -73,8 +80,10 @@ pub fn accept_conn(
 }
 
 /// # Safety
-/// `cspcl` must point to a live, initialized `cspcl_t` whose RX socket is
-/// open. Must not run concurrently with init/cleanup/close_rx_socket.
+/// `cspcl` must point to a live, initialized `cspcl_t`. Reopens the RX socket
+/// (writing `rx_socket`) if it is closed, so it must not run concurrently
+/// with another accept or close_rx_socket, nor with init/cleanup. It may run
+/// during sends.
 pub unsafe fn accept_conn_raw(
     cspcl: *mut cspcl_t,
     timeout_ms: u32,
