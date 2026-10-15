@@ -90,6 +90,10 @@ pub async fn send_bundle_async(
 Same as `send_bundle`, but runs on tokio's blocking thread pool so it does not
 stall the async runtime. Requires a tokio runtime.
 
+Dropping the future (for example on a timeout) skips the send if it has not
+started yet. A send that has started cannot be interrupted, so the bundle may
+still be delivered: treat a cancelled send as having an unknown outcome.
+
 Sending never blocks receiving: inbound connections are accepted and
 acknowledged while a send is waiting for its ack. Sends themselves are
 serialized, because the C connection pool stays locked for the whole
