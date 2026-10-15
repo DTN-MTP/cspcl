@@ -3,7 +3,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use tokio::task;
+use tokio::task::{self, JoinError};
 use tracing::{debug, error};
 
 use crate::error::{Error, Result};
@@ -81,17 +81,12 @@ impl Cspcl {
                     dest.addr, dest.port
                 );
                 // Nobody awaits this result.
-                return Err(Error::CspSend);
+                return Err(Error::Cancelled);
             }
             cspcl.send_bundle(&bundle, dest)
         });
 
-        match send.await {
-            Ok(result) => result,
-            Err(e) if e.is_panic() => std::panic::resume_unwind(e.into_panic()),
-            // Blocking tasks are only cancelled when the runtime shuts down.
-            Err(_) => Err(Error::CspSend),
-        }
+        flatten_join(send.await)
     }
 
     pub fn inbound(self: Arc<Self>) -> InboundStream {
@@ -106,5 +101,48 @@ struct CancelOnDrop(Arc<AtomicBool>);
 impl Drop for CancelOnDrop {
     fn drop(&mut self) {
         self.0.store(true, Ordering::Release);
+    }
+}
+
+/// Unwrap the result of a blocking task, propagating its panic.
+///
+/// Blocking tasks are only cancelled when the runtime shuts down; that is
+/// reported as [`Error::Cancelled`], not as a send failure.
+fn flatten_join<T>(joined: std::result::Result<Result<T>, JoinError>) -> Result<T> {
+    match joined {
+        Ok(result) => result,
+        Err(e) if e.is_panic() => std::panic::resume_unwind(e.into_panic()),
+        Err(_) => Err(Error::Cancelled),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn cancelled_task_maps_to_cancelled_error() {
+        let task = tokio::spawn(std::future::pending::<Result<()>>());
+        task.abort();
+        let joined = task.await;
+        assert!(joined.as_ref().is_err_and(JoinError::is_cancelled));
+
+        assert_eq!(flatten_join(joined), Err(Error::Cancelled));
+    }
+
+    #[tokio::test]
+    async fn task_result_is_passed_through() {
+        let ok = tokio::spawn(async { Ok::<_, Error>(7) }).await;
+        assert_eq!(flatten_join(ok), Ok(7));
+
+        let err = tokio::spawn(async { Err::<(), _>(Error::Timeout) }).await;
+        assert_eq!(flatten_join(err), Err(Error::Timeout));
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "boom")]
+    async fn task_panic_is_propagated() {
+        let joined = tokio::spawn(async { panic!("boom") }).await;
+        let _: Result<()> = flatten_join(joined);
     }
 }

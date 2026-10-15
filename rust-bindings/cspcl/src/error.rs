@@ -40,6 +40,10 @@ pub enum Error {
     UnknownError(cspcl_sys::cspcl_error_t),
     /// Error returned when the address parsing fails
     ParseAddress,
+    /// The operation was cancelled before it completed, e.g. because the
+    /// async runtime is shutting down. Not a transport failure: retrying in
+    /// the same context is pointless.
+    Cancelled,
 }
 
 impl Error {
@@ -95,6 +99,7 @@ impl Error {
             Self::CspRouter => "CSP router task start failed",
             Self::PoolFull => "Connection pool full",
             Self::ParseAddress => "Could not parse csp address",
+            Self::Cancelled => "Operation cancelled",
             Self::UnknownError(_) => "Unknown error",
         }
     }
@@ -118,7 +123,9 @@ impl Error {
             Self::CspCanNotSupported => cspcl_sys::cspcl_error_t_CSPCL_ERR_CSP_CAN_NOT_SUPPORTED,
             Self::CspRouter => cspcl_sys::cspcl_error_t_CSPCL_ERR_CSP_ROUTER,
             Self::PoolFull => cspcl_sys::cspcl_error_t_CSPCL_ERR_POOL_FULL,
+            // Rust-only errors use codes outside the C enum's range.
             Self::ParseAddress => 420,
+            Self::Cancelled => 421,
             Self::UnknownError(code) => *code,
         }
     }
