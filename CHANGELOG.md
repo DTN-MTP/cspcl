@@ -18,9 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rust (breaking, `cspcl-sys` 0.4.0): `types::conn_pool_add_accepted`. It put inbound connections into the outbound pool under the peer's ephemeral port, where sends never reused them. The raw `unsafe fn conn_pool_add` remains.
 
 ### Fixed
-- Rust: a node could not accept or acknowledge inbound bundles while one of its own sends was waiting for an ack. Simultaneous sends between two nodes, and sends to self, timed out. `Cspcl` now takes an exclusive lock only for teardown.
+- Rust: a node could not accept or acknowledge inbound bundles while one of its own sends was waiting for an ack. Simultaneous sends between two nodes, and sends to self, timed out. Sends and accepts no longer share a lock.
 - Rust: accepted inbound connections are no longer added to the outbound connection pool. The pool never reused them and could close one while it was still being read. The inbound listener now owns and closes them.
 - Rust: inbound connections are released when their peer reconnects or after 60 s without a bundle. Before, dead connections were held forever and could exhaust libcsp's connection table.
+- Rust: a `send_bundle_async` future dropped before its send started (e.g. queued behind a slow send) no longer sends the bundle. A send already in progress still runs to completion; this is documented.
 
 ### Documentation
 - Rust API: document the real libcsp build variables (`CSP_REPO_DIR`, `CSP_INCLUDE_DIR`, `CSP_BUILD_DIR`), replacing the non-existent `CSP_PATH`, and the `-fPIC` requirement.

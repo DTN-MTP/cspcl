@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 use tokio::task;
 use tracing::{debug, error};
@@ -51,6 +54,14 @@ impl Cspcl {
     /// Sends are still serialized: the C connection pool is locked for the
     /// whole send/ack cycle.
     ///
+    /// # Cancellation
+    /// Dropping the returned future (e.g. on a timeout) before the send has
+    /// started skips it. A send that has already started cannot be
+    /// interrupted and runs to completion, so the bundle may still be
+    /// delivered: treat a cancelled send as having an unknown outcome. The
+    /// receiver must already tolerate duplicates, since a lost ack causes a
+    /// resend (see the Delivery Acknowledgement docs).
+    ///
     /// # Panics
     /// Propagates a panic from the blocking send task.
     pub async fn send_bundle_async(
@@ -60,7 +71,22 @@ impl Cspcl {
     ) -> Result<()> {
         let bundle = bundle.into();
         let cspcl = Arc::clone(self);
-        match task::spawn_blocking(move || cspcl.send_bundle(&bundle, dest)).await {
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let _cancel_on_drop = CancelOnDrop(Arc::clone(&cancelled));
+
+        let send = task::spawn_blocking(move || {
+            if cancelled.load(Ordering::Acquire) {
+                debug!(
+                    "Send to {}:{} cancelled before it started",
+                    dest.addr, dest.port
+                );
+                // Nobody awaits this result.
+                return Err(Error::CspSend);
+            }
+            cspcl.send_bundle(&bundle, dest)
+        });
+
+        match send.await {
             Ok(result) => result,
             Err(e) if e.is_panic() => std::panic::resume_unwind(e.into_panic()),
             // Blocking tasks are only cancelled when the runtime shuts down.
@@ -70,5 +96,15 @@ impl Cspcl {
 
     pub fn inbound(self: Arc<Self>) -> InboundStream {
         InboundStream::new(self)
+    }
+}
+
+/// Sets the flag when dropped, i.e. when the `send_bundle_async` future is
+/// dropped before or after completion (setting it afterwards is harmless).
+struct CancelOnDrop(Arc<AtomicBool>);
+
+impl Drop for CancelOnDrop {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
     }
 }
