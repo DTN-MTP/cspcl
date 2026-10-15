@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rust: `cspcl-sys` 0.4.0 exposes raw-pointer `send_bundle_raw`, `accept_conn_raw` and `close_rx_socket_raw`.
 
 ### Changed
+- Rust (breaking, `cspcl` 0.5.0): new `Error::Cancelled` variant. A send whose blocking task was cancelled (runtime shutdown, or a dropped future) now returns it instead of `Error::CspSend`, so it is no longer mistaken for a retryable transport failure.
 - Rust (breaking, `cspcl-sys` 0.4.0): `AcceptedConn` now owns its connection. It is no longer `Copy`, closes the connection on drop, and `recv_bundle_from_conn` takes `&AcceptedConn`. Use `as_ptr()` / `into_raw()` to get the raw `csp_conn_t*`. This makes it impossible to read a closed connection from safe code.
 
 ### Removed

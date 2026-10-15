@@ -173,6 +173,7 @@ pub enum Error {
     PoolFull,
     UnknownError(cspcl_sys::cspcl_error_t),
     ParseAddress,
+    Cancelled,
 }
 ```
 
