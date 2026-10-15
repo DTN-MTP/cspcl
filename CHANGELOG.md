@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Rust (breaking, `cspcl-sys` 0.4.0): `AcceptedConn` now owns its connection. It is no longer `Copy`, closes the connection on drop, and `recv_bundle_from_conn` takes `&AcceptedConn`. Use `as_ptr()` / `into_raw()` to get the raw `csp_conn_t*`. This makes it impossible to read a closed connection from safe code.
 
+### Removed
+- Rust (breaking, `cspcl-sys` 0.4.0): `types::conn_pool_add_accepted`. It put inbound connections into the outbound pool under the peer's ephemeral port, where sends never reused them. The raw `unsafe fn conn_pool_add` remains.
+
 ### Fixed
 - Rust: a node could not accept or acknowledge inbound bundles while one of its own sends was waiting for an ack. Simultaneous sends between two nodes, and sends to self, timed out. `Cspcl` now takes an exclusive lock only for teardown.
 - Rust: accepted inbound connections are no longer added to the outbound connection pool. The pool never reused them and could close one while it was still being read. The inbound listener now owns and closes them.
