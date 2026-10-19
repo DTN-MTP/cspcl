@@ -114,7 +114,7 @@ Add the dependency:
 
 ```toml
 [dependencies]
-cspcl = "0.4"
+cspcl = "0.5"
 futures = "0.3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
@@ -129,15 +129,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let local = CspAddress { addr: 1, port: 10 };
     let node = Arc::new(Cspcl::new(local, Interface::Loopback)?);
 
-    // Send
+    // Send without blocking the async runtime while waiting for the ack.
     let bundle: Vec<u8> = vec![/* BP7 bundle bytes */];
     let remote = CspAddress { addr: 2, port: 10 };
-    node.send_bundle(&bundle, remote)?;
+    node.send_bundle_async(bundle, remote).await?;
 
     // Receive from the inbound bundle stream.
     let mut inbound = Arc::clone(&node).inbound();
     while let Some(bundle) = inbound.next().await {
-        let bundle = bundle?;
+        // An error does not end the stream: dropping it would stop receiving.
+        let bundle = match bundle {
+            Ok(bundle) => bundle,
+            Err(e) => {
+                eprintln!("Receive error: {e}");
+                continue;
+            }
+        };
         println!(
             "Received {} bytes from CSP {}:{}",
             bundle.data.len(),

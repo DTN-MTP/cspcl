@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, feat/ci-riscv, feat/picod3tn-integration ]
   pull_request:
     branches: [ main, develop ]
 
@@ -143,6 +143,57 @@ jobs:
         with:
           name: test-results-${{ matrix.build_type }}
           path: build/Testing/
+
+  # Job 2b: Cross-compile for 64-bit RISC-V (PolarFire SoC)
+  build-riscv64:
+    name: Build riscv64 (PolarFire SoC)
+    # 22.04: libcsp v1.6's waf needs Python <= 3.11. Binaries are fully
+    # static, so the runner's glibc does not constrain the target board.
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install cross toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-riscv64-linux-gnu \
+            g++-riscv64-linux-gnu \
+            cmake \
+            autoconf \
+            automake \
+            libtool \
+            pkg-config \
+            qemu-user-static
+
+      - name: Cache riscv64 dependencies
+        uses: actions/cache@v4
+        with:
+          path: /tmp/riscv64-deps
+          key: riscv64-deps-${{ hashFiles('tools/build-riscv64.sh', 'cmake/riscv64-linux-gnu.cmake') }}
+
+      - name: Build CSPCL for riscv64
+        run: ./tools/build-riscv64.sh
+
+      - name: Run unit tests under qemu
+        run: ctest --test-dir build-riscv64 --output-on-failure
+
+      - name: Package board artifacts
+        run: |
+          mkdir -p cspcl-riscv64/lib cspcl-riscv64/include cspcl-riscv64/bin
+          cp build-riscv64/libcspcl.a cspcl-riscv64/lib/
+          cp src/cspcl.h src/cspcl_config.h cspcl-riscv64/include/
+          find build-riscv64/tests -maxdepth 1 -type f -executable -name 'test_*' \
+            -exec cp {} cspcl-riscv64/bin/ \;
+          file cspcl-riscv64/bin/*
+
+      - name: Upload riscv64 build
+        uses: actions/upload-artifact@v4
+        with:
+          name: cspcl-riscv64
+          path: cspcl-riscv64/
 
   # Job 3: Docker build test
   docker-build:
@@ -367,6 +418,10 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
     
     steps:
       - name: Checkout code
@@ -381,7 +436,7 @@ jobs:
           output: 'trivy-results.sarif'
 
       - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
@@ -390,7 +445,7 @@ jobs:
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [code-quality, build-and-test, docker-build, documentation, security]
+    needs: [code-quality, build-and-test, build-riscv64, docker-build, documentation, security]
     if: always()
     
     steps:
@@ -402,6 +457,7 @@ jobs:
           echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Code Quality | ${{ needs.code-quality.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Build & Test | ${{ needs.build-and-test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build riscv64 | ${{ needs.build-riscv64.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Docker Build | ${{ needs.docker-build.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Documentation | ${{ needs.documentation.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Security Scan | ${{ needs.security.result }} |" >> $GITHUB_STEP_SUMMARY

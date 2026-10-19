@@ -461,20 +461,19 @@ dependencies = [
 
 [[package]]
 name = "cspcl"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "bytes",
  "cspcl-sys",
  "futures",
  "tokio",
- "tokio-util",
  "trace",
  "tracing",
 ]
 
 [[package]]
 name = "cspcl-sys"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "bindgen",
  "cc",

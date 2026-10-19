@@ -9,6 +9,7 @@ mod bundle;
 mod error;
 mod inbound;
 mod instance;
+mod sync;
 
 // Public exports
 pub use address::CspAddress;

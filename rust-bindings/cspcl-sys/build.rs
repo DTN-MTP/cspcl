@@ -120,6 +120,8 @@ fn generate_bindings(header: &Path, source_dir: &Path, libcsp: &Libcsp) {
         .allowlist_type("cspcl_.*")
         .allowlist_type("csp_iface_type")
         .allowlist_function("cspcl_.*")
+        .allowlist_function("csp_close")
+        .allowlist_function("csp_rdp_get_opt")
         .allowlist_var("CSPCL_.*")
         .allowlist_var("csp_iface_type_.*")
         .generate_comments(true)
@@ -138,4 +140,3 @@ fn generate_bindings(header: &Path, source_dir: &Path, libcsp: &Libcsp) {
         .write_to_file(out_dir.join("bindings.rs"))
         .expect("couldn't write bindings");
 }
-
