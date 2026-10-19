@@ -37,7 +37,14 @@ cspcl.send_bundle_async(bundle, remote).await?;
 // Share the instance with an inbound bundle stream.
 let mut inbound = Arc::clone(&cspcl).inbound();
 while let Some(bundle) = inbound.next().await {
-    let bundle = bundle?;
+    // An error does not end the stream: dropping it would stop receiving.
+    let bundle = match bundle {
+        Ok(bundle) => bundle,
+        Err(e) => {
+            eprintln!("Receive error: {e}");
+            continue;
+        }
+    };
     println!(
         "Received {} bytes from CSP {}:{}",
         bundle.data.len(),

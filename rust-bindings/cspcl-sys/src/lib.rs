@@ -5,6 +5,8 @@ mod bindings {
     #![allow(non_snake_case)]
     #![allow(unsafe_op_in_unsafe_fn)]
     #![allow(clippy::all)]
+    // libcsp's Doxygen comments (`@param[out]`, ...) read as broken links.
+    #![allow(rustdoc::broken_intra_doc_links)]
 
     include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 }

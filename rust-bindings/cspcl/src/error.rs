@@ -44,6 +44,9 @@ pub enum Error {
     /// async runtime is shutting down. Not a transport failure: retrying in
     /// the same context is pointless.
     Cancelled,
+    /// A receive thread could not be started (OS thread limit or out of
+    /// resources).
+    Spawn,
 }
 
 impl Error {
@@ -100,6 +103,7 @@ impl Error {
             Self::PoolFull => "Connection pool full",
             Self::ParseAddress => "Could not parse csp address",
             Self::Cancelled => "Operation cancelled",
+            Self::Spawn => "Could not start a receive thread",
             Self::UnknownError(_) => "Unknown error",
         }
     }
@@ -126,6 +130,7 @@ impl Error {
             // Rust-only errors use codes outside the C enum's range.
             Self::ParseAddress => 420,
             Self::Cancelled => 421,
+            Self::Spawn => 422,
             Self::UnknownError(code) => *code,
         }
     }

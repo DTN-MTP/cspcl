@@ -9,9 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Rust: `Cspcl::send_bundle_async` (`cspcl` 0.5.0), which sends without blocking the tokio runtime. `hardy-cspcl` now uses it.
-- Rust: `cspcl-sys` 0.4.0 exposes raw-pointer `send_bundle_raw`, `accept_conn_raw` and `close_rx_socket_raw`.
+- Rust: `cspcl-sys` 0.4.0 exposes raw-pointer `send_bundle_raw`, `accept_conn_raw` and `close_rx_socket_raw`, and `recv_bundle_from_conn_into`, which receives into a reusable buffer, `types::rdp_conn_timeout_ms`, and the raw `csp_rdp_get_opt` binding.
 
 ### Changed
+- Rust (breaking, `cspcl` 0.5.0): with several `InboundStream`s open, each bundle now goes only to the most recently opened one. Inbound bundles are received by one receiver per `Cspcl` (an accept thread and one thread per connection, on plain threads) shared by all its streams, instead of tasks per stream, so receiving no longer needs a tokio runtime nor occupies tokio's blocking pool. The full behaviour is documented on `Cspcl::inbound`.
+- Rust: `hardy-cspcl` reopens its inbound stream when it ends without the CLA being unregistered, instead of no longer dispatching bundles. The stream ends that way only if cspcl's accept thread could not start or failed; reopening backs off from 500 ms to 30 s while it keeps failing quickly, and peers whose connection was closed meanwhile reconnect on their next send. Streams are opened on a thread of their own, as opening may wait for a close of the receive socket; unregistering closes it inline, blocking for an open in progress and at most one accept poll.
+- Rust (breaking, `cspcl` 0.5.0): new `Error::Spawn` variant, yielded by an `InboundStream` when a receive thread cannot be started: the stream then ends if it was the accept thread (as do streams opened while it was being started), and stays open if it was the thread of one connection (which is closed).
 - Rust (breaking, `cspcl` 0.5.0): new `Error::Cancelled` variant. A send whose blocking task was cancelled (runtime shutdown, or a dropped future) now returns it instead of `Error::CspSend`, so it is no longer mistaken for a retryable transport failure.
 - Rust (breaking, `cspcl-sys` 0.4.0): `AcceptedConn` now owns its connection. It is no longer `Copy`, closes the connection on drop, and `recv_bundle_from_conn` takes `&AcceptedConn`. Use `as_ptr()` / `into_raw()` to get the raw `csp_conn_t*`. This makes it impossible to read a closed connection from safe code.
 
@@ -21,9 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Rust: a node could not accept or acknowledge inbound bundles while one of its own sends was waiting for an ack. Simultaneous sends between two nodes, and sends to self, timed out. Sends and accepts no longer share a lock.
 - Rust: accepted inbound connections are no longer added to the outbound connection pool. The pool never reused them and could close one while it was still being read. The inbound listener now owns and closes them.
-- Rust: inbound connections are released after 60 s without a bundle, when the same address and port connect again, or, beyond 8 open connections (the C receive table size), least recently active first. Before, dead connections were held forever and could exhaust libcsp's connection table. Connections are tracked by address and port, so agents sharing a CSP address do not close each other's connections.
+- Rust: dead inbound connections are released. Before, they were held forever and could exhaust libcsp's connection table. Connections reset by their peer are closed when libcsp wakes the read (assuming both nodes use the same RDP connection timeout), idle ones after 10 min, and at most 8 stay open per `Cspcl` (up to 10 while evicted ones finish their read), least recently active closed first; a connection reopened from the same address and port replaces the old one. Connections are tracked by address and port, so agents sharing a CSP address do not close each other's connections.
 - Rust: a `send_bundle_async` future dropped before its send started, including while queued behind a slow send, no longer sends the bundle. A send already in progress still runs to completion; this is documented.
-- Rust: dropping an `InboundStream` no longer stops every stream created later on the same `Cspcl`. Only `close_rx_socket` and dropping the instance stop all streams.
+- Rust: dropping an `InboundStream` no longer stops every stream created later on the same `Cspcl`, and a stream opened after `close_rx_socket` receives again. `close_rx_socket` now ends the open streams (they yield `None`), as if they were dropped. It may block for one accept poll (`CSPCL_RX_ACCEPT_POLL_MS`, 100 ms by default, up from 10 ms).
+- Rust: bundles acknowledged to their sender are no longer dropped with their `InboundStream`: those left unread, and those whose read was in progress when receiving stopped, go to the next stream opened on the same `Cspcl` (they are lost if the `Cspcl` is dropped first, e.g. after a `hardy-cspcl` CLA is unregistered).
 - Rust: inbound listeners keep the `Cspcl` instance alive until they have closed their connection, so the instance is never cleaned up under an open connection.
 
 ### Documentation

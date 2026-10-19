@@ -105,12 +105,13 @@ send/ack cycle.
 pub fn inbound(self: Arc<Self>) -> InboundStream
 ```
 
-Share the handle with a stream of inbound bundles. Dropping the stream stops
-only that stream; call `inbound` again to receive later.
+Share the handle with a stream of inbound bundles. Does not need a tokio
+runtime: receiving runs on its own threads while at least one stream is open.
+Bundles go to the most recently opened stream.
 
-Up to 8 inbound connections (the C receive table size) are served at once.
-Beyond that, and after 60 s without a bundle, a connection is closed; its
-peer reconnects on its next send.
+The full behaviour (what happens to bundles when streams close, connection
+limits, reset and idle detection, errors) is specified once, in the rustdoc
+of `Cspcl::inbound` (`cargo doc -p cspcl --open`).
 
 ### `close_rx_socket`
 
@@ -118,8 +119,21 @@ peer reconnects on its next send.
 pub fn close_rx_socket(&self)
 ```
 
-Stop all inbound streams and close the receive socket. Does not wait for sends
-in progress.
+End all open inbound streams, as if they were all dropped (they yield `None`
+once read), and stop receiving; see the rustdoc of `Cspcl::inbound` for what
+happens to reads and connections then. Bundles acknowledged meanwhile go to
+the next stream opened with `inbound`, which receives again; they are lost if
+the `Cspcl` is dropped first.
+
+The CSP port stays bound for the life of the process (libcsp 1.6 has no safe
+unbind): peers can still connect and send, and their sends time out instead
+of being refused. The next stream opened then receives those bundles, which
+their senders may send again.
+
+`close_rx_socket` blocks while an accept poll is in progress, and `inbound`
+waits for a close in progress and, while no accept thread runs, starts one; the
+rustdoc of `Cspcl::close_rx_socket` states for how long. From async code,
+call them with `tokio::task::spawn_blocking` where such a pause matters.
 
 ---
 
@@ -180,6 +194,7 @@ pub enum Error {
     UnknownError(cspcl_sys::cspcl_error_t),
     ParseAddress,
     Cancelled,
+    Spawn,
 }
 ```
 
@@ -207,7 +222,14 @@ async fn receive_loop() -> Result<(), Error> {
     let mut inbound = Arc::clone(&cspcl).inbound();
 
     while let Some(bundle) = inbound.next().await {
-        let bundle = bundle?;
+        // An error does not end the stream: dropping it would stop receiving.
+        let bundle = match bundle {
+            Ok(bundle) => bundle,
+            Err(e) => {
+                eprintln!("Receive error: {e}");
+                continue;
+            }
+        };
         println!(
             "Bundle from {}:{}: {} bytes",
             bundle.src_addr,

@@ -1,7 +1,7 @@
 use crate::{
     csp_conn_t, csp_iface_type_CSP_IFACE_CAN, csp_iface_type_CSP_IFACE_LOOPBACK,
-    csp_iface_type_CSP_IFACE_ZMQHUB, cspcl_conn_pool_t, cspcl_error_t, cspcl_error_t_CSPCL_OK,
-    cspcl_t, primitive,
+    csp_iface_type_CSP_IFACE_ZMQHUB, csp_rdp_get_opt, cspcl_conn_pool_t, cspcl_error_t,
+    cspcl_error_t_CSPCL_OK, cspcl_t, primitive,
 };
 
 pub type Result<T> = std::result::Result<T, cspcl_error_t>;
@@ -243,27 +243,66 @@ pub unsafe fn conn_pool_add(
     ok_or_err(unsafe { primitive::conn_pool_add(pool, dest_addr, dest_port, conn) })
 }
 
+/// Receive one bundle into a new buffer. Allocates up to
+/// `CSPCL_MAX_BUNDLE_SIZE` bytes per call: to receive repeatedly, use
+/// [`recv_bundle_from_conn_into`] with one buffer.
 pub fn recv_bundle_from_conn(accepted: &AcceptedConn) -> Result<ReceivedBundle> {
     let mut buffer = vec![0u8; crate::CSPCL_MAX_BUNDLE_SIZE as usize];
-    let (code, len, src_addr, src_port) = unsafe {
+    let len = recv_bundle_from_conn_into(accepted, &mut buffer)?;
+    // So the bundle does not keep the whole receive buffer.
+    buffer.truncate(len);
+    buffer.shrink_to_fit();
+
+    Ok(ReceivedBundle {
+        buffer,
+        len,
+        src_addr: accepted.src_addr,
+        src_port: accepted.src_port,
+    })
+}
+
+/// Receive one bundle into `buffer`, which can be reused across calls, and
+/// return its length. The bundle comes from `accepted.src_addr` and
+/// `accepted.src_port`.
+///
+/// A bundle larger than `buffer` returns `CSPCL_ERR_NO_MEMORY` (not
+/// `CSPCL_ERR_BUNDLE_TOO_LARGE`). It has then been read from the connection
+/// but is never acknowledged, so the sender's send fails and every retry of
+/// it (the C sender tries twice, the BPA may retry further) fails the same
+/// way: pass `CSPCL_MAX_BUNDLE_SIZE` bytes to accept any bundle.
+pub fn recv_bundle_from_conn_into(accepted: &AcceptedConn, buffer: &mut [u8]) -> Result<usize> {
+    let (code, len, _, _) = unsafe {
         // SAFETY: `accepted` owns an open connection, and `&AcceptedConn` is not
         // `Send`, so no other thread receives on it concurrently.
         primitive::recv_bundle_from_conn(
             accepted.conn,
-            &mut buffer,
+            buffer,
             accepted.src_addr,
             accepted.src_port,
         )
     };
     ok_or_err(code)?;
-    buffer.truncate(len);
+    Ok(len)
+}
 
-    Ok(ReceivedBundle {
-        buffer,
-        len,
-        src_addr,
-        src_port,
-    })
+/// The RDP connection timeout this node announces when it connects, in ms
+/// (libcsp's `csp_rdp_get_opt`). libcsp never lets a read on an RDP
+/// connection time out sooner than the timeout announced by the peer that
+/// opened it.
+pub fn rdp_conn_timeout_ms() -> u32 {
+    let mut conn_timeout_ms = 0;
+    // SAFETY: libcsp skips the NULL outputs and only writes the one given.
+    unsafe {
+        csp_rdp_get_opt(
+            std::ptr::null_mut(),
+            &mut conn_timeout_ms,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        )
+    };
+    conn_timeout_ms
 }
 
 #[cfg(test)]

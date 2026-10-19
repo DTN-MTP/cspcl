@@ -121,6 +121,7 @@ fn generate_bindings(header: &Path, source_dir: &Path, libcsp: &Libcsp) {
         .allowlist_type("csp_iface_type")
         .allowlist_function("cspcl_.*")
         .allowlist_function("csp_close")
+        .allowlist_function("csp_rdp_get_opt")
         .allowlist_var("CSPCL_.*")
         .allowlist_var("csp_iface_type_.*")
         .generate_comments(true)

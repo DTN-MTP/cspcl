@@ -1,15 +1,17 @@
 use std::cell::UnsafeCell;
 use std::sync::{
-    Mutex, MutexGuard, PoisonError,
+    Mutex, MutexGuard,
     atomic::{AtomicBool, Ordering},
 };
+use std::time::Duration;
 
 use cspcl_sys::types::AcceptedConn;
-use tokio_util::sync::CancellationToken;
 
 use crate::{
     CspAddress,
     error::{Error, Result, from_sys_result},
+    inbound::Receiver,
+    sync::lock,
 };
 
 /// Safe wrapper for CSPCL instance
@@ -39,7 +41,8 @@ pub struct Cspcl {
     /// no serialization; it moves the wait to Rust, where a send that was
     /// cancelled while queued can be skipped before it starts.
     send: Mutex<()>,
-    inbound_shutdown: CancellationToken,
+    /// The inbound side, see [`InboundStream`](crate::InboundStream).
+    pub(crate) inbound: Receiver,
 }
 
 // SAFETY: all access to `inner` goes through the C library or raw pointers.
@@ -69,15 +72,36 @@ impl Cspcl {
             inner: Box::new(UnsafeCell::new(cspcl)),
             accept: Mutex::new(()),
             send: Mutex::new(()),
-            inbound_shutdown: CancellationToken::new(),
+            inbound: Receiver::new(),
         }
     }
 
     /// Close the receive socket
     ///
-    /// Stops all inbound streams. This does not wait for sends in progress.
+    /// Ends all open inbound streams, as if they were all dropped: they yield
+    /// `None` once the bundles already in them are read, and receiving stops
+    /// (see [`inbound`](Self::inbound) for what happens to reads and
+    /// connections then). A stream opened later receives again.
+    ///
+    /// The CSP port stays bound for the life of the process: libcsp 1.6 has
+    /// no safe unbind, so the C side only forgets the socket. Peers can
+    /// still connect and send; their sends are not refused but time out
+    /// (after twice the ack timeout). Connections queued meanwhile are
+    /// accepted by the next stream, which then receives bundles whose sender
+    /// already reported a timeout and may send them again.
+    ///
+    /// This does not wait for sends in progress, but blocks while an accept
+    /// poll is in progress (at most `CSPCL_RX_ACCEPT_POLL_MS`, 100 ms by
+    /// default), which can be the case while a
+    /// stream is open or just after the last one closed: from async code,
+    /// call it with `tokio::task::spawn_blocking` where such a pause matters.
     pub fn close_rx_socket(&self) {
-        self.inbound_shutdown.cancel();
+        // Stop receiving first: the accept loop then leaves the accept lock
+        // after its current poll instead of retaking it, and cannot reopen
+        // the socket. New streams wait until the socket is closed. The
+        // receiver state is not held while waiting for the accept lock, so
+        // listeners and streams are not blocked.
+        let _closing = self.inbound.begin_close();
         let _accept = self.lock_accept();
         // SAFETY: the accept lock excludes concurrent accepts, the only other
         // users of `rx_socket`.
@@ -87,16 +111,20 @@ impl Cspcl {
     /// Accept one inbound connection.
     ///
     /// The returned connection is closed when it is dropped. Returns
-    /// [`Error::Timeout`] without accepting once the receive socket is closed.
-    pub(crate) fn poll_connection(&self) -> Result<AcceptedConn> {
+    /// [`Error::Timeout`] without accepting while no stream is open: the C
+    /// accept reopens a closed receive socket, which must not happen after
+    /// [`close_rx_socket`](Self::close_rx_socket).
+    pub(crate) fn poll_connection(&self, timeout: Duration) -> Result<AcceptedConn> {
         let _accept = self.lock_accept();
-        if self.inbound_shutdown.is_cancelled() {
-            // Do not let the C accept reopen a socket closed on purpose.
+        if !self.inbound.is_receiving() {
             return Err(Error::Timeout);
         }
         // SAFETY: no other accept or close runs (accept lock), and
         // `cspcl_accept_conn` touches nothing that sends modify.
-        from_sys_result(unsafe { cspcl_sys::types::accept_conn_raw(self.inner.get(), 10) })
+        let timeout_ms = u32::try_from(timeout.as_millis())
+            .unwrap_or(u32::MAX)
+            .max(1);
+        from_sys_result(unsafe { cspcl_sys::types::accept_conn_raw(self.inner.get(), timeout_ms) })
     }
 
     /// Send a serialized bundle, blocking until the peer acknowledges it.
@@ -109,8 +137,7 @@ impl Cspcl {
         dest: CspAddress,
         cancelled: Option<&AtomicBool>,
     ) -> Result<()> {
-        // `()` cannot be left inconsistent by a panic, so ignore poisoning.
-        let _send = self.send.lock().unwrap_or_else(PoisonError::into_inner);
+        let _send = lock(&self.send);
         if cancelled.is_some_and(|cancelled| cancelled.load(Ordering::Acquire)) {
             return Err(Error::Cancelled);
         }
@@ -128,46 +155,13 @@ impl Cspcl {
     }
 
     fn lock_accept(&self) -> MutexGuard<'_, ()> {
-        self.accept.lock().expect("CSPCL accept lock poisoned")
-    }
-
-    /// The instance-wide inbound shutdown token. Cancel only through
-    /// [`close_rx_socket`](Self::close_rx_socket) or drop; streams must use
-    /// child tokens.
-    pub(crate) fn inbound_shutdown_token(&self) -> CancellationToken {
-        self.inbound_shutdown.clone()
-    }
-
-    #[cfg(test)]
-    fn from_config_without_init_for_test(config: cspcl_sys::types::CspclConfig) -> Self {
-        Self::from_raw_instance(cspcl_sys::types::configure(&config))
+        lock(&self.accept)
     }
 }
 
 impl Drop for Cspcl {
     fn drop(&mut self) {
-        self.inbound_shutdown.cancel();
+        // No receiver thread is left: they all hold an `Arc<Cspcl>`.
         cspcl_sys::types::cleanup(self.inner.get_mut());
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn drop_cancels_inbound_shutdown_token() {
-        let cspcl = Cspcl::from_config_without_init_for_test(cspcl_sys::types::CspclConfig {
-            local_addr: 4,
-            csp_port: 10,
-            interface: cspcl_sys::types::InterfaceConfig::Loopback,
-        });
-        let inbound_shutdown = cspcl.inbound_shutdown_token();
-
-        assert!(!inbound_shutdown.is_cancelled());
-
-        drop(cspcl);
-
-        assert!(inbound_shutdown.is_cancelled());
     }
 }
