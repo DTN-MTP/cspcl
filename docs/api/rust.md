@@ -241,3 +241,10 @@ async fn receive_loop() -> Result<(), Error> {
     Ok(())
 }
 ```
+
+---
+
+## Other crates
+
+- `hardy-cspcl`: a cspcl convergence layer for the [hardy](https://github.com/ricktaylor/hardy) BPA, served by `hardy-cspcl-server`.
+- [`picod3tn-cspcl`](https://github.com/DTN-MTP/cspcl/tree/main/rust-bindings/picod3tn-cspcl): the cspcl link for [picod3tn](https://gitlab.com/d3tn/picod3tn), on serialized bundles. Its README covers its configuration and the behaviour that matters to a BPA: one link per process, bundles up to 65535 bytes, serialized sends, recovery times after a peer restart, and ephemeral source ports.

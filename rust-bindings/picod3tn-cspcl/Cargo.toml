@@ -1,0 +1,63 @@
+[package]
+name = "picod3tn-cspcl"
+version = "0.1.0"
+edition.workspace = true
+description = "CSPCL convergence layer link for picod3tn"
+authors = ["cspcl contributors"]
+license = "MIT"
+repository = "https://github.com/d3tn/cspcl"
+readme = "README.md"
+keywords = ["cspcl", "picod3tn", "dtn"]
+
+[features]
+default = ["std", "tokio"]
+# Without it, only the pure part (addresses, config, error classification)
+# is built, on `core` + `alloc`.
+std = []
+# The link itself: sends and receives through `cspcl` on a tokio runtime.
+tokio = ["std", "dep:cspcl", "dep:tokio", "dep:futures-util"]
+# `clap` arguments for the config, to flatten into picod3tn's.
+cli = ["std", "dep:clap"]
+
+[dependencies]
+clap = { version = "4.6.1", features = ["derive", "env"], optional = true }
+cspcl = { version = "0.5", path = "../cspcl", optional = true }
+futures-util = { version = "0.3.32", default-features = false, features = ["alloc"], optional = true }
+log = "0.4.27"
+thiserror = { version = "2.0.18", default-features = false }
+tokio = { version = "1.51.1", features = ["macros", "rt", "sync", "time"], optional = true }
+
+[dev-dependencies]
+cspcl = { version = "0.5", path = "../cspcl" }
+cspcl-sys = { version = "0.4", path = "../cspcl-sys" }
+futures-util = "0.3.32"
+tokio = { version = "1.51.1", features = ["macros", "rt-multi-thread", "test-util"] }
+
+# One binary per test: libcsp is a process-wide singleton.
+[[test]]
+name = "loopback_roundtrip"
+required-features = ["tokio"]
+
+[[test]]
+name = "oversized_is_permanent"
+required-features = ["tokio"]
+
+[[test]]
+name = "unreachable_is_retryable"
+required-features = ["tokio"]
+
+[[test]]
+name = "shutdown_ends_incoming"
+required-features = ["tokio"]
+
+[[test]]
+name = "single_instance"
+required-features = ["tokio"]
+
+[[test]]
+name = "failed_open_releases_claim"
+required-features = ["tokio"]
+
+[[example]]
+name = "peer"
+required-features = ["cli", "tokio"]
