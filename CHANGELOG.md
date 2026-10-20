@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Rust: new `picod3tn-cspcl` crate (0.1.0), the cspcl link for picod3tn. It works on serialized bundles: `CspclAddr` (`<addr>:<port>`, e.g. `cspcl:2:10` in picod3tn), `Config` and, with the `cli` feature, `CspclArgs` (`--cspcl-local-addr`, `--cspcl-port`, `--cspcl-interface` for loopback, CAN and ZMQ hub, with `PICOD3TN_CSPCL_*` environment variables; a bare `can` uses the virtual bus `vcan0` and the link warns about it, while a named `can:vcan0` does not warn), `CLA_ID` (`"cspcl"`, the identifier in picod3tn's CLA addresses and spool), `CspclLink::send`, whose `SendError` says whether a failure is retryable, permanent (a bundle over 65535 bytes, without reaching cspcl) or a shutdown, and `CspclLink::incoming`, which reopens cspcl's inbound stream with a backoff until `shutdown`. One link opens per process. Without default features, the address, config and classification part builds `no_std`. The picod3tn spool glue is left to picod3tn.
 - Rust: `Cspcl::send_bundle_async` (`cspcl` 0.5.0), which sends without blocking the tokio runtime. `hardy-cspcl` now uses it.
 - Rust: `cspcl-sys` 0.4.0 exposes raw-pointer `send_bundle_raw`, `accept_conn_raw` and `close_rx_socket_raw`, and `recv_bundle_from_conn_into`, which receives into a reusable buffer, `types::rdp_conn_timeout_ms`, and the raw `csp_rdp_get_opt` binding.
 

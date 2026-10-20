@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["cspcl", "cspcl-sys", "hardy-cspcl", "hardy-cspcl-server"]
+members = ["cspcl", "cspcl-sys", "hardy-cspcl", "hardy-cspcl-server", "picod3tn-cspcl"]
 [workspace.package]
 edition = "2024"
 
