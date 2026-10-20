@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop, feat/ci-riscv, feat/picod3tn-integration ]
+    branches: [ main, develop, feat/picod3tn-crate ]
   pull_request:
     branches: [ main, develop ]
 
