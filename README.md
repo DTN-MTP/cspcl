@@ -20,6 +20,7 @@ Full documentation is available at **[dtn-mtp.github.io/cspcl](https://dtn-mtp.g
 | [Rust API Reference](https://dtn-mtp.github.io/cspcl/api/rust/) | Rust crate documentation |
 | [uD3TN Integration](https://dtn-mtp.github.io/cspcl/integration/ud3tn/) | Use CSPCL inside uD3TN |
 | [Unibo Integration](https://dtn-mtp.github.io/cspcl/integration/unibo/) | Use CSPCL inside Unibo |
+| [picoD3TN Integration](https://dtn-mtp.github.io/cspcl/integration/picod3tn/) | Use CSPCL inside picoD3TN |
 | [Architecture](https://dtn-mtp.github.io/cspcl/architecture/) | Design decisions, SFP fragmentation, protocol stack |
 | [Delivery Acknowledgement](https://dtn-mtp.github.io/cspcl/delivery-ack/) | How CSPCL confirms bundles actually arrive, using an application-level ack on top of unmodified libcsp |
 
@@ -38,7 +39,7 @@ ctest --verbose
 
 **Recommended for testing and integration development.**
 
-Docker deployment provides complete DTN environments with both uD3TN and Unibo-BP integrations, automated interoperability tests, and support for ZMQHUB (virtual) and CAN (hardware-like) transports.
+Docker deployment provides complete DTN environments with the uD3TN, Unibo-BP and picoD3TN integrations, automated interoperability tests, and support for ZMQHUB (virtual) and CAN (hardware-like) transports.
 
 ```bash
 # Quick start - Run all interoperability tests
@@ -58,8 +59,8 @@ docker-compose -f docker-compose.zmqhub.yml up
 ```
 
 **What's included:**
-- 🐳 Multi-stage Docker builds (base, uD3TN, Unibo-BP)
-- 🧪 Automated test suite (uD3TN basic, Unibo-BP basic, cross-integration)
+- 🐳 Multi-stage Docker builds (base, uD3TN, Unibo-BP, picoD3TN)
+- 🧪 Automated test suite (uD3TN basic, Unibo-BP basic, cross-integration, picoD3TN basic, picoD3TN cross-integration)
 - 🔌 Two transport modes (ZMQHUB virtual, CAN with vcan)
 - 📊 Test runner with reporting and interactive mode
 - 📚 Comprehensive documentation
