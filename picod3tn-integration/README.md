@@ -18,6 +18,7 @@ The patch applies to picoD3TN commit `38fd7a9` (`main`, "Merge branch 'refactor/
 | `picod3tn/src/tasks/cla/cspcl.rs` | New: the cspcl RX and TX tasks |
 | `picod3tn/src/bin/picod3tn.rs` | `--cspcl-*` arguments; opens the link and starts the tasks; shuts the link down on Ctrl-C |
 | `nix/packages/libcsp.nix` | New: libcsp v1.6, built with `-fPIC` |
+| `nix/packages/libsocketcan.nix` | New: libsocketcan 0.0.12, which libcsp and `cspcl-sys` link (not in nixpkgs) |
 | `nix/packages/picod3tn.nix` | libcsp, bindgen and the link libraries; `withCspcl` argument |
 | `flake.nix` | `picod3tn-cspcl` package in the overlay |
 | `nix/modules/picod3tn.nix` | `services.picod3tn.<name>.cspcl` option |
@@ -43,7 +44,7 @@ git apply --check --verbose /path/to/cspcl/picod3tn-integration/picod3tn-cla-csp
 git apply /path/to/cspcl/picod3tn-integration/picod3tn-cla-cspcl.patch
 ```
 
-The patch creates three files (`picod3tn/src/tasks/cla/cspcl.rs`, `nix/packages/libcsp.nix`, `nix/checks/tests/picod3tn-cspcl.nix`) and modifies the others. Nothing is staged or committed.
+The patch creates four files (`picod3tn/src/tasks/cla/cspcl.rs`, `nix/packages/libcsp.nix`, `nix/packages/libsocketcan.nix`, `nix/checks/tests/picod3tn-cspcl.nix`) and modifies the others. Nothing is staged or committed.
 
 ## Build
 
@@ -165,7 +166,7 @@ git apply --reverse --check /path/to/cspcl/picod3tn-integration/picod3tn-cla-csp
 git apply --reverse /path/to/cspcl/picod3tn-integration/picod3tn-cla-cspcl.patch
 ```
 
-This also deletes the three files the patch created. It only works while the patched files are as the patch left them:
+This also deletes the four files the patch created. It only works while the patched files are as the patch left them:
 
 - If the check fails on `picod3tn/Cargo.lock` after a build with the local cspcl override, run `cargo metadata --format-version 1 > /dev/null` in `picod3tn/` first (see [Build](#build)).
 - If you edited the patched files since, either reverse it with `--3way`, or discard everything instead.

@@ -106,29 +106,29 @@ index 2f07dc7..8567cf0 100644
      };
    };
 diff --git a/nix/packages/picod3tn.nix b/nix/packages/picod3tn.nix
-index d117e10..63654f1 100644
+index d117e10..05f416d 100644
 --- a/nix/packages/picod3tn.nix
 +++ b/nix/packages/picod3tn.nix
-@@ -3,6 +3,13 @@
+@@ -3,6 +3,12 @@
  {
    lib,
    buildRustPackage,
 +  callPackage,
 +  rustPlatform,
 +  bzip2,
-+  libsocketcan,
 +  zeromq,
 +  # Builds the cspcl CLA (`--features cspcl`).
 +  withCspcl ? false,
  }:
  
  let
-@@ -11,6 +18,8 @@ let
+@@ -11,6 +17,9 @@ let
  
    libpicod3tnSrc = lib.cleanSource ../../libpicod3tn;
    picod3tnSrc = lib.cleanSource ../../picod3tn;
 +
-+  libcsp = callPackage ./libcsp.nix { };
++  libsocketcan = callPackage ./libsocketcan.nix { };
++  libcsp = callPackage ./libcsp.nix { inherit libsocketcan; };
  in
  
  buildRustPackage {
@@ -150,7 +150,7 @@ index d117e10..63654f1 100644
 +  env.CSP_REPO_DIR = libcsp;
  }
 diff --git a/picod3tn/Cargo.lock b/picod3tn/Cargo.lock
-index c1ab3c8..a3c49e2 100644
+index c1ab3c8..d8f5294 100644
 --- a/picod3tn/Cargo.lock
 +++ b/picod3tn/Cargo.lock
 @@ -78,7 +78,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -359,7 +359,7 @@ index c1ab3c8..a3c49e2 100644
 +[[package]]
 +name = "cspcl"
 +version = "0.5.0"
-+source = "git+https://github.com/DTN-MTP/cspcl.git?rev=5605619cd5e9f4462186413681828587ed584a23#5605619cd5e9f4462186413681828587ed584a23"
++source = "git+https://github.com/DTN-MTP/cspcl.git?rev=4ae6922134c01ed9742655ac40df1db16a094703#4ae6922134c01ed9742655ac40df1db16a094703"
 +dependencies = [
 + "bytes",
 + "cspcl-sys",
@@ -372,7 +372,7 @@ index c1ab3c8..a3c49e2 100644
 +[[package]]
 +name = "cspcl-sys"
 +version = "0.4.0"
-+source = "git+https://github.com/DTN-MTP/cspcl.git?rev=5605619cd5e9f4462186413681828587ed584a23#5605619cd5e9f4462186413681828587ed584a23"
++source = "git+https://github.com/DTN-MTP/cspcl.git?rev=4ae6922134c01ed9742655ac40df1db16a094703#4ae6922134c01ed9742655ac40df1db16a094703"
 +dependencies = [
 + "bindgen",
 + "cc",
@@ -541,7 +541,7 @@ index c1ab3c8..a3c49e2 100644
 +[[package]]
 +name = "picod3tn-cspcl"
 +version = "0.1.0"
-+source = "git+https://github.com/DTN-MTP/cspcl.git?rev=5605619cd5e9f4462186413681828587ed584a23#5605619cd5e9f4462186413681828587ed584a23"
++source = "git+https://github.com/DTN-MTP/cspcl.git?rev=4ae6922134c01ed9742655ac40df1db16a094703#4ae6922134c01ed9742655ac40df1db16a094703"
 +dependencies = [
 + "clap 4.6.7",
 + "cspcl",
@@ -900,7 +900,7 @@ index c1ab3c8..a3c49e2 100644
  
  [[package]]
 diff --git a/picod3tn/Cargo.toml b/picod3tn/Cargo.toml
-index 32d2fd5..6f4adb0 100644
+index 32d2fd5..e9bd7fd 100644
 --- a/picod3tn/Cargo.toml
 +++ b/picod3tn/Cargo.toml
 @@ -7,6 +7,11 @@ authors = [
@@ -919,7 +919,7 @@ index 32d2fd5..6f4adb0 100644
  futures = "0.3.31"
  libpicod3tn = { path = "../libpicod3tn", features = ["log", "mtcpcla", "protobuf", "tokio"] }
  log = { version = "0.4.27", features = ["std"] }
-+picod3tn-cspcl = { git = "https://github.com/DTN-MTP/cspcl.git", rev = "5605619cd5e9f4462186413681828587ed584a23", features = ["cli"], optional = true }
++picod3tn-cspcl = { git = "https://github.com/DTN-MTP/cspcl.git", rev = "4ae6922134c01ed9742655ac40df1db16a094703", features = ["cli"], optional = true }
  thiserror = "2.0.12"
  tokio = { version = "1.46.1", features = ["rt", "net", "io-util", "macros", "rt-multi-thread", "signal"] }
 diff --git a/picod3tn/src/bin/picod3tn.rs b/picod3tn/src/bin/picod3tn.rs
@@ -1423,6 +1423,44 @@ index 0000000..5cdf9e8
 +  meta = {
 +    description = "Cubesat Space Protocol, built for the cspcl CLA";
 +    homepage = "https://github.com/libcsp/libcsp";
++    license = lib.licenses.lgpl21Plus;
++    platforms = lib.platforms.linux;
++  };
++})
+diff --git a/nix/packages/libsocketcan.nix b/nix/packages/libsocketcan.nix
+new file mode 100644
+index 0000000..45b25cb
+--- /dev/null
++++ b/nix/packages/libsocketcan.nix
+@@ -0,0 +1,32 @@
++# SPDX-License-Identifier: Apache-2.0
++
++# libsocketcan, which libcsp's socketcan driver and `cspcl-sys` link. It is not packaged in
++# nixpkgs.
++
++{
++  lib,
++  stdenv,
++  fetchFromGitHub,
++  autoreconfHook,
++}:
++
++stdenv.mkDerivation (finalAttrs: {
++  pname = "libsocketcan";
++  version = "0.0.12";
++
++  src = fetchFromGitHub {
++    owner = "linux-can";
++    repo = "libsocketcan";
++    rev = "v${finalAttrs.version}";
++    hash = "sha256-eMuChpNnIG0pUmU/rEGCGDOfdLc58gwtl2e9jr3YKls=";
++  };
++
++  nativeBuildInputs = [ autoreconfHook ];
++
++  meta = {
++    description = "Library to control CAN interfaces through netlink";
++    homepage = "https://github.com/linux-can/libsocketcan";
 +    license = lib.licenses.lgpl21Plus;
 +    platforms = lib.platforms.linux;
 +  };
