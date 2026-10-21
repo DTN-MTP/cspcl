@@ -13,7 +13,9 @@ impl TryFrom<Bytes> for CspAddress {
 
     fn try_from(value: Bytes) -> Result<Self, Self::Error> {
         let mut raw_addr = value.into_iter();
-        raw_addr.len().eq(&2).ok_or(ParseAddress)?;
+        if raw_addr.len() != 2 {
+            return Err(ParseAddress);
+        }
         let addr = raw_addr.next().ok_or(ParseAddress)?;
         let port = raw_addr.next().ok_or(ParseAddress)?;
         Ok(Self { addr, port })

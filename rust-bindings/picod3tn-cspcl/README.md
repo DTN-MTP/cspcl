@@ -38,6 +38,8 @@ match link.send(bundle, peer).await {
 
 `examples/peer.rs` is a complete program.
 
+To add the CLA to picoD3TN itself, apply [`picod3tn-integration/picod3tn-cla-cspcl.patch`](../../picod3tn-integration/README.md).
+
 ### Addresses
 
 A peer is `<addr>:<port>`, e.g. `2:10`, so a picod3tn CLA address is `cspcl:2:10`. The port is required. uD3TN writes the same peer `csp:2,10`: a comma instead of a colon, and a port that defaults to 10 when left out. The identifier `cspcl` is exported as `CLA_ID`.
