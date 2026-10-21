@@ -1,5 +1,6 @@
 # Build artifacts
 build/
+rust-bindings/target/
 *.o
 *.a
 *.so

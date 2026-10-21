@@ -67,6 +67,12 @@ jobs:
           dockerfile: docker/base/Dockerfile
           failure-threshold: warning
 
+      - name: Check picoD3TN Docker file best practices
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/picod3tn/Dockerfile
+          failure-threshold: warning
+
       - name: Check for TODO/FIXME comments
         run: |
           echo "Scanning for TODO/FIXME comments..."
@@ -392,6 +398,30 @@ jobs:
           push: true
           tags: ${{ steps.meta-unibo.outputs.tags }}
           labels: ${{ steps.meta-unibo.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BASE_IMAGE=${{ fromJSON(steps.meta-base.outputs.json).tags[0] }}
+
+      - name: Extract metadata for picoD3TN
+        id: meta-picod3tn
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/cspcl-picod3tn
+          tags: |
+            type=ref,event=pr
+            type=ref,event=branch
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push picoD3TN image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/picod3tn/Dockerfile
+          push: true
+          tags: ${{ steps.meta-picod3tn.outputs.tags }}
+          labels: ${{ steps.meta-picod3tn.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
