@@ -26,6 +26,15 @@ TEST_MESSAGE_2="Hello from picoD3TN Node F via CSPCL!"
 RECV_LOG="/var/run/picod3tn/picod3tn-recv.log"
 TIMEOUT=60
 
+# shellcheck disable=SC2329
+cleanup() {
+    # shellcheck disable=SC2317
+    picod3tn_stop_listeners "$NODE_E_CONTAINER"
+    # shellcheck disable=SC2317
+    picod3tn_stop_listeners "$NODE_F_CONTAINER"
+}
+trap cleanup EXIT
+
 # Wait for nodes to be ready
 echo "[1/5] Waiting for picoD3TN nodes to be ready..."
 if picod3tn_wait_ready "$NODE_E_CONTAINER" "$TIMEOUT" && \

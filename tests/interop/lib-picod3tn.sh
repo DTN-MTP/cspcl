@@ -32,6 +32,14 @@ picod3tn_listen() {
     docker exec -d "$container" sh -c "timeout ${seconds} aapctl listen '${eid}' > '${log}' 2>&1"
 }
 
+# picod3tn_stop_listeners CONTAINER
+# Stops the aapctl listeners started by picod3tn_listen. A listener left
+# running keeps its agent ID registered, and receives the next test's bundles.
+picod3tn_stop_listeners() {
+    local container=$1
+    docker exec "$container" sh -c 'pkill -f "^aapctl listen " || true' > /dev/null 2>&1 || true
+}
+
 # picod3tn_send CONTAINER SRC_EID DST_EID MESSAGE
 picod3tn_send() {
     local container=$1 src=$2 dst=$3 message=$4

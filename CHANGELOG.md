@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rust: inbound listeners keep the `Cspcl` instance alive until they have closed their connection, so the instance is never cleaned up under an open connection.
 
 ### Documentation
+- picoD3TN: new `docs/integration/picod3tn.md` (architecture, prerequisites, applying the patch, CLA configuration, FIB routes, address formats across picoD3TN, uD3TN and Unibo-BP, a two-node walkthrough, limitations), and a picoD3TN row in the README's documentation table. The Docker and interop READMEs cover the picoD3TN image, nodes and tests, `send-message.sh` gets `picod3tn` and `picod3tn-cross` scenarios, and `docker-compose.ghcr.yml` the two picoD3TN nodes. `docs/architecture.md`'s file layout now lists every crate and integration.
 - Rust API: document the real libcsp build variables (`CSP_REPO_DIR`, `CSP_INCLUDE_DIR`, `CSP_BUILD_DIR`), replacing the non-existent `CSP_PATH`, and the `-fPIC` requirement.
 
 ## [1.0.0] - 2025-02-28

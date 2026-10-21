@@ -17,7 +17,7 @@ usage() {
 Usage: $(basename "$0") [OPTIONS]
 
 Options:
-  --scenario NAME        ud3tn | unibo | cross | all (default)
+  --scenario NAME        ud3tn | unibo | cross | picod3tn | picod3tn-cross | all (default)
   --transport TYPE       zmqhub (default) or can
   --start-stack          Start the Docker stack before sending messages
   --prepare-host-vcan    Also prepare host vcan0 (used with --transport can)
@@ -55,7 +55,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ "${SCENARIO}" != "ud3tn" && "${SCENARIO}" != "unibo" && "${SCENARIO}" != "cross" && "${SCENARIO}" != "all" ]]; then
+if [[ "${SCENARIO}" != "ud3tn" && "${SCENARIO}" != "unibo" && "${SCENARIO}" != "cross" && \
+      "${SCENARIO}" != "picod3tn" && "${SCENARIO}" != "picod3tn-cross" && "${SCENARIO}" != "all" ]]; then
     echo "ERROR: invalid scenario '${SCENARIO}'"
     exit 1
 fi
@@ -92,9 +93,20 @@ case "${SCENARIO}" in
     cross)
         run_case "uD3TN <-> Unibo" "${SCRIPT_DIR}/test-cross-integration.sh"
         ;;
+    picod3tn)
+        run_case "picoD3TN <-> picoD3TN" "${SCRIPT_DIR}/test-picod3tn-basic.sh"
+        ;;
+    picod3tn-cross)
+        run_case "picoD3TN <-> uD3TN / Unibo" "${SCRIPT_DIR}/test-picod3tn-cross.sh"
+        ;;
     all)
+        # The picoD3TN cross scenario runs before the uD3TN <-> Unibo one: on a
+        # single stack, the Unibo nodes can be left with stuck sends and a full
+        # libcsp connection table after it. run-tests.sh restarts the stack instead.
         run_case "uD3TN -> uD3TN" "${SCRIPT_DIR}/test-ud3tn-basic.sh"
         run_case "Unibo -> Unibo" "${SCRIPT_DIR}/test-unibo-basic.sh"
+        run_case "picoD3TN <-> picoD3TN" "${SCRIPT_DIR}/test-picod3tn-basic.sh"
+        run_case "picoD3TN <-> uD3TN / Unibo" "${SCRIPT_DIR}/test-picod3tn-cross.sh"
         run_case "uD3TN <-> Unibo" "${SCRIPT_DIR}/test-cross-integration.sh"
         ;;
 esac
