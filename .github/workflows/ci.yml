@@ -468,6 +468,7 @@ jobs:
           docker build -t cspcl-base:latest -f docker/base/Dockerfile .
           docker build -t cspcl-ud3tn:latest -f docker/ud3tn/Dockerfile .
           docker build -t cspcl-unibo:latest -f docker/unibo-bp/Dockerfile .
+          docker build -t cspcl-picod3tn:latest -f docker/picod3tn/Dockerfile .
 
       - name: Run full-stack integration tests
         id: integration-tests

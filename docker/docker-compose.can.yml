@@ -144,6 +144,64 @@ services:
       retries: 10
       start_period: 20s
 
+  # picoD3TN Node E (CSP address 5) - CAN transport
+  picod3tn-node-e:
+    image: cspcl-picod3tn:latest
+    container_name: cspcl-picod3tn-node-e
+    build:
+      context: ..
+      dockerfile: docker/picod3tn/Dockerfile
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      vcan-setup:
+        condition: service_healthy
+    environment:
+      - CSP_ADDR=5
+      - CSP_PORT=10
+      - TRANSPORT=can
+      - PICOD3TN_NODE_ID=dtn://e.dtn/
+      # All CAN nodes share vcan-setup's network namespace
+      - PICOD3TN_MTCPCL_LISTEN_ADDRESS=127.0.0.1:4225
+      - PICOD3TN_LOG_LEVEL=${PICOD3TN_LOG_LEVEL:-}
+    network_mode: "service:vcan-setup"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "pgrep -f /opt/picod3tn/bin/picod3tn"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+
+  # picoD3TN Node F (CSP address 6) - CAN transport
+  picod3tn-node-f:
+    image: cspcl-picod3tn:latest
+    container_name: cspcl-picod3tn-node-f
+    build:
+      context: ..
+      dockerfile: docker/picod3tn/Dockerfile
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      vcan-setup:
+        condition: service_healthy
+    environment:
+      - CSP_ADDR=6
+      - CSP_PORT=10
+      - TRANSPORT=can
+      - PICOD3TN_NODE_ID=dtn://f.dtn/
+      # All CAN nodes share vcan-setup's network namespace
+      - PICOD3TN_MTCPCL_LISTEN_ADDRESS=127.0.0.1:4226
+      - PICOD3TN_LOG_LEVEL=${PICOD3TN_LOG_LEVEL:-}
+    network_mode: "service:vcan-setup"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "pgrep -f /opt/picod3tn/bin/picod3tn"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+
 networks:
   csp-can-net:
     driver: bridge
