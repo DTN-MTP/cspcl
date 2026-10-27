@@ -251,7 +251,8 @@ for the scenarios.
 - **Sends are serialized** in cspcl's C library. An unreachable peer delays the bundles to
   every other peer by up to about 20 s per attempt.
 - **Recovery takes time.** After a peer restarts, allow up to about 30 s before
-  redelivery succeeds.
+  redelivery succeeds. The bundles sent while it was down are kept and delivered then:
+  `tests/interop/test-picod3tn-redelivery.sh` checks this.
 - **A missing or invalid next-hop address** is logged and the bundle deferred. The TX
   task keeps running.
 

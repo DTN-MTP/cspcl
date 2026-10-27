@@ -4,13 +4,14 @@ Automated test suite for validating CSPCL integration with the uD3TN, Unibo-BP a
 
 ## Overview
 
-This test suite validates five scenarios:
+This test suite validates six scenarios:
 
 1. **uD3TN Basic** - Bundle transfer between two uD3TN nodes via CSPCL
 2. **Unibo-BP Basic** - Bundle transfer between two Unibo-BP nodes via CSPCL
 3. **Cross-Integration** - Bidirectional bundle transfer between uD3TN and Unibo-BP
 4. **picoD3TN Basic** - Bidirectional bundle transfer between two picoD3TN nodes via CSPCL
 5. **picoD3TN Cross-Integration** - Bidirectional bundle transfer between picoD3TN and uD3TN, and between picoD3TN and Unibo-BP
+6. **picoD3TN Redelivery** - A bundle sent to a stopped picoD3TN node is kept by the sender, and delivered once the node is back
 
 Every node uses CSP port 10:
 
@@ -42,7 +43,7 @@ Every node uses CSP port 10:
    basic.sh       basic.sh     integration.sh    basic.sh        cross.sh
 ```
 
-The picoD3TN scripts share helpers from `lib-picod3tn.sh`.
+The picoD3TN scripts (`test-picod3tn-basic.sh`, `test-picod3tn-cross.sh`, `test-picod3tn-redelivery.sh`) share helpers from `lib-picod3tn.sh`.
 
 ## Quick Start
 
@@ -305,6 +306,40 @@ Each direction is retried a few times, as in the uD3TN/Unibo-BP cross test.
 ./test-picod3tn-cross.sh
 ```
 
+### 6. picoD3TN Redelivery Test (`test-picod3tn-redelivery.sh`)
+
+**Validates:** A send to an unreachable peer defers the bundle instead of dropping it, and the bundle is delivered once the peer is back
+
+**Steps:**
+1. Add a route on Node E: `dtn://f.dtn/` via `cspcl:6:10`
+2. Stop Node F (`docker stop`)
+3. Send a bundle from E to `dtn://f.dtn/redelivery`, and wait for E to log `failed to transmit bundle via cspcl to 6:10`
+4. Start Node F again, and wait for its cspcl link to open
+5. Listen on F, and wait up to 90 seconds for the bundle
+
+A bundle that reaches F before the listener registers waits in F's spool for it.
+
+**Success Criteria:**
+- Node E reports the failed send, and keeps the bundle
+- Node F receives it after its restart
+
+**Expected Output:**
+```
+✓ Node E failed to send it, and deferred it
+✓ Node F is back
+✓ Bundle received on Node F, 2s after its restart
+==================================================
+  TEST PASSED
+==================================================
+```
+
+**Run Individually:**
+```bash
+./test-picod3tn-redelivery.sh
+```
+
+The script leaves Node F running, even if it fails midway.
+
 ## Test Runner Options
 
 ### `run-tests.sh` Usage
@@ -330,7 +365,7 @@ Options:
 # Run only uD3TN test
 ./run-tests.sh --test ud3tn
 
-# Run both picoD3TN tests
+# Run the picoD3TN tests
 ./run-tests.sh --test picod3tn
 
 # Run with CAN transport
@@ -448,7 +483,7 @@ docker exec -it cspcl-picod3tn-node-e /bin/bash
 
 `send-message.sh` runs every scenario on the one running stack, without the restarts `run-tests.sh` does between suites. State left by one scenario can affect the next (for example, a Unibo-BP node still retrying an earlier send), so `--scenario all` runs them in an order that works, and `run-tests.sh` remains the reference.
 
-`send-message.sh` reuses the validated scenario scripts (`test-ud3tn-basic.sh`, `test-unibo-basic.sh`, `test-cross-integration.sh`, `test-picod3tn-basic.sh`, `test-picod3tn-cross.sh`) so manual and CI flows stay aligned.
+`send-message.sh` reuses the validated scenario scripts (`test-ud3tn-basic.sh`, `test-unibo-basic.sh`, `test-cross-integration.sh`, `test-picod3tn-basic.sh`, `test-picod3tn-cross.sh`) so manual and CI flows stay aligned. It has no redelivery scenario: that test restarts a node, so it runs from `run-tests.sh` only.
 
 ## Troubleshooting Tests
 

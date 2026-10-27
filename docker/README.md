@@ -387,6 +387,7 @@ cd ../tests/interop
 ./test-cross-integration.sh
 ./test-picod3tn-basic.sh
 ./test-picod3tn-cross.sh
+./test-picod3tn-redelivery.sh  # stops and restarts Node F
 ```
 
 ## Troubleshooting

@@ -4,12 +4,13 @@
 # aapctl runs in the node's container, which sets AAPCTL_CONNECT.
 #
 
-# picod3tn_wait_ready CONTAINER TIMEOUT
-# Waits until the node's cspcl link is open.
+# picod3tn_wait_ready CONTAINER TIMEOUT [SINCE]
+# Waits until the node's cspcl link is open. SINCE (a docker logs timestamp)
+# skips the lines logged before it, e.g. before a restart.
 picod3tn_wait_ready() {
-    local container=$1 timeout=$2 i
+    local container=$1 timeout=$2 since=${3:-0} i
     for ((i=1; i<=timeout; i++)); do
-        if docker logs "$container" 2>&1 | grep -q "cspcl link open as CSP"; then
+        if docker logs --since "$since" "$container" 2>&1 | grep -q "cspcl link open as CSP"; then
             return 0
         fi
         sleep 1
