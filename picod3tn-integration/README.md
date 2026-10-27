@@ -143,6 +143,23 @@ The VM test runs both instances in one VM, because vcan0 only exists within one 
 nix build --print-build-logs .#checks.x86_64-linux.picod3tnCspcl
 ```
 
+## Cross-compiling for RISC-V (PolarFire SoC)
+
+`tools/build-picod3tn-riscv64.sh` builds `picod3tn` and `aapctl` for `riscv64gc-unknown-linux-gnu` (the PolarFire SoC U54 cores). It fetches picoD3TN at `38fd7a9` into `$DEPS_DIR/picod3tn`, applies the patch, and builds against this checkout's `picod3tn-cspcl`. The binaries are fully static, glibc included, so they run on the Yocto or Buildroot image whatever glibc it ships.
+
+The C dependencies (libsocketcan, libzmq, libbz2 and libcsp v1.6, all with `-fPIC`) come from `tools/build-riscv64.sh`, which the script runs first with `DEPS_ONLY=1`. `cspcl-sys` links them statically because `CSPCL_DEPS_PREFIX` points at their prefix.
+
+On Ubuntu 22.04 (its Python 3.10 suits libcsp's waf):
+
+```bash
+sudo apt-get install gcc-riscv64-linux-gnu g++-riscv64-linux-gnu cmake autoconf automake \
+  libtool pkg-config clang libclang-dev qemu-user-static
+RUN_TESTS=1 ./tools/build-picod3tn-riscv64.sh
+ls build-riscv64/picod3tn/   # picod3tn  aapctl
+```
+
+`RUN_TESTS=1` runs the `picod3tn-cspcl` tests and the patched picoD3TN's tests under `qemu-riscv64-static`. CI's `build-picod3tn-riscv64` job does the same and uploads the binaries as the `picod3tn-riscv64` artifact.
+
 ## Building libcsp
 
 As for the other Rust crates (see the [Rust API docs](../docs/api/rust.md#installation)): libcsp v1.6, as a static library built with `-fPIC`. Its bundled waf needs Python 3.11 or older (it imports `imp`, which Python 3.12 removed). libcsp v1.6 only applies its default flags when `CFLAGS` is empty, so pass them all:

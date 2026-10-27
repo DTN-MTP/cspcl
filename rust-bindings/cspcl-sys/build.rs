@@ -4,8 +4,13 @@ use std::path::{Path, PathBuf};
 /// C sources whose changes should trigger a rebuild.
 const SOURCE_FILES: [&str; 3] = ["cspcl.c", "cspcl.h", "cspcl_config.h"];
 
-/// Environment variables used to locate libcsp.
-const BUILD_ENV_VARS: [&str; 3] = ["CSP_INCLUDE_DIR", "CSP_REPO_DIR", "CSP_BUILD_DIR"];
+/// Environment variables used to locate libcsp and its dependencies.
+const BUILD_ENV_VARS: [&str; 4] = [
+    "CSP_INCLUDE_DIR",
+    "CSP_REPO_DIR",
+    "CSP_BUILD_DIR",
+    "CSPCL_DEPS_PREFIX",
+];
 
 /// Resolved location of the libcsp headers and compiled library.
 struct Libcsp {
@@ -22,6 +27,9 @@ fn main() {
 
     let source_dir = resolve_source_dir(&manifest_dir, workspace_root);
     let libcsp = resolve_libcsp();
+    // Prefix with static libzmq, libsocketcan and libbz2 (lib/, include/),
+    // e.g. the riscv64 sysroot of tools/build-riscv64.sh.
+    let deps_prefix = env::var("CSPCL_DEPS_PREFIX").ok().map(PathBuf::from);
 
     for file in SOURCE_FILES {
         println!("cargo:rerun-if-changed={}", source_dir.join(file).display());
@@ -33,8 +41,8 @@ fn main() {
     let header = source_dir.join("cspcl.h");
     assert!(header.exists(), "cspcl.h not found at {}", header.display());
 
-    compile_native(&source_dir, &libcsp);
-    generate_bindings(&header, &source_dir, &libcsp);
+    compile_native(&source_dir, &libcsp, deps_prefix.as_deref());
+    generate_bindings(&header, &source_dir, &libcsp, deps_prefix.as_deref());
 }
 
 /// Locate the cspcl C sources (vendored `c_src/` or the workspace `src/`).
@@ -89,7 +97,7 @@ fn resolve_libcsp() -> Libcsp {
     }
 }
 
-fn compile_native(source_dir: &Path, libcsp: &Libcsp) {
+fn compile_native(source_dir: &Path, libcsp: &Libcsp, deps_prefix: Option<&Path>) {
     let mut build = cc::Build::new();
     build.file(source_dir.join("cspcl.c")).include(source_dir);
     for dir in &libcsp.include_dirs {
@@ -101,19 +109,41 @@ fn compile_native(source_dir: &Path, libcsp: &Libcsp) {
         libcsp.lib_dir.display()
     );
     println!("cargo:rustc-link-lib=static=csp");
-    println!("cargo:rustc-link-lib=zmq");
-    println!("cargo:rustc-link-lib=socketcan");
+
+    // With a deps prefix, link its static libraries; libzmq is C++, so
+    // libstdc++ has to follow it.
+    let kind = match deps_prefix {
+        Some(prefix) => {
+            build.include(prefix.join("include"));
+            println!(
+                "cargo:rustc-link-search=native={}",
+                prefix.join("lib").display()
+            );
+            "static="
+        }
+        None => "",
+    };
+    println!("cargo:rustc-link-lib={kind}zmq");
+    println!("cargo:rustc-link-lib={kind}socketcan");
 
     if cfg!(target_os = "linux") {
         build.define("__linux__", None);
         println!("cargo:rustc-link-lib=rt");
     }
-    println!("cargo:rustc-link-lib=bz2");
+    println!("cargo:rustc-link-lib={kind}bz2");
+    if deps_prefix.is_some() {
+        println!("cargo:rustc-link-lib=stdc++");
+    }
 
     build.compile("cspcl_native");
 }
 
-fn generate_bindings(header: &Path, source_dir: &Path, libcsp: &Libcsp) {
+fn generate_bindings(
+    header: &Path,
+    source_dir: &Path,
+    libcsp: &Libcsp,
+    deps_prefix: Option<&Path>,
+) {
     let mut builder = bindgen::Builder::default()
         .header(header.to_string_lossy())
         .clang_arg(format!("-I{}", source_dir.display()))
@@ -131,6 +161,9 @@ fn generate_bindings(header: &Path, source_dir: &Path, libcsp: &Libcsp) {
 
     for dir in &libcsp.include_dirs {
         builder = builder.clang_arg(format!("-I{}", dir.display()));
+    }
+    if let Some(prefix) = deps_prefix {
+        builder = builder.clang_arg(format!("-I{}", prefix.join("include").display()));
     }
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));

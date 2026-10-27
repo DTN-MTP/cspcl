@@ -4,6 +4,8 @@ use crate::{
     cspcl_error_t_CSPCL_OK, cspcl_t, primitive,
 };
 
+use std::ffi::c_char;
+
 pub type Result<T> = std::result::Result<T, cspcl_error_t>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -126,13 +128,14 @@ fn ok_or_err(code: cspcl_error_t) -> Result<()> {
     }
 }
 
-fn copy_c_string<const N: usize>(dest: &mut [i8; N], src: &str) {
+// `c_char` is i8 on x86_64 but u8 on riscv64 and aarch64.
+fn copy_c_string<const N: usize>(dest: &mut [c_char; N], src: &str) {
     *dest = [0; N];
     for (idx, byte) in src.bytes().take(N.saturating_sub(1)).enumerate() {
         if byte == 0 {
             break;
         }
-        dest[idx] = byte as i8;
+        dest[idx] = byte as c_char;
     }
 }
 
@@ -339,7 +342,7 @@ mod tests {
         let cspcl = configure(&config);
 
         assert_eq!(cspcl.iface_type, csp_iface_type_CSP_IFACE_ZMQHUB);
-        assert_eq!(cspcl.zmqhub_addr[0], b'l' as i8);
+        assert_eq!(cspcl.zmqhub_addr[0], b'l' as c_char);
         assert_eq!(cspcl.zmqhub_addr[9], 0);
 
         let config = CspclConfig {
@@ -351,7 +354,7 @@ mod tests {
         let cspcl = configure(&config);
 
         assert_eq!(cspcl.iface_type, csp_iface_type_CSP_IFACE_CAN);
-        assert_eq!(cspcl.can_iface[0], b'v' as i8);
+        assert_eq!(cspcl.can_iface[0], b'v' as c_char);
         assert_eq!(cspcl.can_iface[5], 0);
     }
 }

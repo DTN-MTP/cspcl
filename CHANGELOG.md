@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- CI: a `build-picod3tn-riscv64` job cross-compiles picoD3TN with the cspcl CLA for the PolarFire SoC (`riscv64gc-unknown-linux-gnu`, fully static), runs the `picod3tn-cspcl` and patched picoD3TN tests under qemu, and uploads `picod3tn` and `aapctl` as the `picod3tn-riscv64` artifact. `tools/build-picod3tn-riscv64.sh` does the same locally. `tools/build-riscv64.sh` now also builds libbz2, builds every dependency with `-fPIC`, and takes `DEPS_ONLY=1`. `cspcl-sys` links libzmq, libsocketcan and libbz2 statically from `CSPCL_DEPS_PREFIX` when it is set. CI also runs on pushes to `feat/ci-polarfire`.
 - CI: a `rust-picod3tn` job runs `cargo fmt`, `cargo clippy -D warnings` and the tests of the `rust-bindings` workspace against libcsp v1.6 built with `-fPIC`, builds `picod3tn-cspcl` without default features, and checks that the picoD3TN patch applies to `38fd7a9`. CI also runs on pushes to any `feat/picod3tn-*` branch.
 - Docker: `docker/picod3tn/Dockerfile` builds picoD3TN `38fd7a9` with the cspcl CLA patch, against this checkout's `picod3tn-cspcl` and a libcsp v1.6 built with `-fPIC`. The image ships `picod3tn` and `aapctl`; its entrypoint maps `CSP_ADDR`, `CSP_PORT`, `TRANSPORT` and `ZMQ_BROKER_HOST` to the `PICOD3TN_CSPCL_*` variables. CI builds and pushes it as `cspcl-picod3tn` and lints it with hadolint.
 - Interop tests: picoD3TN nodes E (CSP 5) and F (CSP 6) in both compose stacks. `test-picod3tn-basic.sh` exchanges bundles between them in both directions, and `test-picod3tn-cross.sh` between picoD3TN and uD3TN, and picoD3TN and Unibo-BP, in both directions. `run-tests.sh --test picod3tn` runs both, and `all` includes them.
@@ -29,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rust (breaking, `cspcl-sys` 0.4.0): `types::conn_pool_add_accepted`. It put inbound connections into the outbound pool under the peer's ephemeral port, where sends never reused them. The raw `unsafe fn conn_pool_add` remains.
 
 ### Fixed
+- Rust: `cspcl-sys` builds on targets where C `char` is unsigned (riscv64, aarch64). It wrote the ZMQ hub address and CAN interface name as `i8`, which only matched x86_64's bindings; it now uses `c_char`.
 - Docker: every node of the CAN stack now uses CSP port 10. The Unibo-BP daemon sends to its own port and the interop routes use port 10, so with ports 9 to 12 only uD3TN node B was reachable, and the Unibo-BP and cross-integration tests failed whenever the runner could load vcan.
 - Rust: a node could not accept or acknowledge inbound bundles while one of its own sends was waiting for an ack. Simultaneous sends between two nodes, and sends to self, timed out. Sends and accepts no longer share a lock.
 - Rust: accepted inbound connections are no longer added to the outbound connection pool. The pool never reused them and could close one while it was still being read. The inbound listener now owns and closes them.

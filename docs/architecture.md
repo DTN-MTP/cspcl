@@ -164,4 +164,5 @@ cspcl/
     +-- zmqhub_broker.py   ZMQ hub for local testing
     +-- simple_bundle_transfer.sh
     +-- build-riscv64.sh   Cross-build for RISC-V 64
+    +-- build-picod3tn-riscv64.sh  Cross-build picoD3TN with the CLA for RISC-V 64
 ```
