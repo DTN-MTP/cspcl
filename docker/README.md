@@ -1,6 +1,6 @@
 # CSPCL Docker Deployment
 
-Docker-based deployment infrastructure for CSPCL (CubeSat Space Protocol Convergence Layer) with support for both uD3TN and Unibo-BP DTN implementations.
+Docker-based deployment infrastructure for CSPCL (CubeSat Space Protocol Convergence Layer) with support for the uD3TN, Unibo-BP and picoD3TN DTN implementations.
 
 ## Quick Start
 
@@ -48,8 +48,8 @@ docker-compose -f docker-compose.zmqhub.yml up
                             │ BP7 Bundles
                             ▼
 ┌──────────────────┬────────────────────┬────────────────────┐
-│   uD3TN Node A   │   uD3TN Node B     │   Unibo-BP Nodes   │
-│   (CSP addr 1)   │   (CSP addr 2)     │   (CSP addr 3,4)   │
+│   uD3TN Nodes    │   Unibo-BP Nodes   │   picoD3TN Nodes   │
+│   (CSP addr 1,2) │   (CSP addr 3,4)   │   (CSP addr 5,6)   │
 └──────────────────┴────────────────────┴────────────────────┘
                             │
                     ┌───────┴────────┐
@@ -75,6 +75,7 @@ All images are available on GitHub Container Registry (GHCR):
 - `ghcr.io/dtn-mtp/cspcl/cspcl-base:latest`
 - `ghcr.io/dtn-mtp/cspcl/cspcl-ud3tn:latest`
 - `ghcr.io/dtn-mtp/cspcl/cspcl-unibo:latest`
+- `ghcr.io/dtn-mtp/cspcl/cspcl-picod3tn:latest`
 
 These images are automatically built and published by CI/CD on every commit to main branch and pull requests.
 
@@ -128,6 +129,22 @@ docker build -t cspcl-unibo:latest -f docker/unibo-bp/Dockerfile .
 
 **Note:** The Docker build now compiles Unibo-BP from source, so runtime binary mounts are not required.
 
+### picoD3TN Integration (`cspcl-picod3tn`)
+- Extends base image
+- picoD3TN `38fd7a9` built with the cspcl CLA patch ([`picod3tn-integration/`](../picod3tn-integration/README.md)), against this checkout's `picod3tn-cspcl` crate rather than the git rev the patch pins
+- `aapctl` for routes, sending and receiving (`AAPCTL_CONNECT` is preset, so no `--connect` is needed)
+- The build stage installs Rust and rebuilds libcsp v1.6 with `-fPIC`; the runtime image only carries the two binaries
+
+**Pull from GHCR:**
+```bash
+docker pull ghcr.io/dtn-mtp/cspcl/cspcl-picod3tn:latest
+```
+
+**Build locally:**
+```bash
+docker build -t cspcl-picod3tn:latest -f docker/picod3tn/Dockerfile .
+```
+
 ## Docker Compose Configurations
 
 ### Using Pre-built Images (`docker-compose.ghcr.yml`) - Recommended
@@ -138,6 +155,7 @@ Uses images from GitHub Container Registry. No build step required.
 - ZMQ broker (routes CSP packets)
 - 2x uD3TN nodes (CSP addresses 1, 2)
 - 2x Unibo-BP nodes (CSP addresses 3, 4)
+- 2x picoD3TN nodes (CSP addresses 5, 6)
 
 **Usage:**
 ```bash
@@ -164,6 +182,10 @@ Builds images locally. Virtual messaging transport using ZeroMQ. **Recommended f
 - `ud3tn-node-b` - uD3TN at CSP address 2
 - `unibo-node-1` - Unibo-BP at CSP address 3
 - `unibo-node-2` - Unibo-BP at CSP address 4
+- `picod3tn-node-e` - picoD3TN at CSP address 5 (`dtn://e.dtn/`)
+- `picod3tn-node-f` - picoD3TN at CSP address 6 (`dtn://f.dtn/`)
+
+All nodes use CSP port 10.
 
 **Start:**
 ```bash
@@ -182,7 +204,7 @@ Virtual CAN interface using `vcan0`. Requires privileged containers.
 
 **Services:**
 - `vcan-setup` - Creates and manages vcan0 interface
-- Node services (same as ZMQHUB but using CAN transport)
+- Node services (same as ZMQHUB but using CAN transport). They all share `vcan-setup`'s network namespace, so the picoD3TN nodes listen for MTCPCL on distinct loopback ports (4225, 4226).
 
 **Requirements:**
 - Linux kernel with vcan module
@@ -218,6 +240,21 @@ docker-compose -f docker-compose.can.yml up -d
 | `UNIBO_ADMIN_EID` | IPN admin EID | `ipn:1.0` |
 | `UNIBO_ADMIN_DTN_EID` | DTN admin EID | `dtn://a.dtn/` |
 | `ZMQ_BROKER_HOST` | ZMQ broker hostname | `zmq-broker` |
+
+### picoD3TN Containers
+
+The entrypoint maps the common variables to picoD3TN's own `PICOD3TN_*` variables. Any other `PICOD3TN_*` variable is passed through.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CSP_ADDR` | CSP address (0-30) | `5` |
+| `CSP_PORT` | CSP port bundles are received on (7-31) | `10` |
+| `TRANSPORT` | Transport type (zmqhub/can/loopback) | `zmqhub` |
+| `ZMQ_BROKER_HOST` | ZMQ broker hostname | `localhost` |
+| `PICOD3TN_NODE_ID` | picoD3TN node ID | `dtn://e.dtn/` |
+| `PICOD3TN_AAP2_LISTEN` | AAP2 listen address | `unix:/var/run/picod3tn/aap2.sock` |
+| `PICOD3TN_MTCPCL_LISTEN_ADDRESS` | MTCPCL listen address | `127.0.0.1:4224` |
+| `PICOD3TN_LOG_LEVEL` | Log level, used as `RUST_LOG` unless that is set | `info` |
 
 ## Common Operations
 
@@ -256,6 +293,13 @@ docker exec cspcl-unibo-node-1 bash -c "
     --lifetime 600000 \
     --payload-string 'Hello from Unibo'
 "
+
+# picoD3TN: add a route, listen, send
+docker exec cspcl-picod3tn-node-e \
+  aapctl configure dtn://e.dtn/admin dtn://f.dtn/ cspcl:6:10 LINK_STATUS_UP
+docker exec cspcl-picod3tn-node-f aapctl listen dtn://f.dtn/bundlesink
+docker exec cspcl-picod3tn-node-e \
+  aapctl send dtn://e.dtn/source dtn://f.dtn/bundlesink "Hello from picoD3TN"
 ```
 
 ### Restart a Service
@@ -293,6 +337,7 @@ cd tests/interop
 ./run-tests.sh --test ud3tn
 ./run-tests.sh --test unibo
 ./run-tests.sh --test cross
+./run-tests.sh --test picod3tn
 
 # Keep services running after tests
 ./run-tests.sh --keep-running
@@ -311,6 +356,8 @@ cd tests/interop
 ./send-message.sh --scenario ud3tn
 ./send-message.sh --scenario unibo
 ./send-message.sh --scenario cross
+./send-message.sh --scenario picod3tn
+./send-message.sh --scenario picod3tn-cross
 ./send-message.sh --scenario all
 ```
 
@@ -338,6 +385,9 @@ cd ../tests/interop
 ./test-ud3tn-basic.sh
 ./test-unibo-basic.sh
 ./test-cross-integration.sh
+./test-picod3tn-basic.sh
+./test-picod3tn-cross.sh
+./test-picod3tn-redelivery.sh  # stops and restarts Node F
 ```
 
 ## Troubleshooting
@@ -520,6 +570,7 @@ jobs:
 - [Test Documentation](../tests/interop/README.md) - Detailed test scenarios
 - [uD3TN Integration Guide](../ud3tn-integration/README.md) - uD3TN specifics
 - [Unibo-BP Commands](../unibo-integration/COMMANDS.md) - Unibo-BP setup
+- [picoD3TN Integration Guide](../picod3tn-integration/README.md) - picoD3TN patch
 
 ## Contributing
 

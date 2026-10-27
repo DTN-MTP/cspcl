@@ -143,13 +143,25 @@ cspcl/
 +-- rust-bindings/
 |   +-- cspcl-sys/         Raw FFI bindings (bindgen)
 |   +-- cspcl/             Safe Rust wrapper crate
+|   +-- hardy-cspcl/       CLA for the Hardy BPA
+|   +-- hardy-cspcl-server/  Hardy CLA over gRPC to a remote BPA
+|   +-- picod3tn-cspcl/    cspcl link for picoD3TN
 +-- ud3tn-integration/
 |   +-- src/
-|       +-- cla_csp.c      uD3TN CLA implementation
-|       +-- cla_csp.h
+|   |   +-- cla_csp.c      uD3TN CLA implementation
+|   |   +-- cla_csp.h
+|   +-- ud3tn-cla-csp.patch
++-- unibo-integration/
+|   +-- src/
+|       +-- cspcl_daemon.c Unibo-BP CLA daemon
++-- picod3tn-integration/
+|   +-- picod3tn-cla-cspcl.patch  picoD3TN CLA (uses picod3tn-cspcl)
++-- docker/                Images and compose stacks for the interop tests
 +-- stubs/                 CSP stubs for unit testing without libcsp
 +-- tests/                 C unit tests (CTest)
+|   +-- interop/           Docker interop tests between the integrations
 +-- tools/
     +-- zmqhub_broker.py   ZMQ hub for local testing
     +-- simple_bundle_transfer.sh
+    +-- build-riscv64.sh   Cross-build for RISC-V 64
 ```
