@@ -190,6 +190,7 @@ if [ $INTERACTIVE -eq 1 ]; then
     echo "  ${TESTS_DIR}/test-cross-integration.sh"
     echo "  ${TESTS_DIR}/test-picod3tn-basic.sh"
     echo "  ${TESTS_DIR}/test-picod3tn-cross.sh"
+    echo "  ${TESTS_DIR}/test-picod3tn-redelivery.sh"
     echo ""
     echo "Stop services:"
     echo "  ${COMPOSE_CMD[*]} -f ${COMPOSE_FILE} down"
@@ -243,6 +244,8 @@ case "$TEST_SUITE" in
         run_test "picoD3TN Basic" "${TESTS_DIR}/test-picod3tn-basic.sh" || true
         restart_services
         run_test "picoD3TN Cross-Integration" "${TESTS_DIR}/test-picod3tn-cross.sh" || true
+        restart_services
+        run_test "picoD3TN Redelivery" "${TESTS_DIR}/test-picod3tn-redelivery.sh" || true
         ;;
     ud3tn)
         run_test "uD3TN Basic" "${TESTS_DIR}/test-ud3tn-basic.sh" || true
@@ -257,6 +260,8 @@ case "$TEST_SUITE" in
         run_test "picoD3TN Basic" "${TESTS_DIR}/test-picod3tn-basic.sh" || true
         restart_services
         run_test "picoD3TN Cross-Integration" "${TESTS_DIR}/test-picod3tn-cross.sh" || true
+        restart_services
+        run_test "picoD3TN Redelivery" "${TESTS_DIR}/test-picod3tn-redelivery.sh" || true
         ;;
 esac
 

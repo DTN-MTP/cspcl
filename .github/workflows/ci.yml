@@ -289,6 +289,14 @@ jobs:
           git checkout -q FETCH_HEAD
           git apply --check --verbose "$GITHUB_WORKSPACE/picod3tn-integration/picod3tn-cla-cspcl.patch"
 
+      # Against this checkout's picod3tn-cspcl, not the rev the patch pins.
+      - name: Test the patched picoD3TN
+        working-directory: /tmp/picod3tn/picod3tn
+        run: |
+          git -C /tmp/picod3tn apply "$GITHUB_WORKSPACE/picod3tn-integration/picod3tn-cla-cspcl.patch"
+          cargo test --features cspcl \
+            --config "patch.\"https://github.com/DTN-MTP/cspcl.git\".picod3tn-cspcl.path=\"$GITHUB_WORKSPACE/rust-bindings/picod3tn-cspcl\""
+
   # Job 3: Docker build test
   docker-build:
     name: Docker Build Test

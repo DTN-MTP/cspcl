@@ -900,7 +900,7 @@ index c1ab3c8..d8f5294 100644
  
  [[package]]
 diff --git a/picod3tn/Cargo.toml b/picod3tn/Cargo.toml
-index 32d2fd5..e9bd7fd 100644
+index 32d2fd5..dba4014 100644
 --- a/picod3tn/Cargo.toml
 +++ b/picod3tn/Cargo.toml
 @@ -7,6 +7,11 @@ authors = [
@@ -915,13 +915,16 @@ index 32d2fd5..e9bd7fd 100644
  [dependencies]
  anyhow = "1.0.100"
  clap = { version = "4.5.50", features = ["derive", "env"] }
-@@ -14,5 +19,6 @@ env_logger = "0.11.8"
+@@ -14,5 +19,9 @@ env_logger = "0.11.8"
  futures = "0.3.31"
  libpicod3tn = { path = "../libpicod3tn", features = ["log", "mtcpcla", "protobuf", "tokio"] }
  log = { version = "0.4.27", features = ["std"] }
 +picod3tn-cspcl = { git = "https://github.com/DTN-MTP/cspcl.git", rev = "4ae6922134c01ed9742655ac40df1db16a094703", features = ["cli"], optional = true }
  thiserror = "2.0.12"
  tokio = { version = "1.46.1", features = ["rt", "net", "io-util", "macros", "rt-multi-thread", "signal"] }
++
++[dev-dependencies]
++tokio = { version = "1.46.1", features = ["time"] }
 diff --git a/picod3tn/src/bin/picod3tn.rs b/picod3tn/src/bin/picod3tn.rs
 index 3a5ce82..eee4162 100644
 --- a/picod3tn/src/bin/picod3tn.rs
@@ -1467,10 +1470,10 @@ index 0000000..45b25cb
 +})
 diff --git a/picod3tn/src/tasks/cla/cspcl.rs b/picod3tn/src/tasks/cla/cspcl.rs
 new file mode 100644
-index 0000000..6afa696
+index 0000000..c734d00
 --- /dev/null
 +++ b/picod3tn/src/tasks/cla/cspcl.rs
-@@ -0,0 +1,109 @@
+@@ -0,0 +1,254 @@
 +// SPDX-License-Identifier: Apache-2.0
 +
 +//! CSPCL RX and TX tasks.
@@ -1479,13 +1482,13 @@ index 0000000..6afa696
 +//! Convergence Layer, through a [`CspclLink`]. There is one link per process, shared by both
 +//! tasks.
 +
-+use std::sync::Arc;
++use std::{ops::ControlFlow, sync::Arc};
 +
 +use anyhow::Result;
 +use futures::StreamExt as _;
 +
 +use libpicod3tn::{
-+    spool::{BundleRef as _, FullBundle, KeySetEid, PutError, Spool, TransmitBundle as _},
++    spool::{FullBundle, KeySetEid, PutError, Spool, TransmitBundle},
 +    time::Duration,
 +};
 +use picod3tn_cspcl::{CLA_ID, CspclAddr, CspclLink, FailureKind};
@@ -1502,54 +1505,64 @@ index 0000000..6afa696
 +/// never be sent (e.g. one larger than [`picod3tn_cspcl::MAX_BUNDLE_SIZE`]) is dropped. The task
 +/// ends when the link is shut down.
 +pub async fn tx_task(spool: Arc<impl Spool>, link: Arc<CspclLink>) -> Result<()> {
-+    let defer_for = Duration::from_secs(CLA_TX_ERROR_DEFER_DURATION_SECONDS);
 +    loop {
-+        let mut handle = spool.transmit(CLA_ID).await;
-+        let addr = match handle.addr().map(|addr| addr.parse::<CspclAddr>()) {
-+            Some(Ok(addr)) => addr,
-+            Some(Err(e)) => {
-+                log::error!(
-+                    "invalid CSPCL address {:?}: {e}. retrying in {CLA_TX_ERROR_DEFER_DURATION_SECONDS} seconds",
-+                    handle.addr()
-+                );
-+                handle.defer(defer_for);
-+                continue;
-+            }
-+            None => {
-+                log::error!(
-+                    "CSPCL address could not be determined. retrying in {CLA_TX_ERROR_DEFER_DURATION_SECONDS} seconds"
-+                );
-+                handle.defer(defer_for);
-+                continue;
-+            }
-+        };
-+        let bundle = handle.load().await.serialized().to_vec();
-+        match link.send(bundle, addr).await {
-+            Ok(()) => {
-+                handle.forwarded();
-+            }
-+            Err(e) => match e.kind() {
-+                FailureKind::Retryable => {
-+                    log::warn!(
-+                        "failed to transmit bundle via cspcl to {addr}: {e}. retrying in {CLA_TX_ERROR_DEFER_DURATION_SECONDS} seconds"
-+                    );
-+                    handle.defer(defer_for);
-+                }
-+                FailureKind::Permanent => {
-+                    log::error!("failed to transmit bundle via cspcl to {addr}: {e}. dropping it");
-+                    // TODO: delete the bundle instead, once `TransmitBundle` has a `delete()`.
-+                    // Deferring it would retry it forever: the memspool never expires deferred
-+                    // bundles.
-+                    handle.forwarded();
-+                }
-+                FailureKind::Cancelled => {
-+                    log::info!("cspcl link shut down, stopping the CSPCL TX task");
-+                    handle.defer(defer_for);
-+                    return Ok(());
-+                }
-+            },
++        let handle = spool.transmit(CLA_ID).await;
++        if transmit(handle, &link).await.is_break() {
++            return Ok(());
 +        }
 +    }
++}
++
++/// Transmits one bundle over `link`, then forwards, defers or drops it.
++///
++/// Breaks when the link is shut down.
++async fn transmit<'x>(mut handle: impl TransmitBundle<'x>, link: &CspclLink) -> ControlFlow<()> {
++    let defer_for = Duration::from_secs(CLA_TX_ERROR_DEFER_DURATION_SECONDS);
++    let addr = match handle.addr().map(|addr| addr.parse::<CspclAddr>()) {
++        Some(Ok(addr)) => addr,
++        Some(Err(e)) => {
++            log::error!(
++                "invalid CSPCL address {:?}: {e}. retrying in {CLA_TX_ERROR_DEFER_DURATION_SECONDS} seconds",
++                handle.addr()
++            );
++            handle.defer(defer_for);
++            return ControlFlow::Continue(());
++        }
++        None => {
++            log::error!(
++                "CSPCL address could not be determined. retrying in {CLA_TX_ERROR_DEFER_DURATION_SECONDS} seconds"
++            );
++            handle.defer(defer_for);
++            return ControlFlow::Continue(());
++        }
++    };
++    let bundle = handle.load().await.serialized().to_vec();
++    match link.send(bundle, addr).await {
++        Ok(()) => {
++            handle.forwarded();
++        }
++        Err(e) => match e.kind() {
++            FailureKind::Retryable => {
++                log::warn!(
++                    "failed to transmit bundle via cspcl to {addr}: {e}. retrying in {CLA_TX_ERROR_DEFER_DURATION_SECONDS} seconds"
++                );
++                handle.defer(defer_for);
++            }
++            FailureKind::Permanent => {
++                log::error!("failed to transmit bundle via cspcl to {addr}: {e}. dropping it");
++                // TODO: delete the bundle instead, once `TransmitBundle` has a `delete()`.
++                // Deferring it would retry it forever: the memspool never expires deferred
++                // bundles.
++                handle.forwarded();
++            }
++            FailureKind::Cancelled => {
++                log::info!("cspcl link shut down, stopping the CSPCL TX task");
++                handle.defer(defer_for);
++                return ControlFlow::Break(());
++            }
++        },
++    }
++    ControlFlow::Continue(())
 +}
 +
 +/// Continuously receives bundles from `link`.
@@ -1579,4 +1592,139 @@ index 0000000..6afa696
 +    }
 +    log::info!("cspcl link shut down, stopping the CSPCL RX task");
 +    Ok(())
++}
++
++#[cfg(test)]
++mod tests {
++    use std::time::Duration as StdDuration;
++
++    use libpicod3tn::{
++        exports::bpv7::{builder::Builder, creation_timestamp::CreationTimestamp, eid::Eid},
++        memspool::StdSpool,
++        spool::{BundleRef as _, DispatchBundle as _, ForwardBundle as _, RouteBundle as _},
++        time::StdClock,
++    };
++    use picod3tn_cspcl::{Config, Interface, MAX_BUNDLE_SIZE};
++    use tokio::time::timeout;
++
++    use super::*;
++
++    /// Puts a bundle into `spool` and walks it to a transmission via the cspcl CLA to `addr`.
++    async fn queue(
++        spool: &StdSpool<StdClock>,
++        payload: &[u8],
++        addr: Option<&'static str>,
++    ) -> Box<[u8]> {
++        let source: Eid = "dtn://a.dtn/source".parse().unwrap();
++        let destination: Eid = "dtn://b.dtn/sink".parse().unwrap();
++        let bundle = FullBundle::from_builder(
++            Builder::new(source, destination.clone()),
++            CreationTimestamp::default(),
++            payload,
++        )
++        .expect("build bundle");
++        let serialized = bundle.serialized().into();
++        spool.put(bundle).await.expect("put bundle");
++        spool.dispatch().await.forward();
++        spool.route().await.route_to(vec![destination]);
++        spool
++            .forward()
++            .await
++            .forward_via(CLA_ID.into(), addr.map(Into::into));
++        serialized
++    }
++
++    /// Waits up to `millis` ms for a bundle to transmit via the cspcl CLA.
++    async fn next_transmit(
++        spool: &StdSpool<StdClock>,
++        millis: u64,
++    ) -> Option<impl TransmitBundle<'_>> {
++        timeout(StdDuration::from_millis(millis), spool.transmit(CLA_ID))
++            .await
++            .ok()
++    }
++
++    // libcsp is a process-wide singleton: the cases share one loopback link.
++    #[tokio::test(flavor = "multi_thread")]
++    async fn transmit_forwards_defers_or_drops() {
++        let link = CspclLink::new(&Config {
++            local_addr: 1,
++            port: 10,
++            interface: Interface::Loopback,
++        })
++        .expect("open link");
++        let spool = Arc::new(StdSpool::new(StdClock));
++        let rx = tokio::spawn(rx_task(Arc::clone(&spool), Arc::clone(&link)));
++
++        // Sent: the bundle leaves the spool, and comes back through the RX task.
++        let sent = queue(&spool, b"to self", Some("1:10")).await;
++        let handle = next_transmit(&spool, 1000)
++            .await
++            .expect("bundle to transmit");
++        assert!(transmit(handle, &link).await.is_continue());
++        let received = timeout(StdDuration::from_secs(5), spool.dispatch())
++            .await
++            .expect("bundle received via loopback");
++        assert_eq!(received.loaded().expect("in memory").serialized(), &*sent);
++        received.deliver();
++        assert!(
++            next_transmit(&spool, 200).await.is_none(),
++            "sent bundle still in the spool"
++        );
++
++        // Unreachable peer: deferred, then offered again with the same address.
++        queue(&spool, b"to nobody", Some("9:10")).await;
++        let handle = next_transmit(&spool, 1000)
++            .await
++            .expect("bundle to transmit");
++        assert!(transmit(handle, &link).await.is_continue());
++        assert!(
++            next_transmit(&spool, 200).await.is_none(),
++            "deferred bundle offered at once"
++        );
++        let handle = next_transmit(&spool, 3000)
++            .await
++            .expect("deferred bundle offered again");
++        assert_eq!(handle.addr().map(|addr| &**addr), Some("9:10"));
++        handle.forwarded();
++
++        // Invalid or missing address: deferred too.
++        for addr in [Some("cspcl:1:10"), None] {
++            queue(&spool, b"no address", addr).await;
++            let handle = next_transmit(&spool, 1000)
++                .await
++                .expect("bundle to transmit");
++            assert!(transmit(handle, &link).await.is_continue());
++            assert!(
++                next_transmit(&spool, 200).await.is_none(),
++                "deferred bundle offered at once"
++            );
++            let handle = next_transmit(&spool, 3000)
++                .await
++                .expect("deferred bundle offered again");
++            handle.forwarded();
++        }
++
++        // Too large to ever send: dropped, neither sent nor offered again.
++        queue(&spool, &vec![0xaa; MAX_BUNDLE_SIZE + 1], Some("1:10")).await;
++        let handle = next_transmit(&spool, 1000)
++            .await
++            .expect("bundle to transmit");
++        assert!(transmit(handle, &link).await.is_continue());
++        assert!(
++            next_transmit(&spool, 2000).await.is_none(),
++            "oversized bundle offered again"
++        );
++        assert!(
++            timeout(StdDuration::from_millis(500), spool.dispatch())
++                .await
++                .is_err(),
++            "oversized bundle received"
++        );
++
++        tokio::task::spawn_blocking(move || link.shutdown())
++            .await
++            .unwrap();
++        rx.await.unwrap().expect("RX task ends cleanly");
++    }
 +}

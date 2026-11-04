@@ -4,12 +4,13 @@
 # aapctl runs in the node's container, which sets AAPCTL_CONNECT.
 #
 
-# picod3tn_wait_ready CONTAINER TIMEOUT
-# Waits until the node's cspcl link is open.
+# picod3tn_wait_ready CONTAINER TIMEOUT [SINCE]
+# Waits until the node's cspcl link is open. SINCE (a docker logs timestamp)
+# skips the lines logged before it, e.g. before a restart.
 picod3tn_wait_ready() {
-    local container=$1 timeout=$2 i
+    local container=$1 timeout=$2 since=${3:-0} i
     for ((i=1; i<=timeout; i++)); do
-        if docker logs "$container" 2>&1 | grep -q "cspcl link open as CSP"; then
+        if docker logs --since "$since" "$container" 2>&1 | grep -q "cspcl link open as CSP"; then
             return 0
         fi
         sleep 1
@@ -30,6 +31,14 @@ picod3tn_listen() {
     local container=$1 eid=$2 log=$3 seconds=${4:-90}
     docker exec "$container" rm -f "$log"
     docker exec -d "$container" sh -c "timeout ${seconds} aapctl listen '${eid}' > '${log}' 2>&1"
+}
+
+# picod3tn_stop_listeners CONTAINER
+# Stops the aapctl listeners started by picod3tn_listen. A listener left
+# running keeps its agent ID registered, and receives the next test's bundles.
+picod3tn_stop_listeners() {
+    local container=$1
+    docker exec "$container" sh -c 'pkill -f "^aapctl listen " || true' > /dev/null 2>&1 || true
 }
 
 # picod3tn_send CONTAINER SRC_EID DST_EID MESSAGE

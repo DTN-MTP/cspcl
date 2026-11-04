@@ -54,6 +54,11 @@ cleanup() {
             kill $pids
         fi
     ' >/dev/null 2>&1 || true
+
+    # shellcheck disable=SC2317
+    picod3tn_stop_listeners "$PICO_E_CONTAINER"
+    # shellcheck disable=SC2317
+    picod3tn_stop_listeners "$PICO_F_CONTAINER"
 }
 trap cleanup EXIT
 
@@ -170,7 +175,7 @@ for ((i=1; i<=30; i++)); do
 done
 
 RECV_LOG_2="/var/run/picod3tn/ud3tn-recv.log"
-picod3tn_listen "$PICO_E_CONTAINER" "${PICO_E_ID}bundlesink" "$RECV_LOG_2"
+picod3tn_listen "$PICO_E_CONTAINER" "${PICO_E_ID}crosssink" "$RECV_LOG_2"
 sleep 2
 
 RECEIVED_2=0
@@ -178,7 +183,7 @@ for ((attempt=1; attempt<=3 && RECEIVED_2 == 0; attempt++)); do
     docker exec "$UD3TN_A_CONTAINER" \
         "${UD3TN_AAP2}/aap2_send" \
         --socket "$UD3TN_SOCKET" \
-        "${PICO_E_ID}bundlesink" \
+        "${PICO_E_ID}crosssink" \
         "$TEST_MESSAGE_2" \
         > /dev/null 2>&1 || true
     picod3tn_wait_received "$PICO_E_CONTAINER" "$RECV_LOG_2" "$TEST_MESSAGE_2" 15 && RECEIVED_2=1
@@ -236,7 +241,7 @@ for ((i=1; i<=30; i++)); do
 done
 
 RECV_LOG_4="/var/run/picod3tn/unibo-recv.log"
-picod3tn_listen "$PICO_F_CONTAINER" "${PICO_F_ID}bundlesink" "$RECV_LOG_4"
+picod3tn_listen "$PICO_F_CONTAINER" "${PICO_F_ID}crosssink" "$RECV_LOG_4"
 sleep 2
 
 RECEIVED_4=0
@@ -245,7 +250,7 @@ for ((attempt=1; attempt<=4 && RECEIVED_4 == 0; attempt++)); do
         cd /tmp/unibo-node1
         ${UNIBO_BIN}/unibo-bp-send \
             --source dtn://c.dtn/source \
-            --destination ${PICO_F_ID}bundlesink \
+            --destination ${PICO_F_ID}crosssink \
             --lifetime 600000 \
             --payload-string '$TEST_MESSAGE_4'
     " > /dev/null 2>&1 || true

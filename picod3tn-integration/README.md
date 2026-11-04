@@ -10,12 +10,12 @@ The patch applies to picoD3TN commit `38fd7a9` (`main`, "Merge branch 'refactor/
 
 | File | Change |
 |---|---|
-| `picod3tn/Cargo.toml` | Optional `picod3tn-cspcl` dependency (git, pinned rev) and the `cspcl` feature |
+| `picod3tn/Cargo.toml` | Optional `picod3tn-cspcl` dependency (git, pinned rev) and the `cspcl` feature; tokio's `time` feature for the tests |
 | `picod3tn/Cargo.lock` | The cspcl crates; `bytes`, `clap` and `tokio` bumped to versions they accept |
 | `picod3tn/src/lib.rs` | `ClaAddr::Cspcl` (`cspcl:<addr>:<port>`); `ClaAddr::addr()` replaced by `link_addr()`; `DefaultCla` rejects `cspcl:` |
 | `picod3tn/src/tasks.rs` | The forwarder passes `link_addr()` to the CLA |
 | `picod3tn/src/tasks/cla.rs` | The default CLA TX task logs and defers a cspcl address |
-| `picod3tn/src/tasks/cla/cspcl.rs` | New: the cspcl RX and TX tasks |
+| `picod3tn/src/tasks/cla/cspcl.rs` | New: the cspcl RX and TX tasks, and their tests over a loopback link |
 | `picod3tn/src/bin/picod3tn.rs` | `--cspcl-*` arguments; opens the link and starts the tasks; shuts the link down on Ctrl-C |
 | `nix/packages/libcsp.nix` | New: libcsp v1.6, built with `-fPIC` |
 | `nix/packages/libsocketcan.nix` | New: libsocketcan 0.0.12, which libcsp and `cspcl-sys` link (not in nixpkgs) |
