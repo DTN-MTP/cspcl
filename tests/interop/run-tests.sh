@@ -33,7 +33,7 @@ Usage: $(basename "$0") [OPTIONS]
 
 Options:
   --transport TYPE     Transport type: zmqhub (default) or can
-  --test SUITE         Test suite: all (default), ud3tn, unibo, cross
+  --test SUITE         Test suite: all (default), ud3tn, unibo, cross, picod3tn
   --interactive        Start services and enter interactive mode (no tests)
   --keep-running       Keep services running after tests complete
   --no-build           Skip building Docker images
@@ -43,6 +43,7 @@ Examples:
   $(basename "$0")                          # Run all tests with ZMQHUB
   $(basename "$0") --transport can          # Run all tests with CAN
   $(basename "$0") --test ud3tn             # Run only uD3TN tests
+  $(basename "$0") --test picod3tn          # Run only picoD3TN tests
   $(basename "$0") --interactive            # Start services for manual testing
   $(basename "$0") --keep-running           # Run tests but keep services up
 
@@ -92,7 +93,8 @@ fi
 
 # Validate test suite
 if [ "$TEST_SUITE" != "all" ] && [ "$TEST_SUITE" != "ud3tn" ] && \
-   [ "$TEST_SUITE" != "unibo" ] && [ "$TEST_SUITE" != "cross" ]; then
+   [ "$TEST_SUITE" != "unibo" ] && [ "$TEST_SUITE" != "cross" ] && \
+   [ "$TEST_SUITE" != "picod3tn" ]; then
     echo -e "${RED}Error: Invalid test suite '$TEST_SUITE'${NC}"
     exit 1
 fi
@@ -180,11 +182,14 @@ if [ $INTERACTIVE -eq 1 ]; then
     echo "Execute commands:"
     echo "  docker exec -it cspcl-ud3tn-node-a /bin/bash"
     echo "  docker exec -it cspcl-unibo-node-1 /bin/bash"
+    echo "  docker exec -it cspcl-picod3tn-node-e /bin/bash"
     echo ""
     echo "Run tests manually:"
     echo "  ${TESTS_DIR}/test-ud3tn-basic.sh"
     echo "  ${TESTS_DIR}/test-unibo-basic.sh"
     echo "  ${TESTS_DIR}/test-cross-integration.sh"
+    echo "  ${TESTS_DIR}/test-picod3tn-basic.sh"
+    echo "  ${TESTS_DIR}/test-picod3tn-cross.sh"
     echo ""
     echo "Stop services:"
     echo "  ${COMPOSE_CMD[*]} -f ${COMPOSE_FILE} down"
@@ -234,6 +239,10 @@ case "$TEST_SUITE" in
         run_test "uD3TN Basic" "${TESTS_DIR}/test-ud3tn-basic.sh" || true
         restart_services
         run_test "Unibo-BP Basic" "${TESTS_DIR}/test-unibo-basic.sh" || true
+        restart_services
+        run_test "picoD3TN Basic" "${TESTS_DIR}/test-picod3tn-basic.sh" || true
+        restart_services
+        run_test "picoD3TN Cross-Integration" "${TESTS_DIR}/test-picod3tn-cross.sh" || true
         ;;
     ud3tn)
         run_test "uD3TN Basic" "${TESTS_DIR}/test-ud3tn-basic.sh" || true
@@ -243,6 +252,11 @@ case "$TEST_SUITE" in
         ;;
     cross)
         run_test "Cross-Integration" "${TESTS_DIR}/test-cross-integration.sh" || true
+        ;;
+    picod3tn)
+        run_test "picoD3TN Basic" "${TESTS_DIR}/test-picod3tn-basic.sh" || true
+        restart_services
+        run_test "picoD3TN Cross-Integration" "${TESTS_DIR}/test-picod3tn-cross.sh" || true
         ;;
 esac
 
