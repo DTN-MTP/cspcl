@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- CI: a `rust-picod3tn` job runs `cargo fmt`, `cargo clippy -D warnings` and the tests of the `rust-bindings` workspace against libcsp v1.6 built with `-fPIC`, builds `picod3tn-cspcl` without default features, and checks that the picoD3TN patch applies to `38fd7a9`. CI also runs on pushes to any `feat/picod3tn-*` branch.
+- CI: a `rust-picod3tn` job runs `cargo fmt`, `cargo clippy -D warnings` and the tests of the `rust-bindings` workspace against libcsp v1.6 built with `-fPIC`, builds `picod3tn-cspcl` without default features, and checks that the picoD3TN patch applies to `38fd7a9`.
 - Docker: `docker/picod3tn/Dockerfile` builds picoD3TN `38fd7a9` with the cspcl CLA patch, against this checkout's `picod3tn-cspcl` and a libcsp v1.6 built with `-fPIC`. The image ships `picod3tn` and `aapctl`; its entrypoint maps `CSP_ADDR`, `CSP_PORT`, `TRANSPORT` and `ZMQ_BROKER_HOST` to the `PICOD3TN_CSPCL_*` variables. CI builds and pushes it as `cspcl-picod3tn` and lints it with hadolint.
 - Interop tests: picoD3TN nodes E (CSP 5) and F (CSP 6) in both compose stacks. `test-picod3tn-basic.sh` exchanges bundles between them in both directions, and `test-picod3tn-cross.sh` between picoD3TN and uD3TN, and picoD3TN and Unibo-BP, in both directions. `run-tests.sh --test picod3tn` runs both, and `all` includes them.
 - Interop tests: `test-picod3tn-redelivery.sh` stops picoD3TN node F, sends it a bundle from E, checks that E fails to send it and keeps it, then restarts F and checks that the bundle is delivered. `run-tests.sh --test picod3tn` and `all` run it.
