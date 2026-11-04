@@ -1,15 +1,16 @@
 use crate::{
     csp_conn_t, csp_iface_type_CSP_IFACE_CAN, csp_iface_type_CSP_IFACE_LOOPBACK,
-    csp_iface_type_CSP_IFACE_ZMQHUB, cspcl_conn_pool_t, cspcl_error_t, cspcl_error_t_CSPCL_OK,
-    cspcl_t, primitive,
+    csp_iface_type_CSP_IFACE_ZMQHUB, csp_rdp_get_opt, cspcl_conn_pool_t, cspcl_error_t,
+    cspcl_error_t_CSPCL_OK, cspcl_t, primitive,
 };
 
 pub type Result<T> = std::result::Result<T, cspcl_error_t>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum InterfaceConfig {
     Zmq(String),
     Can(String),
+    #[default]
     Loopback,
 }
 
@@ -27,12 +28,6 @@ impl InterfaceConfig {
     }
 }
 
-impl Default for InterfaceConfig {
-    fn default() -> Self {
-        Self::Loopback
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CspclConfig {
     pub local_addr: u8,
@@ -40,15 +35,69 @@ pub struct CspclConfig {
     pub interface: InterfaceConfig,
 }
 
-#[derive(Debug, Clone, Copy)]
+/// An accepted inbound CSP connection.
+///
+/// The connection is owned by this value and closed when it is dropped.
+///
+/// It cannot be copied, so it cannot be read after it is closed:
+///
+/// ```compile_fail
+/// use cspcl_sys::types::{AcceptedConn, recv_bundle_from_conn};
+///
+/// fn read_after_close(conn: AcceptedConn) {
+///     let copy = conn;
+///     drop(conn);
+///     let _ = recv_bundle_from_conn(&copy);
+/// }
+/// ```
+///
+/// Nor can two threads receive on it at once:
+///
+/// ```compile_fail
+/// use cspcl_sys::types::{AcceptedConn, recv_bundle_from_conn};
+///
+/// fn concurrent_reads(conn: &AcceptedConn) {
+///     std::thread::scope(|s| {
+///         s.spawn(|| recv_bundle_from_conn(conn));
+///         let _ = recv_bundle_from_conn(conn);
+///     });
+/// }
+/// ```
+#[derive(Debug)]
 pub struct AcceptedConn {
-    pub conn: *mut csp_conn_t,
+    conn: *mut csp_conn_t,
     pub src_addr: u8,
     pub src_port: u8,
 }
 
-// Accepted connections are handed off to a single listener worker, which owns
-// the pointer for receive calls. The pointer must not be used concurrently.
+impl AcceptedConn {
+    /// The underlying CSP connection, still owned by `self`.
+    pub fn as_ptr(&self) -> *mut csp_conn_t {
+        self.conn
+    }
+
+    /// Release ownership of the connection without closing it.
+    pub fn into_raw(self) -> *mut csp_conn_t {
+        std::mem::ManuallyDrop::new(self).conn
+    }
+}
+
+impl Drop for AcceptedConn {
+    fn drop(&mut self) {
+        // libcsp v1.6 never frees an accepted connection on its own, so this
+        // close is what releases its slot. Once a connection has been queued
+        // for accept, RDP resets and timeouts only mark it closed "by
+        // protocol"; the slot is freed when userspace closes it too
+        // (`csp_rdp_close_internal` waits for CSP_RDP_CLOSED_BY_ALL).
+        // Connections without RDP are only ever closed by userspace.
+        //
+        // SAFETY: `conn` is a valid connection owned by this value.
+        unsafe { primitive::close_conn(self.conn) }
+    }
+}
+
+// SAFETY: the connection is owned by this value and may move between
+// threads. It is not `Sync`, so only one thread can receive on it at a time.
 unsafe impl Send for AcceptedConn {}
 
 #[derive(Debug)]
@@ -129,8 +178,25 @@ pub fn close_rx_socket(cspcl: &mut cspcl_t) {
     primitive::close_rx_socket(cspcl);
 }
 
+/// # Safety
+/// See [`primitive::close_rx_socket_raw`].
+pub unsafe fn close_rx_socket_raw(cspcl: *mut cspcl_t) {
+    unsafe { primitive::close_rx_socket_raw(cspcl) }
+}
+
 pub fn send_bundle(cspcl: &mut cspcl_t, bundle: &[u8], dest_addr: u8, dest_port: u8) -> Result<()> {
     ok_or_err(primitive::send_bundle(cspcl, bundle, dest_addr, dest_port))
+}
+
+/// # Safety
+/// See [`primitive::send_bundle_raw`].
+pub unsafe fn send_bundle_raw(
+    cspcl: *mut cspcl_t,
+    bundle: &[u8],
+    dest_addr: u8,
+    dest_port: u8,
+) -> Result<()> {
+    ok_or_err(unsafe { primitive::send_bundle_raw(cspcl, bundle, dest_addr, dest_port) })
 }
 
 pub fn recv_bundle(
@@ -150,7 +216,13 @@ pub fn recv_bundle(
 }
 
 pub fn accept_conn(cspcl: &mut cspcl_t, timeout_ms: u32) -> Result<AcceptedConn> {
-    let (code, conn, src_addr, src_port) = primitive::accept_conn(cspcl, timeout_ms);
+    unsafe { accept_conn_raw(cspcl, timeout_ms) }
+}
+
+/// # Safety
+/// See [`primitive::accept_conn_raw`].
+pub unsafe fn accept_conn_raw(cspcl: *mut cspcl_t, timeout_ms: u32) -> Result<AcceptedConn> {
+    let (code, conn, src_addr, src_port) = unsafe { primitive::accept_conn_raw(cspcl, timeout_ms) };
     ok_or_err(code)?;
 
     Ok(AcceptedConn {
@@ -160,6 +232,8 @@ pub fn accept_conn(cspcl: &mut cspcl_t, timeout_ms: u32) -> Result<AcceptedConn>
     })
 }
 
+/// # Safety
+/// See [`primitive::conn_pool_add`].
 pub unsafe fn conn_pool_add(
     pool: &mut cspcl_conn_pool_t,
     dest_addr: u8,
@@ -169,36 +243,66 @@ pub unsafe fn conn_pool_add(
     ok_or_err(unsafe { primitive::conn_pool_add(pool, dest_addr, dest_port, conn) })
 }
 
-pub fn conn_pool_add_accepted(cspcl: &mut cspcl_t, accepted: AcceptedConn) -> Result<()> {
-    unsafe {
-        conn_pool_add(
-            &mut cspcl.conn_pool,
-            accepted.src_addr,
-            accepted.src_port,
-            accepted.conn,
-        )
-    }
+/// Receive one bundle into a new buffer. Allocates up to
+/// `CSPCL_MAX_BUNDLE_SIZE` bytes per call: to receive repeatedly, use
+/// [`recv_bundle_from_conn_into`] with one buffer.
+pub fn recv_bundle_from_conn(accepted: &AcceptedConn) -> Result<ReceivedBundle> {
+    let mut buffer = vec![0u8; crate::CSPCL_MAX_BUNDLE_SIZE as usize];
+    let len = recv_bundle_from_conn_into(accepted, &mut buffer)?;
+    // So the bundle does not keep the whole receive buffer.
+    buffer.truncate(len);
+    buffer.shrink_to_fit();
+
+    Ok(ReceivedBundle {
+        buffer,
+        len,
+        src_addr: accepted.src_addr,
+        src_port: accepted.src_port,
+    })
 }
 
-pub fn recv_bundle_from_conn(accepted: AcceptedConn) -> Result<ReceivedBundle> {
-    let mut buffer = vec![0u8; crate::CSPCL_MAX_BUNDLE_SIZE as usize];
-    let (code, len, src_addr, src_port) = unsafe {
+/// Receive one bundle into `buffer`, which can be reused across calls, and
+/// return its length. The bundle comes from `accepted.src_addr` and
+/// `accepted.src_port`.
+///
+/// A bundle larger than `buffer` returns `CSPCL_ERR_NO_MEMORY` (not
+/// `CSPCL_ERR_BUNDLE_TOO_LARGE`). It has then been read from the connection
+/// but is never acknowledged, so the sender's send fails and every retry of
+/// it (the C sender tries twice, the BPA may retry further) fails the same
+/// way: pass `CSPCL_MAX_BUNDLE_SIZE` bytes to accept any bundle.
+pub fn recv_bundle_from_conn_into(accepted: &AcceptedConn, buffer: &mut [u8]) -> Result<usize> {
+    let (code, len, _, _) = unsafe {
+        // SAFETY: `accepted` owns an open connection, and `&AcceptedConn` is not
+        // `Send`, so no other thread receives on it concurrently.
         primitive::recv_bundle_from_conn(
             accepted.conn,
-            &mut buffer,
+            buffer,
             accepted.src_addr,
             accepted.src_port,
         )
     };
     ok_or_err(code)?;
-    buffer.truncate(len);
+    Ok(len)
+}
 
-    Ok(ReceivedBundle {
-        buffer,
-        len,
-        src_addr,
-        src_port,
-    })
+/// The RDP connection timeout this node announces when it connects, in ms
+/// (libcsp's `csp_rdp_get_opt`). libcsp never lets a read on an RDP
+/// connection time out sooner than the timeout announced by the peer that
+/// opened it.
+pub fn rdp_conn_timeout_ms() -> u32 {
+    let mut conn_timeout_ms = 0;
+    // SAFETY: libcsp skips the NULL outputs and only writes the one given.
+    unsafe {
+        csp_rdp_get_opt(
+            std::ptr::null_mut(),
+            &mut conn_timeout_ms,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        )
+    };
+    conn_timeout_ms
 }
 
 #[cfg(test)]

@@ -2,6 +2,7 @@
 .cache
 */build
 build
+build-riscv64
 
 debug
 target

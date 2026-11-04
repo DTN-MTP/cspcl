@@ -33,6 +33,11 @@ pub enum Error {
     Sink,
 }
 
+/// A hardy convergence layer adapter over CSP.
+///
+/// While registered, it keeps an inbound stream open on its own `Cspcl`, and
+/// reopens it should cspcl end it (its accept thread could not start or
+/// failed). Only unregistering the CLA stops receiving.
 pub struct Cla {
     csp_to_endpoint: HashMap<CspAddress, NodeId>,
     transport: transport::Transport,
@@ -82,12 +87,11 @@ impl Cla {
     }
 
     pub fn start_dispatcher(&self) -> Result<JoinHandle<()>, Error> {
-        let inbound = self.transport.inbound_stream();
         let sink = self.sink()?;
         Ok(Dispatcher::new(
             self.csp_to_endpoint.clone(),
             self.cancel_dispatcher.clone(),
-            inbound,
+            self.transport.clone(),
             sink.clone(),
         )
         .start_dispatch_inbound_bundle())
@@ -123,7 +127,9 @@ impl Cla {
 
     pub async fn cleanup(&self) {
         debug!("Unregistering cspcl...");
-        self.transport.cleanup();
+        // Cancel first, so the dispatcher does not take the end of its
+        // stream for a failure and reopen it.
         self.cancel_dispatcher.cancel();
+        self.transport.cleanup();
     }
 }

@@ -132,6 +132,58 @@ services:
       retries: 10
       start_period: 20s
 
+  # picoD3TN Node E (CSP address 5)
+  picod3tn-node-e:
+    image: cspcl-picod3tn:latest
+    container_name: cspcl-picod3tn-node-e
+    build:
+      context: ..
+      dockerfile: docker/picod3tn/Dockerfile
+    depends_on:
+      zmq-broker:
+        condition: service_healthy
+    environment:
+      - CSP_ADDR=5
+      - CSP_PORT=10
+      - TRANSPORT=zmqhub
+      - PICOD3TN_NODE_ID=dtn://e.dtn/
+      - ZMQ_BROKER_HOST=zmq-broker
+      - PICOD3TN_LOG_LEVEL=${PICOD3TN_LOG_LEVEL:-}
+    networks:
+      - csp-zmq-net
+    healthcheck:
+      test: ["CMD", "sh", "-c", "pgrep -f /opt/picod3tn/bin/picod3tn"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+
+  # picoD3TN Node F (CSP address 6)
+  picod3tn-node-f:
+    image: cspcl-picod3tn:latest
+    container_name: cspcl-picod3tn-node-f
+    build:
+      context: ..
+      dockerfile: docker/picod3tn/Dockerfile
+    depends_on:
+      zmq-broker:
+        condition: service_healthy
+    environment:
+      - CSP_ADDR=6
+      - CSP_PORT=10
+      - TRANSPORT=zmqhub
+      - PICOD3TN_NODE_ID=dtn://f.dtn/
+      - ZMQ_BROKER_HOST=zmq-broker
+      - PICOD3TN_LOG_LEVEL=${PICOD3TN_LOG_LEVEL:-}
+    networks:
+      - csp-zmq-net
+    healthcheck:
+      test: ["CMD", "sh", "-c", "pgrep -f /opt/picod3tn/bin/picod3tn"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+
 networks:
   csp-zmq-net:
     driver: bridge

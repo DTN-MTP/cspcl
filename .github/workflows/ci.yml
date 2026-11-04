@@ -67,6 +67,12 @@ jobs:
           dockerfile: docker/base/Dockerfile
           failure-threshold: warning
 
+      - name: Check picoD3TN Docker file best practices
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/picod3tn/Dockerfile
+          failure-threshold: warning
+
       - name: Check for TODO/FIXME comments
         run: |
           echo "Scanning for TODO/FIXME comments..."
@@ -143,6 +149,153 @@ jobs:
         with:
           name: test-results-${{ matrix.build_type }}
           path: build/Testing/
+
+  # Job 2b: Cross-compile for 64-bit RISC-V (PolarFire SoC)
+  build-riscv64:
+    name: Build riscv64 (PolarFire SoC)
+    # 22.04: libcsp v1.6's waf needs Python <= 3.11. Binaries are fully
+    # static, so the runner's glibc does not constrain the target board.
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install cross toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-riscv64-linux-gnu \
+            g++-riscv64-linux-gnu \
+            cmake \
+            autoconf \
+            automake \
+            libtool \
+            pkg-config \
+            qemu-user-static
+
+      - name: Cache riscv64 dependencies
+        uses: actions/cache@v4
+        with:
+          path: /tmp/riscv64-deps
+          key: riscv64-deps-${{ hashFiles('tools/build-riscv64.sh', 'cmake/riscv64-linux-gnu.cmake') }}
+
+      - name: Build CSPCL for riscv64
+        run: ./tools/build-riscv64.sh
+
+      - name: Run unit tests under qemu
+        run: ctest --test-dir build-riscv64 --output-on-failure
+
+      - name: Package board artifacts
+        run: |
+          mkdir -p cspcl-riscv64/lib cspcl-riscv64/include cspcl-riscv64/bin
+          cp build-riscv64/libcspcl.a cspcl-riscv64/lib/
+          cp src/cspcl.h src/cspcl_config.h cspcl-riscv64/include/
+          find build-riscv64/tests -maxdepth 1 -type f -executable -name 'test_*' \
+            -exec cp {} cspcl-riscv64/bin/ \;
+          file cspcl-riscv64/bin/*
+
+      - name: Upload riscv64 build
+        uses: actions/upload-artifact@v4
+        with:
+          name: cspcl-riscv64
+          path: cspcl-riscv64/
+
+  # Job 2c: Rust bindings and the picoD3TN patch
+  rust-picod3tn:
+    name: Rust Bindings and picoD3TN Patch
+    runs-on: ubuntu-latest
+
+    env:
+      CSP_REPO_DIR: /tmp/libcsp-pic
+      # picoD3TN main, the revision picod3tn-cla-cspcl.patch is made against
+      PICOD3TN_REV: 38fd7a910fb27fb32c7bfc55177eff187826679d
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          # libcsp v1.6's waf needs Python <= 3.11
+          sudo apt-get install -y software-properties-common
+          sudo add-apt-repository -y ppa:deadsnakes/ppa
+          sudo apt-get update
+          # protobuf: hardy-proto needs protoc and the well-known types
+          sudo apt-get install -y \
+            build-essential \
+            python3.11 \
+            git \
+            pkg-config \
+            libclang-dev \
+            libzmq3-dev \
+            libsocketcan-dev \
+            libbz2-dev \
+            protobuf-compiler \
+            libprotobuf-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust-bindings
+
+      # Rust links binaries as PIE, so libcsp.a must be built with -fPIC.
+      # v1.6's wscript only applies its default flags when CFLAGS is empty.
+      - name: Cache libcsp (PIC)
+        id: cache-libcsp-pic
+        uses: actions/cache@v4
+        with:
+          path: /tmp/libcsp-pic
+          key: ${{ runner.os }}-libcsp-v1.6-pic-${{ hashFiles('.github/workflows/ci.yml') }}
+
+      - name: Build libcsp v1.6 with -fPIC
+        if: steps.cache-libcsp-pic.outputs.cache-hit != 'true'
+        run: |
+          git clone --branch v1.6 --depth 1 https://github.com/libcsp/libcsp.git "$CSP_REPO_DIR"
+          cd "$CSP_REPO_DIR"
+          CFLAGS="-std=gnu99 -g -Os -fPIC -Wall -Wextra -Wshadow -Wcast-align -Wwrite-strings -Wno-unused-parameter" \
+            python3.11 waf configure --enable-can-socketcan --enable-if-zmqhub --enable-rdp --with-os=posix
+          python3.11 waf build
+
+      - name: Check Rust formatting
+        working-directory: rust-bindings
+        run: cargo fmt --all --check
+
+      - name: Run clippy
+        working-directory: rust-bindings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Run Rust tests
+        working-directory: rust-bindings
+        run: cargo test --workspace --all-features
+
+      - name: Build picod3tn-cspcl without default features (no_std)
+        working-directory: rust-bindings
+        run: cargo build -p picod3tn-cspcl --no-default-features
+
+      - name: Check the picoD3TN patch applies
+        run: |
+          mkdir -p /tmp/picod3tn
+          cd /tmp/picod3tn
+          git init -q
+          git remote add origin https://gitlab.com/d3tn/picod3tn.git
+          git fetch --depth 1 origin "$PICOD3TN_REV"
+          git checkout -q FETCH_HEAD
+          git apply --check --verbose "$GITHUB_WORKSPACE/picod3tn-integration/picod3tn-cla-cspcl.patch"
+
+      # Against this checkout's picod3tn-cspcl, not the rev the patch pins.
+      - name: Test the patched picoD3TN
+        working-directory: /tmp/picod3tn/picod3tn
+        run: |
+          git -C /tmp/picod3tn apply "$GITHUB_WORKSPACE/picod3tn-integration/picod3tn-cla-cspcl.patch"
+          cargo test --features cspcl \
+            --config "patch.\"https://github.com/DTN-MTP/cspcl.git\".picod3tn-cspcl.path=\"$GITHUB_WORKSPACE/rust-bindings/picod3tn-cspcl\""
 
   # Job 3: Docker build test
   docker-build:
@@ -258,6 +411,30 @@ jobs:
           build-args: |
             BASE_IMAGE=${{ fromJSON(steps.meta-base.outputs.json).tags[0] }}
 
+      - name: Extract metadata for picoD3TN
+        id: meta-picod3tn
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/cspcl-picod3tn
+          tags: |
+            type=ref,event=pr
+            type=ref,event=branch
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push picoD3TN image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/picod3tn/Dockerfile
+          push: true
+          tags: ${{ steps.meta-picod3tn.outputs.tags }}
+          labels: ${{ steps.meta-picod3tn.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BASE_IMAGE=${{ fromJSON(steps.meta-base.outputs.json).tags[0] }}
+
   # Job 4: Docker integration tests
   docker-integration-tests:
     name: Docker Integration Tests
@@ -299,6 +476,7 @@ jobs:
           docker build -t cspcl-base:latest -f docker/base/Dockerfile .
           docker build -t cspcl-ud3tn:latest -f docker/ud3tn/Dockerfile .
           docker build -t cspcl-unibo:latest -f docker/unibo-bp/Dockerfile .
+          docker build -t cspcl-picod3tn:latest -f docker/picod3tn/Dockerfile .
 
       - name: Run full-stack integration tests
         id: integration-tests
@@ -367,6 +545,10 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
     
     steps:
       - name: Checkout code
@@ -381,7 +563,7 @@ jobs:
           output: 'trivy-results.sarif'
 
       - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
@@ -390,7 +572,7 @@ jobs:
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [code-quality, build-and-test, docker-build, documentation, security]
+    needs: [code-quality, build-and-test, build-riscv64, rust-picod3tn, docker-build, documentation, security]
     if: always()
     
     steps:
@@ -402,13 +584,16 @@ jobs:
           echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Code Quality | ${{ needs.code-quality.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Build & Test | ${{ needs.build-and-test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build riscv64 | ${{ needs.build-riscv64.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Rust & picoD3TN patch | ${{ needs.rust-picod3tn.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Docker Build | ${{ needs.docker-build.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Documentation | ${{ needs.documentation.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Security Scan | ${{ needs.security.result }} |" >> $GITHUB_STEP_SUMMARY
           
           # Fail if critical jobs failed
           if [ "${{ needs.code-quality.result }}" = "failure" ] || \
-             [ "${{ needs.build-and-test.result }}" = "failure" ]; then
+             [ "${{ needs.build-and-test.result }}" = "failure" ] || \
+             [ "${{ needs.rust-picod3tn.result }}" = "failure" ]; then
             echo "❌ Critical jobs failed"
             exit 1
           fi
